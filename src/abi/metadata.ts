@@ -88,22 +88,27 @@ export function getGenericMetadata(
   descriptor: ContextDescriptor,
   typeArguments: Metadata[]
 ): Metadata {
-  if (!descriptor.isGeneric) {
-    throw new Error("getGenericMetadata requires a generic type; use getMetadata");
-  }
-  const kind = descriptor.kind;
-  if (kind !== ContextDescriptorKind.Struct && kind !== ContextDescriptorKind.Enum) {
-    throw new Error(`generic metadata for descriptor kind ${kind} is not supported`);
-  }
-
-  const header = descriptor.handle.add(OFFSETOF_VALUE_TYPE_GENERIC_HEADER);
+  const header = genericHeader(descriptor);
   const numParams = header.readU16();
   const numKeyArguments = header.add(OFFSETOF_NUM_KEY_ARGUMENTS).readU16();
   if (typeArguments.length !== numParams) {
     throw new Error(`expected ${numParams} type argument(s), got ${typeArguments.length}`);
   }
   if (numKeyArguments !== numParams) {
-    throw new Error("generic conformance requirements are not supported");
+    throw new Error(
+      "generic conformance requirements are not supported; use instantiateGenericMetadata"
+    );
+  }
+  return instantiateGenericMetadata(descriptor, typeArguments.map((m) => m.handle));
+}
+
+export function instantiateGenericMetadata(
+  descriptor: ContextDescriptor,
+  keyArguments: NativePointer[]
+): Metadata {
+  const numKeyArguments = genericHeader(descriptor).add(OFFSETOF_NUM_KEY_ARGUMENTS).readU16();
+  if (keyArguments.length !== numKeyArguments) {
+    throw new Error(`expected ${numKeyArguments} key argument(s), got ${keyArguments.length}`);
   }
 
   const accessFunction = descriptor.accessFunction;
@@ -111,17 +116,27 @@ export function getGenericMetadata(
     throw new Error("descriptor has no metadata access function");
   }
 
-  const argHandles = typeArguments.map((m) => m.handle);
   const key =
-    descriptor.handle.toString() + "<" + argHandles.map((h) => h.toString()).join(",") + ">";
+    descriptor.handle.toString() + "<" + keyArguments.map((h) => h.toString()).join(",") + ">";
   const cached = genericCache.get(key);
   if (cached !== undefined) {
     return cached;
   }
 
-  const metadata = new Metadata(invokeAccessor(accessFunction, argHandles));
+  const metadata = new Metadata(invokeAccessor(accessFunction, keyArguments));
   genericCache.set(key, metadata);
   return metadata;
+}
+
+function genericHeader(descriptor: ContextDescriptor): NativePointer {
+  if (!descriptor.isGeneric) {
+    throw new Error("not a generic type; use getMetadata");
+  }
+  const kind = descriptor.kind;
+  if (kind !== ContextDescriptorKind.Struct && kind !== ContextDescriptorKind.Enum) {
+    throw new Error(`generic metadata for descriptor kind ${kind} is not supported`);
+  }
+  return descriptor.handle.add(OFFSETOF_VALUE_TYPE_GENERIC_HEADER);
 }
 
 function invokeAccessor(fn: NativePointer, args: NativePointer[]): NativePointer {

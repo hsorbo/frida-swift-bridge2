@@ -26,7 +26,15 @@ export {
   Metadata,
   getMetadata,
   getGenericMetadata,
+  instantiateGenericMetadata,
 } from "./abi/metadata.js";
+export {
+  ProtocolConformance,
+  enumerateProtocolConformances,
+  enumerateProtocols,
+  findProtocol,
+  conformsToProtocol,
+} from "./abi/protocol-conformance.js";
 export {
   Field,
   enumerateFields,
