@@ -1,5 +1,3 @@
-/* TODO: handle PAC pointers. */
-
 export class RelativeDirectPointer {
   static readonly sizeOf = 4;
 
@@ -16,6 +14,6 @@ export class RelativeIndirectablePointer {
       return null;
     }
     const address = at.add(offset & ~1);
-    return (offset & 1) !== 0 ? address.readPointer() : address;
+    return (offset & 1) !== 0 ? address.readPointer().strip() : address;
   }
 }
