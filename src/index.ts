@@ -45,6 +45,11 @@ export {
   resolveTypeByMangledName,
   symbolicMangledNameLength,
 } from "./abi/field-descriptor.js";
+export {
+  ClassMetadata,
+  getClassMetadata,
+  enumerateClassFields,
+} from "./abi/class-metadata.js";
 
 export const Swift = {
   get available(): boolean {
