@@ -1,7 +1,7 @@
 import { getSwiftCoreApi } from "./runtime/api.js";
 import { demangle } from "./runtime/demangle.js";
 import { findType } from "./reflection/registry.js";
-import { getMetadata, Metadata } from "./abi/metadata.js";
+import { getMetadata, getGenericMetadata, Metadata } from "./abi/metadata.js";
 
 export { isSwiftSymbol, demangle } from "./runtime/demangle.js";
 export {
@@ -25,6 +25,7 @@ export {
   MetadataKind,
   Metadata,
   getMetadata,
+  getGenericMetadata,
 } from "./abi/metadata.js";
 
 export const Swift = {
@@ -40,8 +41,13 @@ export const Swift = {
   demangle,
   findType,
 
-  metadataFor(name: string): Metadata | null {
+  metadataFor(name: string, typeArguments: Metadata[] = []): Metadata | null {
     const descriptor = findType(name);
-    return descriptor === null ? null : getMetadata(descriptor);
+    if (descriptor === null) {
+      return null;
+    }
+    return typeArguments.length > 0
+      ? getGenericMetadata(descriptor, typeArguments)
+      : getMetadata(descriptor);
   },
 };

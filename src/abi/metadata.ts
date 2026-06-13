@@ -1,4 +1,4 @@
-import { ContextDescriptor } from "./context-descriptor.js";
+import { ContextDescriptor, ContextDescriptorKind } from "./context-descriptor.js";
 
 export enum MetadataKind {
   Class = 0x0,
@@ -16,6 +16,9 @@ const VWT_OFFSETOF_FLAGS = 0x50;
 const VWT_ALIGNMENT_MASK = 0xff;
 
 const METADATA_REQUEST_COMPLETE = 0;
+
+const OFFSETOF_VALUE_TYPE_GENERIC_HEADER = 0x24;
+const OFFSETOF_NUM_KEY_ARGUMENTS = 0x4;
 
 export interface TypeLayout {
   size: number;
@@ -67,4 +70,71 @@ export function getMetadata(descriptor: ContextDescriptor): Metadata {
   const metadata = new Metadata(access(METADATA_REQUEST_COMPLETE) as NativePointer);
   cache.set(key, metadata);
   return metadata;
+}
+
+const genericCache = new Map<string, Metadata>();
+
+export function getGenericMetadata(
+  descriptor: ContextDescriptor,
+  typeArguments: Metadata[]
+): Metadata {
+  if (!descriptor.isGeneric) {
+    throw new Error("getGenericMetadata requires a generic type; use getMetadata");
+  }
+  const kind = descriptor.kind;
+  if (kind !== ContextDescriptorKind.Struct && kind !== ContextDescriptorKind.Enum) {
+    throw new Error(`generic metadata for descriptor kind ${kind} is not supported`);
+  }
+
+  const header = descriptor.handle.add(OFFSETOF_VALUE_TYPE_GENERIC_HEADER);
+  const numParams = header.readU16();
+  const numKeyArguments = header.add(OFFSETOF_NUM_KEY_ARGUMENTS).readU16();
+  if (typeArguments.length !== numParams) {
+    throw new Error(`expected ${numParams} type argument(s), got ${typeArguments.length}`);
+  }
+  if (numKeyArguments !== numParams) {
+    throw new Error("generic conformance requirements are not supported");
+  }
+
+  const accessFunction = descriptor.accessFunction;
+  if (accessFunction === null) {
+    throw new Error("descriptor has no metadata access function");
+  }
+
+  const argHandles = typeArguments.map((m) => m.handle);
+  const key =
+    descriptor.handle.toString() + "<" + argHandles.map((h) => h.toString()).join(",") + ">";
+  const cached = genericCache.get(key);
+  if (cached !== undefined) {
+    return cached;
+  }
+
+  const metadata = new Metadata(invokeAccessor(accessFunction, argHandles));
+  genericCache.set(key, metadata);
+  return metadata;
+}
+
+function invokeAccessor(fn: NativePointer, args: NativePointer[]): NativePointer {
+  const request = METADATA_REQUEST_COMPLETE;
+  switch (args.length) {
+    case 1:
+      return new NativeFunction(fn, "pointer", ["size_t", "pointer"])(
+        request, args[0]
+      ) as NativePointer;
+    case 2:
+      return new NativeFunction(fn, "pointer", ["size_t", "pointer", "pointer"])(
+        request, args[0], args[1]
+      ) as NativePointer;
+    case 3:
+      return new NativeFunction(fn, "pointer", ["size_t", "pointer", "pointer", "pointer"])(
+        request, args[0], args[1], args[2]
+      ) as NativePointer;
+    default: {
+      const buffer = Memory.alloc(args.length * Process.pointerSize);
+      args.forEach((a, i) => buffer.add(i * Process.pointerSize).writePointer(a));
+      return new NativeFunction(fn, "pointer", ["size_t", "pointer"])(
+        request, buffer
+      ) as NativePointer;
+    }
+  }
 }
