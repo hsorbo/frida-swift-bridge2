@@ -50,6 +50,7 @@ export {
   getClassMetadata,
   enumerateClassFields,
 } from "./abi/class-metadata.js";
+export { InstanceField, enumerateInstanceFields } from "./abi/instance.js";
 
 export const Swift = {
   get available(): boolean {
