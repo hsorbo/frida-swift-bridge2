@@ -48,13 +48,16 @@ export {
 export {
   ClassMetadata,
   getClassMetadata,
+  classMetadataOf,
   enumerateClassFields,
 } from "./abi/class-metadata.js";
 export {
   InstanceField,
   SwiftValue,
   enumerateInstanceFields,
+  enumerateClassInstanceFields,
   readValue,
+  readObject,
 } from "./abi/instance.js";
 export {
   EnumCase,

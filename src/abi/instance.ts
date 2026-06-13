@@ -1,7 +1,8 @@
 import { Metadata, MetadataKind } from "./metadata.js";
-import { enumerateFields, fieldTypeIn } from "./field-descriptor.js";
+import { enumerateFields, fieldTypeIn, resolveFieldType } from "./field-descriptor.js";
 import { readEnumCase, projectEnumData, projectBox } from "./enum.js";
 import { readString } from "./string.js";
+import { classMetadataOf, enumerateClassFields } from "./class-metadata.js";
 
 const STRUCT_DESC_FIELD_OFFSET_VECTOR_OFFSET = 0x18;
 
@@ -55,9 +56,31 @@ export function readValue(metadata: Metadata, address: NativePointer): SwiftValu
     case MetadataKind.Enum:
     case MetadataKind.Optional:
       return readEnum(metadata, address);
+    case MetadataKind.Class:
+      return address.readPointer(); // reference; decode with readObject()
     default:
       return null;
   }
+}
+
+export function* enumerateClassInstanceFields(object: NativePointer): Generator<InstanceField> {
+  const metadata = classMetadataOf(object);
+  const descriptor = metadata.description;
+  for (const { field, offset } of enumerateClassFields(metadata)) {
+    yield {
+      name: field.name,
+      type: resolveFieldType(field, descriptor),
+      address: object.add(offset),
+    };
+  }
+}
+
+export function readObject(object: NativePointer): { [field: string]: SwiftValue } {
+  const value: { [field: string]: SwiftValue } = {};
+  for (const { name, type, address } of enumerateClassInstanceFields(object)) {
+    value[name] = type === null ? null : readValue(type, address);
+  }
+  return value;
 }
 
 function readEnum(metadata: Metadata, address: NativePointer): SwiftValue {

@@ -60,4 +60,17 @@ describe("class metadata", () => {
     expect(fields[0].field.name).toBe("_count");
     expect(fields[0].offset).toBe(16);
   });
+
+  test("isTypeMetadata guards reading an ObjC superclass as Swift", ({ skip }) => {
+    const descriptor = classOrSkip("Swift.__RawSetStorage", skip);
+    const metadata = getClassMetadata(descriptor);
+    expect(metadata.isTypeMetadata).toBeTruthy();
+
+    let current = metadata.superclass;
+    while (current !== null && current.isTypeMetadata) {
+      current = current.superclass;
+    }
+    expect(current).not.toBeNull(); // an Objective-C ancestor exists in the chain
+    expect(() => current!.description).toThrow();
+  });
 });

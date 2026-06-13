@@ -42,9 +42,11 @@ describe("readValue", () => {
     expect(readValue(rangeInt, storage)).toEqual({ lowerBound: 10, upperBound: 20 });
   });
 
-  test("returns null for types it cannot decode", ({ skip }) => {
+  test("returns a class-typed field as its reference pointer", ({ skip }) => {
     requireSwift(skip);
-    const klass = Swift.metadataFor("Swift.__RawSetStorage")!; // class metadata, unsupported
-    expect(readValue(klass, ptr(0))).toBeNull();
+    const klass = Swift.metadataFor("Swift.__RawSetStorage")!;
+    const slot = Memory.alloc(Process.pointerSize);
+    slot.writePointer(ptr("0x1234"));
+    expect((readValue(klass, slot) as NativePointer).equals(ptr("0x1234"))).toBeTruthy();
   });
 });
