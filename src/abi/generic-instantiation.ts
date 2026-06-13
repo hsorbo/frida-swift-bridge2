@@ -1,0 +1,111 @@
+import { ContextDescriptor, ContextDescriptorKind } from "./context-descriptor.js";
+import { Metadata, instantiateGenericMetadata } from "./metadata.js";
+import { conformsToProtocol } from "./protocol-conformance.js";
+import { resolveTypeByMangledName, symbolicMangledNameLength } from "./field-descriptor.js";
+import { RelativeDirectPointer } from "../basic/relative-pointer.js";
+
+const OFFSETOF_NUM_PARAMS = 0x24;
+const OFFSETOF_NUM_REQUIREMENTS = 0x26;
+const OFFSETOF_GENERIC_PARAMS = 0x2c;
+
+const FLAG_HAS_KEY_ARGUMENT = 0x80;
+const GENERIC_PARAM_KIND_MASK = 0x3f;
+const GENERIC_PARAM_KIND_TYPE = 0x0;
+
+const REQUIREMENT_SIZE = 0xc;
+const OFFSETOF_REQ_PARAM = 0x4;
+const OFFSETOF_REQ_PROTOCOL = 0x8;
+const REQUIREMENT_KIND_MASK = 0x1f;
+const REQUIREMENT_KIND_PROTOCOL = 0x0;
+const PROTOCOL_REF_OBJC_BIT = 0x2;
+
+export function buildGenericMetadata(
+  descriptor: ContextDescriptor,
+  typeArguments: Metadata[]
+): Metadata {
+  if (!descriptor.isGeneric) {
+    throw new Error("not a generic type; use getMetadata");
+  }
+  const kind = descriptor.kind;
+  if (kind !== ContextDescriptorKind.Struct && kind !== ContextDescriptorKind.Enum) {
+    throw new Error(`generic metadata for descriptor kind ${kind} is not supported`);
+  }
+
+  const handle = descriptor.handle;
+  const numParams = handle.add(OFFSETOF_NUM_PARAMS).readU16();
+  const numRequirements = handle.add(OFFSETOF_NUM_REQUIREMENTS).readU16();
+  if (typeArguments.length !== numParams) {
+    throw new Error(`expected ${numParams} type argument(s), got ${typeArguments.length}`);
+  }
+
+  const paramHandles: NativePointer[] = [];
+  for (let i = 0; i < numParams; i++) {
+    const param = handle.add(OFFSETOF_GENERIC_PARAMS + i).readU8();
+    if ((param & GENERIC_PARAM_KIND_MASK) !== GENERIC_PARAM_KIND_TYPE) {
+      throw new Error("non-type generic parameters are not supported");
+    }
+    if ((param & FLAG_HAS_KEY_ARGUMENT) !== 0) {
+      paramHandles.push(typeArguments[i].handle);
+    }
+  }
+
+  if (numRequirements === 0) {
+    return instantiateGenericMetadata(descriptor, paramHandles);
+  }
+
+  const paramVector = Memory.alloc(Math.max(1, paramHandles.length) * Process.pointerSize);
+  paramHandles.forEach((h, i) => paramVector.add(i * Process.pointerSize).writePointer(h));
+
+  const witnessTables: NativePointer[] = [];
+  const requirements = handle.add((OFFSETOF_GENERIC_PARAMS + numParams + 3) & ~3);
+  for (let i = 0; i < numRequirements; i++) {
+    const requirement = requirements.add(i * REQUIREMENT_SIZE);
+    const flags = requirement.readU32();
+    if ((flags & FLAG_HAS_KEY_ARGUMENT) === 0) {
+      continue;
+    }
+    if ((flags & REQUIREMENT_KIND_MASK) !== REQUIREMENT_KIND_PROTOCOL) {
+      throw new Error("only protocol conformance requirements are supported");
+    }
+    witnessTables.push(witnessTableFor(descriptor, requirement, paramVector));
+  }
+
+  return instantiateGenericMetadata(descriptor, [...paramHandles, ...witnessTables]);
+}
+
+function witnessTableFor(
+  descriptor: ContextDescriptor,
+  requirement: NativePointer,
+  paramVector: NativePointer
+): NativePointer {
+  const subjectName = RelativeDirectPointer.resolve(requirement.add(OFFSETOF_REQ_PARAM));
+  if (subjectName === null) {
+    throw new Error("conformance requirement has no subject");
+  }
+  const subject = resolveTypeByMangledName(
+    { address: subjectName, length: symbolicMangledNameLength(subjectName) },
+    descriptor,
+    paramVector
+  );
+  if (subject === null) {
+    throw new Error("could not resolve conformance requirement subject");
+  }
+
+  const protocol = resolveRequirementProtocol(requirement.add(OFFSETOF_REQ_PROTOCOL));
+  const witnessTable = conformsToProtocol(subject, protocol);
+  if (witnessTable === null) {
+    throw new Error("type does not satisfy a conformance requirement");
+  }
+  return witnessTable;
+}
+
+function resolveRequirementProtocol(field: NativePointer): ContextDescriptor {
+  const raw = field.readS32();
+  if ((raw & PROTOCOL_REF_OBJC_BIT) !== 0) {
+    throw new Error("Objective-C protocol requirements are not supported");
+  }
+  const offset = raw & ~PROTOCOL_REF_OBJC_BIT;
+  const address = field.add(offset & ~1);
+  const descriptor = (offset & 1) !== 0 ? address.readPointer().strip() : address;
+  return new ContextDescriptor(descriptor);
+}

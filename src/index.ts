@@ -1,7 +1,8 @@
 import { getSwiftCoreApi } from "./runtime/api.js";
 import { demangle } from "./runtime/demangle.js";
 import { findType } from "./reflection/registry.js";
-import { getMetadata, getGenericMetadata, Metadata } from "./abi/metadata.js";
+import { getMetadata, Metadata } from "./abi/metadata.js";
+import { buildGenericMetadata } from "./abi/generic-instantiation.js";
 
 export { isSwiftSymbol, demangle } from "./runtime/demangle.js";
 export {
@@ -28,6 +29,7 @@ export {
   getGenericMetadata,
   instantiateGenericMetadata,
 } from "./abi/metadata.js";
+export { buildGenericMetadata } from "./abi/generic-instantiation.js";
 export {
   ProtocolConformance,
   enumerateProtocolConformances,
@@ -63,7 +65,7 @@ export const Swift = {
       return null;
     }
     return typeArguments.length > 0
-      ? getGenericMetadata(descriptor, typeArguments)
+      ? buildGenericMetadata(descriptor, typeArguments)
       : getMetadata(descriptor);
   },
 };
