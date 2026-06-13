@@ -2,7 +2,6 @@ import { getMachOApi } from "../runtime/api.js";
 import { RelativeDirectPointer } from "../basic/relative-pointer.js";
 
 const SWIFT_SEGMENT = "__TEXT";
-const OFFSETOF_TYPE_CONTEXT_NAME = 0x8;
 
 export interface SwiftSection {
   address: NativePointer;
@@ -34,9 +33,4 @@ export function* enumerateTypeContextDescriptors(module: Module): Generator<Nati
       yield descriptor;
     }
   }
-}
-
-export function readTypeContextName(descriptor: NativePointer): string | null {
-  const namePtr = RelativeDirectPointer.resolve(descriptor.add(OFFSETOF_TYPE_CONTEXT_NAME));
-  return namePtr === null ? null : namePtr.readCString();
 }

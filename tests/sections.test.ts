@@ -3,8 +3,8 @@ import { test, expect, describe } from "frida-test/agent";
 import {
   getSwiftSection,
   enumerateTypeContextDescriptors,
-  readTypeContextName,
 } from "../src/macho/sections.js";
+import { ContextDescriptor } from "../src/abi/context-descriptor.js";
 
 function loadSwiftCore(skip: (reason?: string) => void): Module {
   if (Process.arch !== "arm64" || Process.platform !== "darwin") {
@@ -36,7 +36,7 @@ describe("mach-o swift sections", () => {
     const names = new Set<string>();
     for (const descriptor of enumerateTypeContextDescriptors(lib)) {
       expect(descriptor.compare(lib.base) >= 0 && descriptor.compare(limit) < 0).toBeTruthy();
-      const name = readTypeContextName(descriptor);
+      const name = new ContextDescriptor(descriptor).name;
       if (name !== null) {
         names.add(name);
       }

@@ -9,8 +9,11 @@ export {
 export {
   getSwiftSection,
   enumerateTypeContextDescriptors,
-  readTypeContextName,
 } from "./macho/sections.js";
+export {
+  ContextDescriptor,
+  ContextDescriptorKind,
+} from "./abi/context-descriptor.js";
 
 export const Swift = {
   get available(): boolean {
