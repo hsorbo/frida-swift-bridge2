@@ -1,0 +1,35 @@
+{
+  "name": "frida-swift-bridge2",
+  "version": "1.0.0",
+  "description": "A TypeScript library for Frida's GumJS runtime.",
+  "license": "ISC",
+  "author": "",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "watch": "tsc --watch",
+    "test": "frida-test",
+    "prepublishOnly": "npm run build"
+  },
+  "dependencies": {
+    "frida": "^17.10.1",
+    "typescript": "^6.0.3"
+  },
+  "devDependencies": {
+    "@types/frida-gum": "^19.4.0"
+  },
+  "allowScripts": {
+    "frida@17.11.0": true
+  }
+}

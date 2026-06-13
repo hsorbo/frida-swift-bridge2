@@ -1,0 +1,7 @@
+{
+  "$schema": "./node_modules/frida-test/schema/frida-test.config.schema.json",
+  "default": "local",
+  "targets": {
+    "local": { "device": "local", "session": "system" }
+  }
+}
