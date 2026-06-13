@@ -44,7 +44,7 @@ describe("readValue", () => {
 
   test("returns null for types it cannot decode", ({ skip }) => {
     requireSwift(skip);
-    const optionalInt = Swift.metadataFor("Swift.Optional", [Swift.metadataFor("Swift.Int")!])!;
-    expect(readValue(optionalInt, Memory.alloc(16))).toBeNull();
+    const klass = Swift.metadataFor("Swift.__RawSetStorage")!; // class metadata, unsupported
+    expect(readValue(klass, ptr(0))).toBeNull();
   });
 });

@@ -56,6 +56,13 @@ export {
   enumerateInstanceFields,
   readValue,
 } from "./abi/instance.js";
+export {
+  EnumCase,
+  enumTag,
+  readEnumCase,
+  projectEnumData,
+  injectEnumTag,
+} from "./abi/enum.js";
 
 export const Swift = {
   get available(): boolean {

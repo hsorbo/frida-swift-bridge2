@@ -1,5 +1,6 @@
 import { Metadata, MetadataKind } from "./metadata.js";
 import { enumerateFields, fieldTypeIn } from "./field-descriptor.js";
+import { readEnumCase, projectEnumData } from "./enum.js";
 
 const STRUCT_DESC_FIELD_OFFSET_VECTOR_OFFSET = 0x18;
 
@@ -12,6 +13,7 @@ export interface InstanceField {
 export type SwiftValue =
   | number
   | boolean
+  | string
   | NativePointer
   | { [field: string]: SwiftValue }
   | null;
@@ -36,18 +38,35 @@ const PRIMITIVE_READERS: { [typeName: string]: (p: NativePointer) => SwiftValue 
 };
 
 export function readValue(metadata: Metadata, address: NativePointer): SwiftValue {
-  const reader = PRIMITIVE_READERS[metadata.description.fullTypeName ?? ""];
-  if (reader !== undefined) {
-    return reader(address);
+  switch (metadata.kind) {
+    case MetadataKind.Struct: {
+      const reader = PRIMITIVE_READERS[metadata.description.fullTypeName ?? ""];
+      if (reader !== undefined) {
+        return reader(address);
+      }
+      const value: { [field: string]: SwiftValue } = {};
+      for (const field of enumerateInstanceFields(metadata, address)) {
+        value[field.name] = field.type === null ? null : readValue(field.type, field.address);
+      }
+      return value;
+    }
+    case MetadataKind.Enum:
+    case MetadataKind.Optional:
+      return readEnum(metadata, address);
+    default:
+      return null;
   }
-  if (metadata.kind !== MetadataKind.Struct) {
-    return null;
+}
+
+function readEnum(metadata: Metadata, address: NativePointer): SwiftValue {
+  const { name, payloadType } = readEnumCase(metadata, address);
+  if (payloadType === null) {
+    return name;
   }
-  const value: { [field: string]: SwiftValue } = {};
-  for (const field of enumerateInstanceFields(metadata, address)) {
-    value[field.name] = field.type === null ? null : readValue(field.type, field.address);
-  }
-  return value;
+  const scratch = Memory.alloc(metadata.typeLayout.stride);
+  Memory.copy(scratch, address, metadata.typeLayout.stride);
+  projectEnumData(metadata, scratch);
+  return { [name]: readValue(payloadType, scratch) };
 }
 
 export function* enumerateInstanceFields(
