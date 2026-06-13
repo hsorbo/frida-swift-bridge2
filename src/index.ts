@@ -62,6 +62,7 @@ export {
   readEnumCase,
   projectEnumData,
   injectEnumTag,
+  projectBox,
 } from "./abi/enum.js";
 export { readString } from "./abi/string.js";
 

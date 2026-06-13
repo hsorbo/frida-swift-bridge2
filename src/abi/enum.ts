@@ -1,5 +1,6 @@
 import { Metadata } from "./metadata.js";
 import { enumerateFields, fieldTypeIn } from "./field-descriptor.js";
+import { getSwiftCoreApi } from "../runtime/api.js";
 
 const VWT_OFFSETOF_GET_ENUM_TAG = 0x58;
 const VWT_OFFSETOF_DESTRUCTIVE_PROJECT_ENUM_DATA = 0x60;
@@ -9,6 +10,11 @@ export interface EnumCase {
   name: string;
   tag: number;
   payloadType: Metadata | null;
+  isIndirect: boolean;
+}
+
+export function projectBox(box: NativePointer): NativePointer {
+  return getSwiftCoreApi().swift_projectBox(box);
 }
 
 export function enumTag(metadata: Metadata, address: NativePointer): number {
@@ -31,6 +37,7 @@ export function readEnumCase(metadata: Metadata, address: NativePointer): EnumCa
     name: field.name,
     tag,
     payloadType: field.mangledTypeName !== null ? fieldTypeIn(metadata, field) : null,
+    isIndirect: field.isIndirectCase,
   };
 }
 

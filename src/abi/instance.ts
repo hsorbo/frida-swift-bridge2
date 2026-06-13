@@ -1,6 +1,6 @@
 import { Metadata, MetadataKind } from "./metadata.js";
 import { enumerateFields, fieldTypeIn } from "./field-descriptor.js";
-import { readEnumCase, projectEnumData } from "./enum.js";
+import { readEnumCase, projectEnumData, projectBox } from "./enum.js";
 import { readString } from "./string.js";
 
 const STRUCT_DESC_FIELD_OFFSET_VECTOR_OFFSET = 0x18;
@@ -61,14 +61,15 @@ export function readValue(metadata: Metadata, address: NativePointer): SwiftValu
 }
 
 function readEnum(metadata: Metadata, address: NativePointer): SwiftValue {
-  const { name, payloadType } = readEnumCase(metadata, address);
+  const { name, payloadType, isIndirect } = readEnumCase(metadata, address);
   if (payloadType === null) {
     return name;
   }
   const scratch = Memory.alloc(metadata.typeLayout.stride);
   Memory.copy(scratch, address, metadata.typeLayout.stride);
   projectEnumData(metadata, scratch);
-  return { [name]: readValue(payloadType, scratch) };
+  const payloadAddress = isIndirect ? projectBox(scratch.readPointer()) : scratch;
+  return { [name]: readValue(payloadType, payloadAddress) };
 }
 
 export function* enumerateInstanceFields(

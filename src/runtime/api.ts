@@ -39,6 +39,7 @@ export interface SwiftCoreApi {
     NativePointer,
     [NativePointerValue, NativePointerValue]
   >;
+  swift_projectBox: NativeFunction<NativePointer, [NativePointerValue]>;
 }
 
 let cachedSwiftCore: SwiftCoreApi | null = null;
@@ -69,6 +70,11 @@ export function getSwiftCoreApi(): SwiftCoreApi {
       lib.getExportByName("swift_conformsToProtocol"),
       "pointer",
       ["pointer", "pointer"]
+    ),
+    swift_projectBox: new NativeFunction(
+      lib.getExportByName("swift_projectBox"),
+      "pointer",
+      ["pointer"]
     ),
   };
   return cachedSwiftCore;

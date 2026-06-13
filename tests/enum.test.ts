@@ -2,7 +2,7 @@ import { test, expect, describe } from "frida-test/agent";
 
 import { Swift } from "../src/index.js";
 import { readValue } from "../src/abi/instance.js";
-import { readEnumCase, enumTag, injectEnumTag } from "../src/abi/enum.js";
+import { readEnumCase, enumTag, injectEnumTag, projectBox } from "../src/abi/enum.js";
 
 function requireSwift(skip: (reason?: string) => void): void {
   if (Process.arch !== "arm64" || Process.platform !== "darwin") {
@@ -28,6 +28,27 @@ describe("enum instances", () => {
     const noneCase = readEnumCase(optionalInt, storage);
     expect(noneCase.name).toBe("none");
     expect(noneCase.payloadType).toBeNull();
+    expect(noneCase.isIndirect).toBeFalsy();
+  });
+
+  test("reads a boxed payload via projectBox (the indirect-case mechanism)", ({ skip }) => {
+    requireSwift(skip);
+    const lib = Process.getModuleByName("libswiftCore.dylib");
+    const allocBox = new NativeFunction(
+      lib.getExportByName("swift_allocBox"),
+      ["pointer", "pointer"],
+      ["pointer"]
+    );
+    const int = Swift.metadataFor("Swift.Int")!;
+    const pair = allocBox(int.handle) as unknown as [NativePointer, NativePointer];
+    const object = pair[0];
+    const buffer = pair[1];
+    buffer.writeS64(99);
+
+    // projectBox recomputes the value address from the box object, matching the
+    // pointer an indirect enum case stores after projectEnumData.
+    expect(projectBox(object).equals(buffer)).toBeTruthy();
+    expect(readValue(int, projectBox(object))).toBe(99);
   });
 
   test("decodes a payload case and reads its associated value", ({ skip }) => {
