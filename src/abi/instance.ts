@@ -1,6 +1,7 @@
 import { Metadata, MetadataKind } from "./metadata.js";
 import { enumerateFields, fieldTypeIn } from "./field-descriptor.js";
 import { readEnumCase, projectEnumData } from "./enum.js";
+import { readString } from "./string.js";
 
 const STRUCT_DESC_FIELD_OFFSET_VECTOR_OFFSET = 0x18;
 
@@ -32,6 +33,7 @@ const PRIMITIVE_READERS: { [typeName: string]: (p: NativePointer) => SwiftValue 
   "Swift.Bool": (p) => p.readU8() !== 0,
   "Swift.Double": (p) => p.readDouble(),
   "Swift.Float": (p) => p.readFloat(),
+  "Swift.String": (p) => readString(p),
   "Swift.UnsafeRawPointer": (p) => p.readPointer(),
   "Swift.UnsafeMutableRawPointer": (p) => p.readPointer(),
   "Swift.OpaquePointer": (p) => p.readPointer(),

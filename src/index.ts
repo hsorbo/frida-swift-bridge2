@@ -63,6 +63,7 @@ export {
   projectEnumData,
   injectEnumTag,
 } from "./abi/enum.js";
+export { readString } from "./abi/string.js";
 
 export const Swift = {
   get available(): boolean {

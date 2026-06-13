@@ -39,6 +39,16 @@ export class Metadata {
   }
 
   get description(): ContextDescriptor {
+    const kind = this.kind;
+    if (
+      kind !== MetadataKind.Struct &&
+      kind !== MetadataKind.Enum &&
+      kind !== MetadataKind.Optional
+    ) {
+      throw new Error(
+        `Metadata.description is valid for value-type metadata only (kind ${kind}); use ClassMetadata for classes`
+      );
+    }
     return new ContextDescriptor(
       this.handle.add(Process.pointerSize).readPointer().strip()
     );
