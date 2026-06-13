@@ -2,7 +2,7 @@ import { test, expect, describe } from "frida-test/agent";
 
 import { Swift } from "../src/index.js";
 import { findType } from "../src/reflection/registry.js";
-import { getClassMetadata } from "../src/abi/class-metadata.js";
+import { getClassMetadata, enumerateClassFields } from "../src/abi/class-metadata.js";
 import { enumerateClassInstanceFields, readObject } from "../src/abi/instance.js";
 
 function requireSwift(skip: (reason?: string) => void) {
@@ -46,5 +46,28 @@ describe("class instances", () => {
     expect(fields[0].address.equals(object.add(16))).toBeTruthy();
 
     expect(readObject(object)._count).toBe(42);
+  });
+
+  test("includes fields inherited from a Swift superclass", ({ skip }) => {
+    requireSwift(skip);
+    const descriptor = findType("Swift.__EmptySetSingleton");
+    if (descriptor === null) {
+      skip("Swift.__EmptySetSingleton not present");
+    }
+    const metadata = getClassMetadata(descriptor!);
+
+    // _count is declared by the superclass __RawSetStorage, not this class.
+    const ownNames = [...enumerateClassFields(metadata)].map((f) => f.field.name);
+    expect(ownNames).not.toContain("_count");
+
+    const object = allocObject(metadata.handle, metadata.instanceSize, metadata.instanceAlignment - 1);
+    for (let offset = 16; offset < metadata.instanceSize; offset++) {
+      object.add(offset).writeU8(0);
+    }
+    object.add(16).writeS64(7); // inherited _count
+
+    const allNames = [...enumerateClassInstanceFields(object)].map((f) => f.name);
+    expect(allNames).toContain("_count");
+    expect(readObject(object)._count).toBe(7);
   });
 });

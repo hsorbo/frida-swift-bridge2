@@ -2,7 +2,7 @@ import { Metadata, MetadataKind } from "./metadata.js";
 import { enumerateFields, fieldTypeIn, resolveFieldType } from "./field-descriptor.js";
 import { readEnumCase, projectEnumData, projectBox } from "./enum.js";
 import { readString } from "./string.js";
-import { classMetadataOf, enumerateClassFields } from "./class-metadata.js";
+import { ClassMetadata, classMetadataOf, enumerateClassFields } from "./class-metadata.js";
 
 const STRUCT_DESC_FIELD_OFFSET_VECTOR_OFFSET = 0x18;
 
@@ -64,14 +64,23 @@ export function readValue(metadata: Metadata, address: NativePointer): SwiftValu
 }
 
 export function* enumerateClassInstanceFields(object: NativePointer): Generator<InstanceField> {
-  const metadata = classMetadataOf(object);
-  const descriptor = metadata.description;
-  for (const { field, offset } of enumerateClassFields(metadata)) {
-    yield {
-      name: field.name,
-      type: resolveFieldType(field, descriptor),
-      address: object.add(offset),
-    };
+  const chain: ClassMetadata[] = [];
+  let cls: ClassMetadata | null = classMetadataOf(object);
+  while (cls !== null && cls.isTypeMetadata) {
+    chain.push(cls);
+    cls = cls.superclass;
+  }
+
+  // Base-class fields first, matching ascending in-instance offsets.
+  for (const metadata of chain.reverse()) {
+    const descriptor = metadata.description;
+    for (const { field, offset } of enumerateClassFields(metadata)) {
+      yield {
+        name: field.name,
+        type: resolveFieldType(field, descriptor),
+        address: object.add(offset),
+      };
+    }
   }
 }
 
