@@ -3,6 +3,7 @@ import { demangle } from "./runtime/demangle.js";
 import { findType } from "./reflection/registry.js";
 import { getMetadata, Metadata } from "./abi/metadata.js";
 import { buildGenericMetadata } from "./abi/generic-instantiation.js";
+import { typeName } from "./runtime/type-name.js";
 
 export { isSwiftSymbol, demangle } from "./runtime/demangle.js";
 export {
@@ -68,6 +69,7 @@ export {
   projectBox,
 } from "./abi/enum.js";
 export { readString } from "./abi/string.js";
+export { typeName } from "./runtime/type-name.js";
 
 export const Swift = {
   get available(): boolean {
@@ -90,5 +92,9 @@ export const Swift = {
     return typeArguments.length > 0
       ? buildGenericMetadata(descriptor, typeArguments)
       : getMetadata(descriptor);
+  },
+
+  typeName(metadata: Metadata): string {
+    return typeName(metadata);
   },
 };
