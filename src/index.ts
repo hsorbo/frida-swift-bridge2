@@ -31,6 +31,7 @@ export {
   Field,
   enumerateFields,
   resolveFieldType,
+  fieldTypeIn,
   resolveTypeByMangledName,
   symbolicMangledNameLength,
 } from "./abi/field-descriptor.js";

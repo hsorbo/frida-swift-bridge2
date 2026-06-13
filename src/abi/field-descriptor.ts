@@ -96,3 +96,9 @@ export function resolveFieldType(
   const mangled = field.mangledTypeName;
   return mangled === null ? null : resolveTypeByMangledName(mangled, context, genericArguments);
 }
+
+export function fieldTypeIn(metadata: Metadata, field: Field): Metadata | null {
+  const description = metadata.description;
+  const genericArguments = description.isGeneric ? metadata.genericArguments : null;
+  return resolveFieldType(field, description, genericArguments);
+}

@@ -38,6 +38,16 @@ export class Metadata {
     return this.handle.sub(Process.pointerSize).readPointer();
   }
 
+  get description(): ContextDescriptor {
+    return new ContextDescriptor(
+      this.handle.add(Process.pointerSize).readPointer().strip()
+    );
+  }
+
+  get genericArguments(): NativePointer {
+    return this.handle.add(2 * Process.pointerSize);
+  }
+
   get typeLayout(): TypeLayout {
     const vwt = this.valueWitnessTable;
     const flags = vwt.add(VWT_OFFSETOF_FLAGS).readU32();
