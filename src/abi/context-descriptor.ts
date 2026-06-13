@@ -18,6 +18,7 @@ const OFFSETOF_FLAGS = 0x0;
 const OFFSETOF_PARENT = 0x4;
 const OFFSETOF_NAME = 0x8;
 const OFFSETOF_ACCESS_FUNCTION = 0xc;
+const OFFSETOF_FIELDS = 0x10;
 
 const KIND_MASK = 0x1f;
 const FLAG_IS_GENERIC = 0x80;
@@ -62,6 +63,10 @@ export class ContextDescriptor {
     return RelativeDirectPointer.resolve(
       this.handle.add(OFFSETOF_ACCESS_FUNCTION)
     );
+  }
+
+  get fields(): NativePointer | null {
+    return RelativeDirectPointer.resolve(this.handle.add(OFFSETOF_FIELDS));
   }
 
   get moduleName(): string | null {

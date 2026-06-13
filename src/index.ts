@@ -27,6 +27,13 @@ export {
   getMetadata,
   getGenericMetadata,
 } from "./abi/metadata.js";
+export {
+  Field,
+  enumerateFields,
+  resolveFieldType,
+  resolveTypeByMangledName,
+  symbolicMangledNameLength,
+} from "./abi/field-descriptor.js";
 
 export const Swift = {
   get available(): boolean {

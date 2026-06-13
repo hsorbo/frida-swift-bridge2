@@ -31,6 +31,10 @@ export interface SwiftCoreApi {
     NativePointer,
     [NativePointerValue, number | UInt64, NativePointerValue, NativePointerValue, number]
   >;
+  swift_getTypeByMangledNameInContext: NativeFunction<
+    NativePointer,
+    [NativePointerValue, number | UInt64, NativePointerValue, NativePointerValue]
+  >;
 }
 
 let cachedSwiftCore: SwiftCoreApi | null = null;
@@ -52,6 +56,11 @@ export function getSwiftCoreApi(): SwiftCoreApi {
       "pointer",
       "int32",
     ]),
+    swift_getTypeByMangledNameInContext: new NativeFunction(
+      lib.getExportByName("swift_getTypeByMangledNameInContext"),
+      "pointer",
+      ["pointer", "size_t", "pointer", "pointer"]
+    ),
   };
   return cachedSwiftCore;
 }
