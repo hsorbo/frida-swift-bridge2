@@ -1,12 +1,11 @@
-import { ContextDescriptor, ContextDescriptorKind } from "./context-descriptor.js";
-import { Metadata, instantiateGenericMetadata } from "./metadata.js";
+import { ContextDescriptor } from "./context-descriptor.js";
+import { Metadata, instantiateGenericMetadata, genericHeaderOffset } from "./metadata.js";
 import { conformsToProtocol } from "./protocol-conformance.js";
 import { resolveTypeByMangledName, symbolicMangledNameLength } from "./field-descriptor.js";
 import { RelativeDirectPointer } from "../basic/relative-pointer.js";
 
-const OFFSETOF_NUM_PARAMS = 0x24;
-const OFFSETOF_NUM_REQUIREMENTS = 0x26;
-const OFFSETOF_GENERIC_PARAMS = 0x2c;
+const OFFSETOF_NUM_REQUIREMENTS = 0x2;
+const OFFSETOF_GENERIC_PARAMS = 0x8;
 
 const FLAG_HAS_KEY_ARGUMENT = 0x80;
 const GENERIC_PARAM_KIND_MASK = 0x3f;
@@ -23,24 +22,18 @@ export function buildGenericMetadata(
   descriptor: ContextDescriptor,
   typeArguments: Metadata[]
 ): Metadata {
-  if (!descriptor.isGeneric) {
-    throw new Error("not a generic type; use getMetadata");
-  }
-  const kind = descriptor.kind;
-  if (kind !== ContextDescriptorKind.Struct && kind !== ContextDescriptorKind.Enum) {
-    throw new Error(`generic metadata for descriptor kind ${kind} is not supported`);
-  }
-
+  const base = genericHeaderOffset(descriptor); // throws for non-generic / unsupported kinds
   const handle = descriptor.handle;
-  const numParams = handle.add(OFFSETOF_NUM_PARAMS).readU16();
-  const numRequirements = handle.add(OFFSETOF_NUM_REQUIREMENTS).readU16();
+  const numParams = handle.add(base).readU16();
+  const numRequirements = handle.add(base + OFFSETOF_NUM_REQUIREMENTS).readU16();
   if (typeArguments.length !== numParams) {
     throw new Error(`expected ${numParams} type argument(s), got ${typeArguments.length}`);
   }
 
+  const paramsOffset = base + OFFSETOF_GENERIC_PARAMS;
   const paramHandles: NativePointer[] = [];
   for (let i = 0; i < numParams; i++) {
-    const param = handle.add(OFFSETOF_GENERIC_PARAMS + i).readU8();
+    const param = handle.add(paramsOffset + i).readU8();
     if ((param & GENERIC_PARAM_KIND_MASK) !== GENERIC_PARAM_KIND_TYPE) {
       throw new Error("non-type generic parameters are not supported");
     }
@@ -57,7 +50,7 @@ export function buildGenericMetadata(
   paramHandles.forEach((h, i) => paramVector.add(i * Process.pointerSize).writePointer(h));
 
   const witnessTables: NativePointer[] = [];
-  const requirements = handle.add((OFFSETOF_GENERIC_PARAMS + numParams + 3) & ~3);
+  const requirements = handle.add((paramsOffset + numParams + 3) & ~3);
   for (let i = 0; i < numRequirements; i++) {
     const requirement = requirements.add(i * REQUIREMENT_SIZE);
     const flags = requirement.readU32();

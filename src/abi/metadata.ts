@@ -18,6 +18,7 @@ const VWT_ALIGNMENT_MASK = 0xff;
 const METADATA_REQUEST_COMPLETE = 0;
 
 const OFFSETOF_VALUE_TYPE_GENERIC_HEADER = 0x24;
+const OFFSETOF_CLASS_GENERIC_HEADER = 0x34;
 const OFFSETOF_NUM_KEY_ARGUMENTS = 0x4;
 
 export interface TypeLayout {
@@ -138,15 +139,23 @@ export function instantiateGenericMetadata(
   return metadata;
 }
 
-function genericHeader(descriptor: ContextDescriptor): NativePointer {
+export function genericHeaderOffset(descriptor: ContextDescriptor): number {
   if (!descriptor.isGeneric) {
     throw new Error("not a generic type; use getMetadata");
   }
-  const kind = descriptor.kind;
-  if (kind !== ContextDescriptorKind.Struct && kind !== ContextDescriptorKind.Enum) {
-    throw new Error(`generic metadata for descriptor kind ${kind} is not supported`);
+  switch (descriptor.kind) {
+    case ContextDescriptorKind.Struct:
+    case ContextDescriptorKind.Enum:
+      return OFFSETOF_VALUE_TYPE_GENERIC_HEADER;
+    case ContextDescriptorKind.Class:
+      return OFFSETOF_CLASS_GENERIC_HEADER;
+    default:
+      throw new Error(`generic metadata for descriptor kind ${descriptor.kind} is not supported`);
   }
-  return descriptor.handle.add(OFFSETOF_VALUE_TYPE_GENERIC_HEADER);
+}
+
+function genericHeader(descriptor: ContextDescriptor): NativePointer {
+  return descriptor.handle.add(genericHeaderOffset(descriptor));
 }
 
 function invokeAccessor(fn: NativePointer, args: NativePointer[]): NativePointer {
