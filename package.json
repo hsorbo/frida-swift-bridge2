@@ -19,7 +19,7 @@
   "scripts": {
     "build": "tsc",
     "watch": "tsc --watch",
-    "test": "frida-test",
+    "test": "injest",
     "prepublishOnly": "npm run build"
   },
   "dependencies": {
@@ -27,7 +27,8 @@
     "typescript": "^6.0.3"
   },
   "devDependencies": {
-    "@types/frida-gum": "^19.4.0"
+    "@types/frida-gum": "^19.4.0",
+    "@frida/injest": "^0.1.0"
   },
   "allowScripts": {
     "frida@17.11.0": true

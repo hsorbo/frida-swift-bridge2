@@ -1,4 +1,4 @@
-import { test, expect, describe } from "frida-test/agent";
+import { test, expect, describe } from "@frida/injest/agent";
 
 import { Swift, typeName } from "../src/index.js";
 

@@ -1,4 +1,4 @@
-import { test, expect, describe } from "frida-test/agent";
+import { test, expect, describe } from "@frida/injest/agent";
 
 import { readString } from "../src/abi/string.js";
 
