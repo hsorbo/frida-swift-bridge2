@@ -188,6 +188,11 @@ public struct FloatPair { public var u: Float; public var v: Float }
 public func makeFloatPair() -> FloatPair { FloatPair(u: 1.25, v: 3.75) }
 public func sumFloatPair(_ p: FloatPair) -> Float { p.u + p.v }
 
+public func boxAnyInt(_ n: Int) -> Any { n }
+public func unboxAnyInt(_ x: Any) -> Int { x as! Int }
+public func makeGreeterExistential() -> any Greeter { PoliteGreeter(name: "Ada") }
+public func greetExistential(_ g: any Greeter) -> String { g.greet() }
+
 public func anyType() -> UnsafeRawPointer { unsafeBitCast(Any.self, to: UnsafeRawPointer.self) }
 public func greeterType() -> UnsafeRawPointer { unsafeBitCast((any Greeter).self, to: UnsafeRawPointer.self) }
 public func namedType() -> UnsafeRawPointer { unsafeBitCast((any Named).self, to: UnsafeRawPointer.self) }

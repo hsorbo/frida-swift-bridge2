@@ -1,11 +1,15 @@
 import { Metadata, MetadataKind } from "../abi/metadata.js";
 import { enumerateFields, fieldTypeIn } from "../abi/field-descriptor.js";
+import { existentialRepresentation } from "../abi/existential.js";
 import { typeName } from "./type-name.js";
 
 export const MAX_LOADABLE_SIZE = Process.pointerSize * 4;
 
 // Integer/pointer-class only; floating-point uses the separate v-register budget below.
 export function shouldPassIndirectly(metadata: Metadata): boolean {
+  if (metadata.kind === MetadataKind.Existential && existentialRepresentation(metadata) === "opaque") {
+    return true; // opaque existentials are address-only
+  }
   const vwt = metadata.valueWitnesses;
   return !vwt.isBitwiseTakable || vwt.size > MAX_LOADABLE_SIZE;
 }
