@@ -1,5 +1,6 @@
 import { test, expect, describe } from "@frida/injest/agent";
 import { requireSwift } from "./swift.js";
+import { loadResilient } from "./fixtures/load.js";
 
 import { Swift } from "../src/index.js";
 import {
@@ -14,6 +15,13 @@ describe("registry", () => {
     requireSwift(skip);
     const names = new Set([...enumerateSwiftModules()].map((m) => m.name));
     expect(names.has("libswiftCore.dylib")).toBeTruthy();
+  });
+
+  test("discovers a module loaded at runtime", ({ skip }) => {
+    loadResilient(skip);
+    const names = new Set([...enumerateSwiftModules()].map((m) => m.name));
+    expect(names.has("resilient.dylib")).toBeTruthy();
+    expect(findType("resilient.ResilientPoint")).not.toBeNull();
   });
 
   test("enumerated types are all type-kind descriptors", ({ skip }) => {

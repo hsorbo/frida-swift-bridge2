@@ -1,5 +1,6 @@
 import { test, expect, describe } from "@frida/injest/agent";
 import { requireSwift } from "./swift.js";
+import { loadFixture } from "./fixtures/load.js";
 
 import { Swift } from "../src/index.js";
 import { allocateValueBuffer } from "../src/abi/value-witness.js";
@@ -59,5 +60,32 @@ describe("ValueWitnessTable", () => {
     expect(vwt.projectBuffer(destBuf).equals(destBuf)).toBe(true);
     expect(readString(value)).toBe("vwt!");
     vwt.destroy(value);
+  });
+
+  test("reports out-of-line storage for structs larger than 3 words", ({ skip }) => {
+    loadFixture(skip);
+    const loadable = Swift.metadataFor("fixture.LoadableStruct")!.valueWitnesses;
+    const big = Swift.metadataFor("fixture.BigStruct")!.valueWitnesses;
+    expect(loadable.size).toBe(32);
+    expect(big.size).toBe(40);
+    expect(loadable.isInlineStorage).toBe(false);
+    expect(big.isInlineStorage).toBe(false);
+    expect(big.isPOD).toBe(true);
+    expect(big.isBitwiseTakable).toBe(true);
+  });
+
+  test("initializeWithCopy duplicates an out-of-line value", ({ skip }) => {
+    loadFixture(skip);
+    const vwt = Swift.metadataFor("fixture.BigStruct")!.valueWitnesses;
+    const src = Memory.alloc(vwt.stride);
+    for (let i = 0; i < 5; i++) {
+      src.add(i * 8).writeU64(i + 1);
+    }
+    const dest = Memory.alloc(vwt.stride);
+    vwt.initializeWithCopy(dest, src);
+    for (let i = 0; i < 5; i++) {
+      expect(dest.add(i * 8).readU64().toNumber()).toBe(i + 1);
+    }
+    vwt.destroy(dest);
   });
 });

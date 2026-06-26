@@ -1,2 +1,5 @@
 dist/
 node_modules/
+docs/
+tests/fixtures/*.dylib
+tests/fixtures/paths.ts

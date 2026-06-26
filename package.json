@@ -19,6 +19,7 @@
   "scripts": {
     "build": "tsc",
     "watch": "tsc --watch",
+    "pretest": "sh tests/fixtures/build.sh",
     "test": "injest",
     "prepublishOnly": "npm run build"
   },
