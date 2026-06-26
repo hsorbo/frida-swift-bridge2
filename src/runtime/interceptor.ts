@@ -1,21 +1,33 @@
 import { Metadata, MetadataKind } from "../abi/metadata.js";
 import { readValue, SwiftValue } from "../abi/instance.js";
 import { shouldPassIndirectly, floatClass } from "./calling-convention.js";
-import {
-  symbolicate,
-  parseSwiftSignature,
-  resolveFunctionSignature,
-  resolveType,
-} from "./symbolication.js";
+import { symbolicate, parseSwiftSignature, resolveType } from "./symbolication.js";
 
 export interface SwiftInvocationCallbacks {
   onEnter?: (this: InvocationContext, args: SwiftValue[]) => void;
   onLeave?: (this: InvocationContext, retval: SwiftValue) => void;
 }
 
+type TypePlan =
+  | { generic: false; metadata: Metadata }
+  | { generic: true; paramIndex: number };
+
 interface CallShape {
-  argTypes: Metadata[];
-  returnType: Metadata | null;
+  args: TypePlan[];
+  ret: TypePlan | null;
+  genericCount: number;
+}
+
+function planType(name: string, genericParams: string[]): TypePlan {
+  const paramIndex = genericParams.indexOf(name);
+  if (paramIndex !== -1) {
+    return { generic: true, paramIndex };
+  }
+  const metadata = resolveType(name);
+  if (metadata === null) {
+    throw new Error(`could not resolve type: ${name}`);
+  }
+  return { generic: false, metadata };
 }
 
 function callShape(target: NativePointer): CallShape {
@@ -29,34 +41,45 @@ function callShape(target: NativePointer): CallShape {
   }
 
   if (parsed.kind === "function") {
-    const resolved = resolveFunctionSignature(parsed);
-    if (resolved === null) {
-      throw new Error(`could not resolve types in: ${symbol.demangled}`);
+    if (parsed.genericParams.length > 0 && !parsed.simpleGenerics) {
+      throw new Error(`unsupported generic signature: ${symbol.demangled}`);
     }
-    return { argTypes: resolved.argTypes, returnType: resolved.returnType };
+    const gp = parsed.genericParams;
+    return {
+      args: parsed.argTypeNames.map((n) => planType(n, gp)),
+      ret: parsed.returnTypeName === null ? null : planType(parsed.returnTypeName, gp),
+      genericCount: gp.length,
+    };
   }
 
   const memberType = resolveType(parsed.typeName);
   if (memberType === null) {
     throw new Error(`could not resolve accessor type: ${symbol.demangled}`);
   }
+  const member: TypePlan = { generic: false, metadata: memberType };
   switch (parsed.kind) {
     case "getter":
-      return { argTypes: [], returnType: memberType };
+      return { args: [], ret: member, genericCount: 0 };
     case "setter":
-      return { argTypes: [memberType], returnType: null };
+      return { args: [member], ret: null, genericCount: 0 };
     default:
       throw new Error(`cannot hook a 'modify' accessor (coroutine ABI): ${symbol.demangled}`);
   }
 }
 
-function returnsIndirectly(returnType: Metadata | null): boolean {
+function returnIsIndirect(ret: TypePlan | null): boolean {
+  if (ret === null) {
+    return false;
+  }
+  if (ret.generic) {
+    return true;
+  }
+  const md = ret.metadata;
   return (
-    returnType !== null &&
-    returnType.valueWitnesses.size > 0 &&
-    returnType.kind !== MetadataKind.Class &&
-    floatClass(returnType) === null &&
-    shouldPassIndirectly(returnType)
+    md.valueWitnesses.size > 0 &&
+    md.kind !== MetadataKind.Class &&
+    floatClass(md) === null &&
+    shouldPassIndirectly(md)
   );
 }
 
@@ -78,43 +101,78 @@ function words(metadata: Metadata): number {
   return Math.ceil(metadata.valueWitnesses.size / 8);
 }
 
-function materializeArgs(context: Arm64CpuContext, argTypes: Metadata[]): NativePointer[] {
+interface MaterializedArgs {
+  values: SwiftValue[];
+  generics: Metadata[];
+}
+
+// Generic metadata follows the formal args in the GP sequence, so decode after walking them.
+function materializeArgs(
+  context: Arm64CpuContext,
+  args: TypePlan[],
+  genericCount: number
+): MaterializedArgs {
   let ngrn = 0;
   let nsrn = 0;
-  const out: NativePointer[] = [];
+  const slots: { plan: TypePlan; address: NativePointer }[] = [];
 
-  for (const metadata of argTypes) {
+  for (const plan of args) {
+    if (plan.generic) {
+      slots.push({ plan, address: gpr(context, ngrn++) });
+      continue;
+    }
+    const metadata = plan.metadata;
     const cls = floatClass(metadata);
     if (cls !== null) {
       const scratch = Memory.alloc(8);
       const value = fpr(context, nsrn++, cls);
       cls === "double" ? scratch.writeDouble(value) : scratch.writeFloat(value);
-      out.push(scratch);
+      slots.push({ plan, address: scratch });
     } else if (metadata.kind === MetadataKind.Class) {
-      out.push(Memory.alloc(8).writePointer(gpr(context, ngrn++)));
+      slots.push({ plan, address: Memory.alloc(8).writePointer(gpr(context, ngrn++)) });
     } else if (shouldPassIndirectly(metadata)) {
-      out.push(gpr(context, ngrn++));
+      slots.push({ plan, address: gpr(context, ngrn++) });
     } else {
       const count = words(metadata);
       const scratch = Memory.alloc(Math.max(count, 1) * 8);
       for (let w = 0; w < count; w++) {
         scratch.add(w * 8).writePointer(gpr(context, ngrn++));
       }
-      out.push(scratch);
+      slots.push({ plan, address: scratch });
     }
   }
-  return out;
+
+  const generics: Metadata[] = [];
+  for (let i = 0; i < genericCount; i++) {
+    generics.push(new Metadata(gpr(context, ngrn++)));
+  }
+
+  const values = slots.map((s) =>
+    readValue(s.plan.generic ? generics[s.plan.paramIndex] : s.plan.metadata, s.address)
+  );
+  return { values, generics };
 }
 
 function materializeReturn(
   context: Arm64CpuContext,
-  returnType: Metadata | null,
-  indirectReturn: NativePointer | null
+  ret: TypePlan | null,
+  indirectReturn: NativePointer | null,
+  generics: Metadata[]
 ): SwiftValue {
-  if (returnType === null || returnType.valueWitnesses.size === 0) {
+  if (ret === null) {
     return null;
   }
+  if (ret.generic) {
+    if (indirectReturn === null) {
+      throw new Error("indirect return address was not captured on enter");
+    }
+    return readValue(generics[ret.paramIndex], indirectReturn);
+  }
 
+  const returnType = ret.metadata;
+  if (returnType.valueWitnesses.size === 0) {
+    return null;
+  }
   const cls = floatClass(returnType);
   if (cls !== null) {
     const scratch = Memory.alloc(8);
@@ -140,20 +198,31 @@ function materializeReturn(
   return readValue(returnType, scratch);
 }
 
+interface SwiftInvocationState {
+  indirectReturn?: NativePointer;
+  generics?: Metadata[];
+}
+
 function attach(target: NativePointer, callbacks: SwiftInvocationCallbacks): InvocationListener {
-  const { argTypes, returnType } = callShape(target);
-  const captureIndirect = returnsIndirectly(returnType);
+  const { args, ret, genericCount } = callShape(target);
+  const captureIndirect = returnIsIndirect(ret);
+  const retIsGeneric = ret?.generic === true;
+  const wantsArgs = callbacks.onEnter !== undefined || retIsGeneric;
 
   const onEnter =
-    callbacks.onEnter !== undefined || captureIndirect
+    wantsArgs || captureIndirect
       ? function (this: InvocationContext) {
           const context = this.context as Arm64CpuContext;
+          const state = this as unknown as SwiftInvocationState;
           if (captureIndirect) {
-            (this as unknown as { indirectReturn: NativePointer }).indirectReturn = context.x8;
+            state.indirectReturn = context.x8;
           }
-          if (callbacks.onEnter !== undefined) {
-            const args = materializeArgs(context, argTypes);
-            callbacks.onEnter.call(this, args.map((address, i) => readValue(argTypes[i], address)));
+          if (wantsArgs) {
+            const { values, generics } = materializeArgs(context, args, genericCount);
+            state.generics = generics;
+            if (callbacks.onEnter !== undefined) {
+              callbacks.onEnter.call(this, values);
+            }
           }
         }
       : undefined;
@@ -161,11 +230,15 @@ function attach(target: NativePointer, callbacks: SwiftInvocationCallbacks): Inv
   const onLeave =
     callbacks.onLeave !== undefined
       ? function (this: InvocationContext) {
-          const indirect =
-            (this as unknown as { indirectReturn?: NativePointer }).indirectReturn ?? null;
+          const state = this as unknown as SwiftInvocationState;
           callbacks.onLeave!.call(
             this,
-            materializeReturn(this.context as Arm64CpuContext, returnType, indirect)
+            materializeReturn(
+              this.context as Arm64CpuContext,
+              ret,
+              state.indirectReturn ?? null,
+              state.generics ?? []
+            )
           );
         }
       : undefined;

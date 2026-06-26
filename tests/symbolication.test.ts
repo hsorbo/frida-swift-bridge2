@@ -68,6 +68,41 @@ describe("parseSwiftSignature", () => {
     ]);
   });
 
+  test("splits the generic parameter clause off the function name", () => {
+    const s = parseSwiftSignature("fixture.genericFirst<A, B>(A, B) -> A") as SwiftFunctionSignature;
+    expect(s.name).toBe("genericFirst");
+    expect(s.genericParams).toEqual(["A", "B"]);
+    expect(s.argTypeNames).toEqual(["A", "B"]);
+    expect(s.returnTypeName).toBe("A");
+  });
+
+  test("leaves a non-generic function with no generic params", () => {
+    const s = parseSwiftSignature("fixture.addInts(Swift.Int, Swift.Int) -> Swift.Int") as SwiftFunctionSignature;
+    expect(s.genericParams).toEqual([]);
+    expect(s.simpleGenerics).toBe(true);
+  });
+
+  test("keeps a constrained generic simple and drops the where clause", () => {
+    const s = parseSwiftSignature(
+      "fixture.scaleGeneric<A where A: fixture.Scalable>(_: A, by: Swift.Int) -> Swift.Int"
+    ) as SwiftFunctionSignature;
+    expect(s.name).toBe("scaleGeneric");
+    expect(s.genericParams).toEqual(["A"]);
+    expect(s.simpleGenerics).toBe(true);
+    expect(s.argTypeNames).toEqual(["A", "Swift.Int"]);
+  });
+
+  test("flags a same-type constraint as not simple", () => {
+    const s = parseSwiftSignature("m.f<A, B where A == B>(A, B) -> A") as SwiftFunctionSignature;
+    expect(s.genericParams).toEqual(["A", "B"]);
+    expect(s.simpleGenerics).toBe(false);
+  });
+
+  test("flags a parameter pack as not simple", () => {
+    const s = parseSwiftSignature("m.f<each A>(repeat each A) -> ()") as SwiftFunctionSignature;
+    expect(s.simpleGenerics).toBe(false);
+  });
+
   test("parses a property accessor", () => {
     const s = parseSwiftSignature("fixture.Point.doubled.getter : Swift.Int") as SwiftAccessorSignature;
     expect(s.kind).toBe("getter");

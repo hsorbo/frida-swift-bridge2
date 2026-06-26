@@ -12,6 +12,9 @@ export interface SwiftFunctionSignature {
   kind: "function";
   context: string;
   name: string;
+  genericParams: string[];
+  // false for same-type / pack / shape signatures: metadata count != genericParams.length
+  simpleGenerics: boolean;
   throws: boolean;
   argTypeNames: string[];
   returnTypeName: string | null;
@@ -114,13 +117,38 @@ function parseFunction(s: string): SwiftFunctionSignature | null {
   }
   const returnTypeName = tail.slice(arrow + 2).trim();
 
+  const { name, genericParams, simpleGenerics } = splitGenericClause(path.slice(dot + 1));
+
   return {
     kind: "function",
     context: path.slice(0, dot),
-    name: path.slice(dot + 1),
+    name,
+    genericParams,
+    simpleGenerics,
     throws: /\bthrows\b/.test(tail.slice(0, arrow)),
     argTypeNames,
     returnTypeName: returnTypeName === "()" ? null : returnTypeName,
+  };
+}
+
+function splitGenericClause(name: string): {
+  name: string;
+  genericParams: string[];
+  simpleGenerics: boolean;
+} {
+  const lt = topLevelIndexOf(name, "<");
+  if (lt === -1 || !name.endsWith(">")) {
+    return { name, genericParams: [], simpleGenerics: true };
+  }
+  const inner = name.slice(lt + 1, name.length - 1);
+  const segments = splitTopLevel(inner, " where ");
+  const params = splitTopLevel(segments[0], ",");
+  const whereClause = segments.length > 1 ? segments[1] : "";
+  const simpleGenerics = params.every((p) => /^[A-Za-z_]\w*$/.test(p)) && !/==/.test(whereClause);
+  return {
+    name: name.slice(0, lt),
+    genericParams: params.map((p) => p.split(/\s+/)[0]),
+    simpleGenerics,
   };
 }
 

@@ -9,6 +9,7 @@ import {
   SwiftThrownError,
 } from "../src/runtime/calling-convention.js";
 import { readString } from "../src/abi/string.js";
+import { findProtocol, conformsToProtocol } from "../src/abi/protocol-conformance.js";
 
 // Exposed by the GumJS runtime, not declared in @types/frida-gum.
 declare function gc(): void;
@@ -176,5 +177,58 @@ describe("makeSwiftNativeFunction", () => {
     const d = Memory.alloc(8);
     d.writeDouble(40);
     expect(fn(intValue(2), d)!.readDouble()).toBe(42);
+  });
+
+  test("drives a generic function directly with supplied type metadata", ({ skip }) => {
+    const Int = Swift.metadataFor("Swift.Int")!;
+    const id = makeSwiftNativeFunction(
+      fixtureFn(skip, "fixture.genericIdentity"),
+      { genericParam: 0 },
+      [{ genericParam: 0 }],
+      { typeArguments: [Int] }
+    );
+    expect(id(intValue(7))!.readU64().toNumber()).toBe(7);
+  });
+
+  test("a generic value argument is passed indirectly regardless of concrete size", ({ skip }) => {
+    const Loadable = Swift.metadataFor("fixture.LoadableStruct")!;
+    const id = makeSwiftNativeFunction(
+      fixtureFn(skip, "fixture.genericIdentity"),
+      { genericParam: 0 },
+      [{ genericParam: 0 }],
+      { typeArguments: [Loadable] }
+    );
+    const arg = Memory.alloc(Loadable.typeLayout.stride);
+    for (let i = 0; i < 4; i++) {
+      arg.add(i * 8).writeU64(i + 5);
+    }
+    const r = id(arg)!;
+    for (let i = 0; i < 4; i++) {
+      expect(r.add(i * 8).readU64().toNumber()).toBe(i + 5);
+    }
+  });
+
+  test("appends one metadata argument per generic parameter", ({ skip }) => {
+    const Int = Swift.metadataFor("Swift.Int")!;
+    const first = makeSwiftNativeFunction(
+      fixtureFn(skip, "fixture.genericFirst"),
+      { genericParam: 0 },
+      [{ genericParam: 0 }, { genericParam: 1 }],
+      { typeArguments: [Int, Int] }
+    );
+    expect(first(intValue(11), intValue(22))!.readU64().toNumber()).toBe(11);
+  });
+
+  test("appends a witness table so a constrained requirement dispatches", ({ skip }) => {
+    loadFixture(skip);
+    const Int = Swift.metadataFor("Swift.Int")!;
+    const witnessTable = conformsToProtocol(Int, findProtocol("fixture.Scalable")!)!;
+    const scale = makeSwiftNativeFunction(
+      fixtureFn(skip, "fixture.scaleGeneric"),
+      Int,
+      [{ genericParam: 0 }, Int],
+      { typeArguments: [Int], witnessTables: [witnessTable] }
+    );
+    expect(scale(intValue(6), intValue(7))!.readU64().toNumber()).toBe(42);
   });
 });

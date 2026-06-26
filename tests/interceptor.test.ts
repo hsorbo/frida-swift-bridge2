@@ -107,6 +107,86 @@ describe("SwiftInterceptor.attach", () => {
     expect(seen).toEqual({ a: 1, b: 2, c: 3, d: 4 });
   });
 
+  test("recovers a generic scalar argument and return from the implicit metadata", ({ skip }) => {
+    const Int = Swift.metadataFor("Swift.Int")!;
+    const identity = fixtureAddress(skip, "fixture.genericIdentity");
+    const driver = fixtureAddress(skip, "fixture.makeGenericInt");
+    let seenArgs: SwiftValue[] | null = null;
+    let seenRet: SwiftValue = null;
+    const listener = SwiftInterceptor.attach(identity, {
+      onEnter(args) {
+        seenArgs = args;
+      },
+      onLeave(ret) {
+        seenRet = ret;
+      },
+    });
+    makeSwiftNativeFunction(driver, Int, [])();
+    listener.detach();
+    expect(seenArgs).toEqual([7]);
+    expect(seenRet).toBe(7);
+  });
+
+  test("recovers a generic struct argument from the implicit metadata", ({ skip }) => {
+    const Loadable = Swift.metadataFor("fixture.LoadableStruct")!;
+    const identity = fixtureAddress(skip, "fixture.genericIdentity");
+    const driver = fixtureAddress(skip, "fixture.makeGenericStruct");
+    let seenArgs: SwiftValue[] | null = null;
+    let seenRet: SwiftValue = null;
+    const listener = SwiftInterceptor.attach(identity, {
+      onEnter(args) {
+        seenArgs = args;
+      },
+      onLeave(ret) {
+        seenRet = ret;
+      },
+    });
+    makeSwiftNativeFunction(driver, Loadable, [])();
+    listener.detach();
+    expect(seenArgs).toEqual([{ a: 5, b: 6, c: 7, d: 8 }]);
+    expect(seenRet).toEqual({ a: 5, b: 6, c: 7, d: 8 });
+  });
+
+  test("recovers two generic params of different concrete types", ({ skip }) => {
+    const Int = Swift.metadataFor("Swift.Int")!;
+    const first = fixtureAddress(skip, "fixture.genericFirst");
+    const driver = fixtureAddress(skip, "fixture.makeGenericPair");
+    let seenArgs: SwiftValue[] | null = null;
+    let seenRet: SwiftValue = null;
+    const listener = SwiftInterceptor.attach(first, {
+      onEnter(args) {
+        seenArgs = args;
+      },
+      onLeave(ret) {
+        seenRet = ret;
+      },
+    });
+    makeSwiftNativeFunction(driver, Int, [])();
+    listener.detach();
+    expect(seenArgs).toEqual([11, "ignored"]);
+    expect(seenRet).toBe(11);
+  });
+
+  test("decodes a constrained generic arg, ignoring the trailing witness table", ({ skip }) => {
+    const scaleGeneric = fixtureAddress(skip, "fixture.scaleGeneric");
+    const driver = fixtureAddress(skip, "fixture.makeScaleGeneric");
+    const Int = Swift.metadataFor("Swift.Int")!;
+    let seenArgs: SwiftValue[] | null = null;
+    let seenRet: SwiftValue = null;
+    const listener = SwiftInterceptor.attach(scaleGeneric, {
+      onEnter(args) {
+        seenArgs = args;
+      },
+      onLeave(ret) {
+        seenRet = ret;
+      },
+    });
+    makeSwiftNativeFunction(driver, Int, [])();
+    listener.detach();
+    expect(seenArgs).toEqual([6, 7]);
+    expect(seenRet).toBe(42);
+  });
+
   test("decodes a Double argument and return from the FP registers", ({ skip }) => {
     const Double_ = Swift.metadataFor("Swift.Double")!;
     const addr = fixtureAddress(skip, "fixture.scaleDouble");

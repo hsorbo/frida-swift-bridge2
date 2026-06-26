@@ -78,3 +78,44 @@ public struct Point {
     public var x: Int
     public var doubled: Int { x * 2 }
 }
+
+// Generic value args pass indirectly; wrappers drive them so the hook side can observe a call.
+@inline(never)
+public func genericIdentity<T>(_ x: T) -> T {
+    return x
+}
+
+public func makeGenericInt() -> Int {
+    return genericIdentity(7)
+}
+
+public func makeGenericStruct() -> LoadableStruct {
+    return genericIdentity(LoadableStruct(a: 5, b: 6, c: 7, d: 8))
+}
+
+@inline(never)
+public func genericFirst<A, B>(_ a: A, _ b: B) -> A {
+    return a
+}
+
+public func makeGenericPair() -> Int {
+    return genericFirst(11, "ignored")
+}
+
+// Constrained generic: the requirement dispatches through the appended witness table.
+public protocol Scalable {
+    func scaled(by factor: Int) -> Int
+}
+
+extension Int: Scalable {
+    public func scaled(by factor: Int) -> Int { self * factor }
+}
+
+@inline(never)
+public func scaleGeneric<T: Scalable>(_ x: T, by factor: Int) -> Int {
+    return x.scaled(by: factor)
+}
+
+public func makeScaleGeneric() -> Int {
+    return scaleGeneric(6, by: 7)
+}

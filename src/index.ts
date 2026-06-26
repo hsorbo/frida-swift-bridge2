@@ -81,6 +81,8 @@ export {
   makeSwiftNativeFunction,
   SwiftNativeFunction,
   SwiftNativeFunctionOptions,
+  SwiftArgType,
+  GenericRef,
   SwiftThrownError,
 } from "./runtime/calling-convention.js";
 export { readString } from "./abi/string.js";

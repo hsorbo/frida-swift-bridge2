@@ -25,21 +25,35 @@ export function floatClass(metadata: Metadata): FloatClass | null {
   }
 }
 
+// A generic-typed value is always passed indirectly.
+export interface GenericRef {
+  genericParam: number;
+}
+
+export type SwiftArgType = Metadata | GenericRef;
+
+function isGenericRef(arg: SwiftArgType): arg is GenericRef {
+  return !(arg instanceof Metadata);
+}
+
 interface LoweredArg {
   indirect: boolean;
   float: FloatClass | null;
   words: number;
 }
 
-function lowerArg(metadata: Metadata): LoweredArg {
-  const float = floatClass(metadata);
+function lowerArg(arg: SwiftArgType): LoweredArg {
+  if (isGenericRef(arg)) {
+    return { indirect: true, float: null, words: 0 };
+  }
+  const float = floatClass(arg);
   if (float !== null) {
     return { indirect: false, float, words: 0 };
   }
-  if (shouldPassIndirectly(metadata)) {
+  if (shouldPassIndirectly(arg)) {
     return { indirect: true, float: null, words: 0 };
   }
-  return { indirect: false, float: null, words: Math.ceil(metadata.valueWitnesses.size / 8) };
+  return { indirect: false, float: null, words: Math.ceil(arg.valueWitnesses.size / 8) };
 }
 
 export class SwiftThrownError extends Error {
@@ -52,6 +66,8 @@ export class SwiftThrownError extends Error {
 export interface SwiftNativeFunctionOptions {
   hasSelf?: boolean;
   throws?: boolean;
+  typeArguments?: Metadata[];
+  witnessTables?: NativePointer[];
 }
 
 export type SwiftNativeFunction = (...args: NativePointer[]) => NativePointer | null;
@@ -60,12 +76,21 @@ export type SwiftNativeFunction = (...args: NativePointer[]) => NativePointer | 
 // hasSelf, the first argument is the self/context pointer (x20). Unhandled: float/SIMD aggregates.
 export function makeSwiftNativeFunction(
   address: NativePointer,
-  returnType: Metadata | null,
-  argTypes: Metadata[],
+  returnType: SwiftArgType | null,
+  argTypes: SwiftArgType[],
   options: SwiftNativeFunctionOptions = {}
 ): SwiftNativeFunction {
   const hasSelf = options.hasSelf === true;
   const throws = options.throws === true;
+  const typeArguments = options.typeArguments ?? [];
+  const witnessTables = options.witnessTables ?? [];
+  const typeArgumentFor = (ref: GenericRef): Metadata => {
+    const metadata = typeArguments[ref.genericParam];
+    if (metadata === undefined) {
+      throw new Error(`no type argument for generic parameter ${ref.genericParam}`);
+    }
+    return metadata;
+  };
 
   const loweredArgs = argTypes.map(lowerArg);
   const fridaArgTypes: NativeFunctionArgumentType[] = [];
@@ -80,6 +105,10 @@ export function makeSwiftNativeFunction(
       }
     }
   }
+  // trailing implicit args after the formal ones: a type-metadata pointer per param, then witnesses
+  for (let i = 0; i < typeArguments.length + witnessTables.length; i++) {
+    fridaArgTypes.push("pointer");
+  }
 
   let indirectResult = false;
   let directWords = 0;
@@ -87,16 +116,22 @@ export function makeSwiftNativeFunction(
   let resultSize = 0;
   let resultStride = 0;
   if (returnType !== null) {
-    resultSize = returnType.valueWitnesses.size;
-    resultStride = returnType.valueWitnesses.stride;
+    const genericReturn = isGenericRef(returnType);
+    const returnMetadata = genericReturn ? typeArgumentFor(returnType) : returnType;
+    resultSize = returnMetadata.valueWitnesses.size;
+    resultStride = returnMetadata.valueWitnesses.stride;
     if (resultSize > 0) {
-      floatResult = floatClass(returnType);
-      if (floatResult !== null) {
-        // captured from d0/s0
-      } else if (shouldPassIndirectly(returnType)) {
-        indirectResult = true;
+      if (genericReturn) {
+        indirectResult = true; // generic return: indirect regardless of size
       } else {
-        directWords = Math.ceil(resultSize / 8);
+        floatResult = floatClass(returnMetadata);
+        if (floatResult !== null) {
+          // captured from d0/s0
+        } else if (shouldPassIndirectly(returnMetadata)) {
+          indirectResult = true;
+        } else {
+          directWords = Math.ceil(resultSize / 8);
+        }
       }
     }
   }
@@ -157,6 +192,12 @@ export function makeSwiftNativeFunction(
           physical.push(value.add(w * 8).readU64());
         }
       }
+    }
+    for (const metadata of typeArguments) {
+      physical.push(metadata.handle);
+    }
+    for (const witnessTable of witnessTables) {
+      physical.push(witnessTable);
     }
 
     resources.invoke(...physical);
