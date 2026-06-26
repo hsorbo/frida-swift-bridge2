@@ -176,6 +176,18 @@ public final class Counter {
 
 public func makeCounter(_ n: Int) -> Counter { Counter(count: n) }
 
+public struct DoublePair { public var x: Double; public var y: Double }
+public func makeDoublePair() -> DoublePair { DoublePair(x: 1.5, y: 2.5) }
+public func sumDoublePair(_ p: DoublePair) -> Double { p.x + p.y }
+
+public struct DoubleQuad { public var a: Double; public var b: Double; public var c: Double; public var d: Double }
+public func makeDoubleQuad() -> DoubleQuad { DoubleQuad(a: 1, b: 2, c: 3, d: 4) }
+public func sumDoubleQuad(_ q: DoubleQuad) -> Double { q.a + q.b + q.c + q.d }
+
+public struct FloatPair { public var u: Float; public var v: Float }
+public func makeFloatPair() -> FloatPair { FloatPair(u: 1.25, v: 3.75) }
+public func sumFloatPair(_ p: FloatPair) -> Float { p.u + p.v }
+
 public func anyType() -> UnsafeRawPointer { unsafeBitCast(Any.self, to: UnsafeRawPointer.self) }
 public func greeterType() -> UnsafeRawPointer { unsafeBitCast((any Greeter).self, to: UnsafeRawPointer.self) }
 public func namedType() -> UnsafeRawPointer { unsafeBitCast((any Named).self, to: UnsafeRawPointer.self) }

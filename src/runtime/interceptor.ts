@@ -1,7 +1,7 @@
 import { Metadata, MetadataKind } from "../abi/metadata.js";
 import { readValue, SwiftValue } from "../abi/instance.js";
 import { projectErrorExistential } from "../abi/existential.js";
-import { shouldPassIndirectly, floatClass } from "./calling-convention.js";
+import { shouldPassIndirectly, floatLayout } from "./calling-convention.js";
 import { symbolicate, parseSwiftSignature, resolveType } from "./symbolication.js";
 
 export interface SwiftInvocationCallbacks {
@@ -81,7 +81,7 @@ function returnIsIndirect(ret: TypePlan | null): boolean {
   return (
     md.valueWitnesses.size > 0 &&
     md.kind !== MetadataKind.Class &&
-    floatClass(md) === null &&
+    floatLayout(md) === null &&
     shouldPassIndirectly(md)
   );
 }
@@ -125,11 +125,15 @@ function materializeArgs(
       continue;
     }
     const metadata = plan.metadata;
-    const cls = floatClass(metadata);
-    if (cls !== null) {
-      const scratch = Memory.alloc(8);
-      const value = fpr(context, nsrn++, cls);
-      cls === "double" ? scratch.writeDouble(value) : scratch.writeFloat(value);
+    const fl = floatLayout(metadata);
+    if (fl !== null) {
+      const stride = fl.cls === "double" ? 8 : 4;
+      const scratch = Memory.alloc(Math.max(fl.count * stride, 8));
+      for (let k = 0; k < fl.count; k++) {
+        const leaf = scratch.add(k * stride);
+        const value = fpr(context, nsrn++, fl.cls);
+        fl.cls === "double" ? leaf.writeDouble(value) : leaf.writeFloat(value);
+      }
       slots.push({ plan, address: scratch });
     } else if (metadata.kind === MetadataKind.Class) {
       slots.push({ plan, address: Memory.alloc(8).writePointer(gpr(context, ngrn++)) });
@@ -176,10 +180,16 @@ function materializeReturn(
   if (returnType.valueWitnesses.size === 0) {
     return null;
   }
-  const cls = floatClass(returnType);
-  if (cls !== null) {
-    const scratch = Memory.alloc(8);
-    cls === "double" ? scratch.writeDouble(context.d0) : scratch.writeFloat(context.s0);
+  const fl = floatLayout(returnType);
+  if (fl !== null) {
+    const stride = fl.cls === "double" ? 8 : 4;
+    const scratch = Memory.alloc(Math.max(fl.count * stride, 8));
+    const regs = context as unknown as Record<string, number>;
+    for (let k = 0; k < fl.count; k++) {
+      const leaf = scratch.add(k * stride);
+      const value = regs[`${fl.cls === "double" ? "d" : "s"}${k}`];
+      fl.cls === "double" ? leaf.writeDouble(value) : leaf.writeFloat(value);
+    }
     return readValue(returnType, scratch);
   }
   if (returnType.kind === MetadataKind.Class) {

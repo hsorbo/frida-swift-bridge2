@@ -1,4 +1,5 @@
-import { Metadata } from "../abi/metadata.js";
+import { Metadata, MetadataKind } from "../abi/metadata.js";
+import { enumerateFields, fieldTypeIn } from "../abi/field-descriptor.js";
 import { typeName } from "./type-name.js";
 
 export const MAX_LOADABLE_SIZE = Process.pointerSize * 4;
@@ -11,7 +12,6 @@ export function shouldPassIndirectly(metadata: Metadata): boolean {
 
 export type FloatClass = "double" | "float";
 
-// Only the scalar builtins; HFAs/SIMD aggregates would need field-level classification.
 export function floatClass(metadata: Metadata): FloatClass | null {
   switch (typeName(metadata)) {
     case "Swift.Double":
@@ -23,6 +23,40 @@ export function floatClass(metadata: Metadata): FloatClass | null {
     default:
       return null;
   }
+}
+
+export interface FloatLayout {
+  cls: FloatClass;
+  count: number;
+}
+
+// swiftcc passes each FP leaf in its own v-register; homogeneous and ≤4 (scalar = count 1).
+export function floatLayout(metadata: Metadata): FloatLayout | null {
+  const scalar = floatClass(metadata);
+  if (scalar !== null) {
+    return { cls: scalar, count: 1 };
+  }
+  if (metadata.kind !== MetadataKind.Struct) {
+    return null;
+  }
+  let cls: FloatClass | null = null;
+  let count = 0;
+  for (const field of enumerateFields(metadata.description)) {
+    const fieldType = fieldTypeIn(metadata, field);
+    if (fieldType === null) {
+      return null;
+    }
+    const leaf = floatLayout(fieldType);
+    if (leaf === null || (cls !== null && leaf.cls !== cls)) {
+      return null;
+    }
+    cls = leaf.cls;
+    count += leaf.count;
+    if (count > 4) {
+      return null;
+    }
+  }
+  return cls === null ? null : { cls, count };
 }
 
 // A generic-typed value is always passed indirectly.
@@ -38,7 +72,7 @@ function isGenericRef(arg: SwiftArgType): arg is GenericRef {
 
 interface LoweredArg {
   indirect: boolean;
-  float: FloatClass | null;
+  float: FloatLayout | null;
   words: number;
 }
 
@@ -46,7 +80,7 @@ function lowerArg(arg: SwiftArgType): LoweredArg {
   if (isGenericRef(arg)) {
     return { indirect: true, float: null, words: 0 };
   }
-  const float = floatClass(arg);
+  const float = floatLayout(arg);
   if (float !== null) {
     return { indirect: false, float, words: 0 };
   }
@@ -98,7 +132,9 @@ export function makeSwiftNativeFunction(
     if (arg.indirect) {
       fridaArgTypes.push("pointer");
     } else if (arg.float !== null) {
-      fridaArgTypes.push(arg.float);
+      for (let i = 0; i < arg.float.count; i++) {
+        fridaArgTypes.push(arg.float.cls);
+      }
     } else {
       for (let i = 0; i < arg.words; i++) {
         fridaArgTypes.push("uint64");
@@ -112,7 +148,7 @@ export function makeSwiftNativeFunction(
 
   let indirectResult = false;
   let directWords = 0;
-  let floatResult: FloatClass | null = null;
+  let floatResult: FloatLayout | null = null;
   let resultSize = 0;
   let resultStride = 0;
   if (returnType !== null) {
@@ -124,9 +160,9 @@ export function makeSwiftNativeFunction(
       if (genericReturn) {
         indirectResult = true; // generic return: indirect regardless of size
       } else {
-        floatResult = floatClass(returnMetadata);
+        floatResult = floatLayout(returnMetadata);
         if (floatResult !== null) {
-          // captured from d0/s0
+          // captured from v0..v(count-1)
         } else if (shouldPassIndirectly(returnMetadata)) {
           indirectResult = true;
         } else {
@@ -153,7 +189,7 @@ export function makeSwiftNativeFunction(
     indirectResultBuffer: indirectResult ? scratch : null,
     directWords,
     directResultBuffer: directWords > 0 ? scratch : null,
-    floatResult: floatResult !== null ? { reg: floatResult === "double" ? "d0" : "s0", buffer: scratch } : null,
+    floatResult: floatResult !== null ? { ...floatResult, buffer: scratch } : null,
   });
   const resources = {
     code,
@@ -183,10 +219,12 @@ export function makeSwiftNativeFunction(
       const value = args[next++];
       if (lowered.indirect) {
         physical.push(value);
-      } else if (lowered.float === "double") {
-        physical.push(value.readDouble());
-      } else if (lowered.float === "float") {
-        physical.push(value.readFloat());
+      } else if (lowered.float !== null) {
+        const stride = lowered.float.cls === "double" ? 8 : 4;
+        for (let k = 0; k < lowered.float.count; k++) {
+          const leaf = value.add(k * stride);
+          physical.push(lowered.float.cls === "double" ? leaf.readDouble() : leaf.readFloat());
+        }
       } else {
         for (let w = 0; w < lowered.words; w++) {
           physical.push(value.add(w * 8).readU64());
@@ -226,7 +264,7 @@ interface TrampolineConfig {
   indirectResultBuffer: NativePointer | null;
   directWords: number;
   directResultBuffer: NativePointer | null;
-  floatResult: { reg: Arm64Register; buffer: NativePointer } | null;
+  floatResult: (FloatLayout & { buffer: NativePointer }) | null;
 }
 
 function writeTrampoline(code: NativePointer, cfg: TrampolineConfig): void {
@@ -263,7 +301,11 @@ function writeTrampoline(code: NativePointer, cfg: TrampolineConfig): void {
     }
     if (cfg.floatResult !== null) {
       writer.putLdrRegAddress("x15", cfg.floatResult.buffer);
-      writer.putStrRegRegOffset(cfg.floatResult.reg, "x15", 0);
+      const prefix = cfg.floatResult.cls === "double" ? "d" : "s";
+      const stride = cfg.floatResult.cls === "double" ? 8 : 4;
+      for (let i = 0; i < cfg.floatResult.count; i++) {
+        writer.putStrRegRegOffset(`${prefix}${i}` as Arm64Register, "x15", i * stride);
+      }
     }
     if (cfg.errorBuffer !== null) {
       writer.putLdrRegAddress("x15", cfg.errorBuffer);
