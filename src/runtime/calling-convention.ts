@@ -106,6 +106,7 @@ export interface SwiftNativeFunctionOptions {
   throws?: boolean;
   typeArguments?: Metadata[];
   witnessTables?: NativePointer[];
+  consumedArgs?: number[];
 }
 
 export type SwiftNativeFunction = (...args: NativePointer[]) => NativePointer | null;
@@ -122,6 +123,8 @@ export function makeSwiftNativeFunction(
   const throws = options.throws === true;
   const typeArguments = options.typeArguments ?? [];
   const witnessTables = options.witnessTables ?? [];
+  const consumed = new Set(options.consumedArgs ?? []);
+  const argMetadata = argTypes.map((a) => (a instanceof Metadata ? a : null));
   const typeArgumentFor = (ref: GenericRef): Metadata => {
     const metadata = typeArguments[ref.genericParam];
     if (metadata === undefined) {
@@ -222,7 +225,15 @@ export function makeSwiftNativeFunction(
       const lowered = loweredArgs[i];
       const value = args[next++];
       if (lowered.indirect) {
-        physical.push(value);
+        // consumed (+1): the callee destroys it, so hand it a copy
+        const metadata = argMetadata[i];
+        if (consumed.has(i) && metadata !== null) {
+          const copy = Memory.alloc(metadata.typeLayout.stride);
+          metadata.valueWitnesses.initializeWithCopy(copy, value);
+          physical.push(copy);
+        } else {
+          physical.push(value);
+        }
       } else if (lowered.float !== null) {
         const stride = lowered.float.cls === "double" ? 8 : 4;
         for (let k = 0; k < lowered.float.count; k++) {

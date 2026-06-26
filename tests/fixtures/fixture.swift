@@ -180,6 +180,23 @@ public func makeCounter(_ n: Int) -> Counter { Counter(count: n) }
 public func roundOptional<A>(_ x: A?) -> A? { x }
 public func triggerRoundOptional() -> Int { roundOptional(Optional<Int>.some(9)) ?? -1 }
 
+public final class Token {
+    public let id: Int
+    public init(id: Int) { self.id = id }
+}
+// token + 4 Ints = 40 bytes > MAX_LOADABLE → passed indirectly, and non-POD (holds a class ref).
+public struct Wrapper {
+    public var token: Token
+    public var a: Int
+    public var b: Int
+    public var c: Int
+    public var d: Int
+}
+public func makeToken(_ id: Int) -> Token { Token(id: id) }
+public func makeWrapper(_ t: Token) -> Wrapper { Wrapper(token: t, a: 1, b: 2, c: 3, d: 4) }
+@inline(never)
+public func consumeWrapper(_ w: __owned Wrapper) -> Int { w.token.id }
+
 public struct DoublePair { public var x: Double; public var y: Double }
 public func makeDoublePair() -> DoublePair { DoublePair(x: 1.5, y: 2.5) }
 public func sumDoublePair(_ p: DoublePair) -> Double { p.x + p.y }
