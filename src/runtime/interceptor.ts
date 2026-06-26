@@ -1,11 +1,12 @@
 import { Metadata, MetadataKind } from "../abi/metadata.js";
 import { readValue, SwiftValue } from "../abi/instance.js";
+import { projectErrorExistential } from "../abi/existential.js";
 import { shouldPassIndirectly, floatClass } from "./calling-convention.js";
 import { symbolicate, parseSwiftSignature, resolveType } from "./symbolication.js";
 
 export interface SwiftInvocationCallbacks {
   onEnter?: (this: InvocationContext, args: SwiftValue[]) => void;
-  onLeave?: (this: InvocationContext, retval: SwiftValue) => void;
+  onLeave?: (this: InvocationContext, retval: SwiftValue, error?: SwiftValue) => void;
 }
 
 type TypePlan =
@@ -16,6 +17,7 @@ interface CallShape {
   args: TypePlan[];
   ret: TypePlan | null;
   genericCount: number;
+  throws: boolean;
 }
 
 function planType(name: string, genericParams: string[]): TypePlan {
@@ -49,6 +51,7 @@ function callShape(target: NativePointer): CallShape {
       args: parsed.argTypeNames.map((n) => planType(n, gp)),
       ret: parsed.returnTypeName === null ? null : planType(parsed.returnTypeName, gp),
       genericCount: gp.length,
+      throws: parsed.throws,
     };
   }
 
@@ -59,9 +62,9 @@ function callShape(target: NativePointer): CallShape {
   const member: TypePlan = { generic: false, metadata: memberType };
   switch (parsed.kind) {
     case "getter":
-      return { args: [], ret: member, genericCount: 0 };
+      return { args: [], ret: member, genericCount: 0, throws: false };
     case "setter":
-      return { args: [member], ret: null, genericCount: 0 };
+      return { args: [member], ret: null, genericCount: 0, throws: false };
     default:
       throw new Error(`cannot hook a 'modify' accessor (coroutine ABI): ${symbol.demangled}`);
   }
@@ -198,13 +201,20 @@ function materializeReturn(
   return readValue(returnType, scratch);
 }
 
+function decodeThrownError(errorBox: NativePointer): SwiftValue {
+  const container = Memory.alloc(Process.pointerSize);
+  container.writePointer(errorBox);
+  const { type, value } = projectErrorExistential(container);
+  return readValue(type, value);
+}
+
 interface SwiftInvocationState {
   indirectReturn?: NativePointer;
   generics?: Metadata[];
 }
 
 function attach(target: NativePointer, callbacks: SwiftInvocationCallbacks): InvocationListener {
-  const { args, ret, genericCount } = callShape(target);
+  const { args, ret, genericCount, throws } = callShape(target);
   const captureIndirect = returnIsIndirect(ret);
   const retIsGeneric = ret?.generic === true;
   const wantsArgs = callbacks.onEnter !== undefined || retIsGeneric;
@@ -230,15 +240,16 @@ function attach(target: NativePointer, callbacks: SwiftInvocationCallbacks): Inv
   const onLeave =
     callbacks.onLeave !== undefined
       ? function (this: InvocationContext) {
+          const context = this.context as Arm64CpuContext;
           const state = this as unknown as SwiftInvocationState;
+          const swiftErrorRegister = context.x21; // swiftcc returns a thrown error here
+          if (throws && !swiftErrorRegister.isNull()) {
+            callbacks.onLeave!.call(this, null, decodeThrownError(swiftErrorRegister));
+            return;
+          }
           callbacks.onLeave!.call(
             this,
-            materializeReturn(
-              this.context as Arm64CpuContext,
-              ret,
-              state.indirectReturn ?? null,
-              state.generics ?? []
-            )
+            materializeReturn(context, ret, state.indirectReturn ?? null, state.generics ?? [])
           );
         }
       : undefined;

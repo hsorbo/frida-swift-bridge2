@@ -207,4 +207,21 @@ describe("SwiftInterceptor.attach", () => {
     expect(seenArgs).toEqual([21]);
     expect(seenRet).toBe(42);
   });
+
+  test("surfaces a thrown error on leave instead of decoding a bogus return", ({ skip }) => {
+    const Int = Swift.metadataFor("Swift.Int")!;
+    const addr = fixtureAddress(skip, "fixture.mightThrow");
+    const seen: { retval: SwiftValue; error?: SwiftValue }[] = [];
+    const listener = SwiftInterceptor.attach(addr, {
+      onLeave(retval, error) {
+        seen.push({ retval, error });
+      },
+    });
+    const call = makeSwiftNativeFunction(addr, Int, [Int], { throws: true });
+    call(intValue(0));
+    expect(() => call(intValue(1))).toThrow();
+    listener.detach();
+    expect(seen[0]).toEqual({ retval: 99, error: undefined });
+    expect(seen[1]).toEqual({ retval: null, error: "boom" });
+  });
 });
