@@ -1,6 +1,7 @@
 import { demangle } from "./demangle.js";
 import { findType } from "../reflection/registry.js";
 import { getMetadata, Metadata } from "../abi/metadata.js";
+import { buildGenericMetadata } from "../abi/generic-instantiation.js";
 
 export interface SwiftSymbol {
   address: NativePointer;
@@ -190,6 +191,48 @@ export function resolveType(name: string): Metadata | null {
   } catch {
     return null;
   }
+}
+
+function instantiate(base: string, args: (Metadata | null)[]): Metadata | null {
+  const descriptor = findType(base);
+  if (descriptor === null || args.some((a) => a === null)) {
+    return null;
+  }
+  try {
+    return buildGenericMetadata(descriptor, args as Metadata[]);
+  } catch {
+    return null;
+  }
+}
+
+// Desugars A? / [A] / [K: V] / Base<...>, resolving each leaf via resolveParam (generics) or findType.
+export function resolveTypeExpr(
+  expr: string,
+  resolveParam: (name: string) => Metadata | null
+): Metadata | null {
+  expr = expr.trim();
+  if (expr.endsWith("?") || expr.endsWith("!")) {
+    return instantiate("Swift.Optional", [resolveTypeExpr(expr.slice(0, -1), resolveParam)]);
+  }
+  if (expr.startsWith("[") && matchingBracket(expr, 0) === expr.length - 1) {
+    const inner = expr.slice(1, -1);
+    const colon = topLevelIndexOf(inner, ":");
+    if (colon !== -1) {
+      return instantiate("Swift.Dictionary", [
+        resolveTypeExpr(inner.slice(0, colon), resolveParam),
+        resolveTypeExpr(inner.slice(colon + 1), resolveParam),
+      ]);
+    }
+    return instantiate("Swift.Array", [resolveTypeExpr(inner, resolveParam)]);
+  }
+  const lt = topLevelIndexOf(expr, "<");
+  if (lt !== -1 && expr.endsWith(">")) {
+    const args = splitTopLevel(expr.slice(lt + 1, -1), ",").map((a) =>
+      resolveTypeExpr(a, resolveParam)
+    );
+    return instantiate(expr.slice(0, lt), args);
+  }
+  return resolveParam(expr) ?? resolveType(expr);
 }
 
 const OPEN: Record<string, string> = { "(": ")", "<": ">", "[": "]" };

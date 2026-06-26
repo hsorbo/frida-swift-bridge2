@@ -176,6 +176,10 @@ public final class Counter {
 
 public func makeCounter(_ n: Int) -> Counter { Counter(count: n) }
 
+@inline(never)
+public func roundOptional<A>(_ x: A?) -> A? { x }
+public func triggerRoundOptional() -> Int { roundOptional(Optional<Int>.some(9)) ?? -1 }
+
 public struct DoublePair { public var x: Double; public var y: Double }
 public func makeDoublePair() -> DoublePair { DoublePair(x: 1.5, y: 2.5) }
 public func sumDoublePair(_ p: DoublePair) -> Double { p.x + p.y }

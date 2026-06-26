@@ -2,7 +2,7 @@ import { Metadata, MetadataKind } from "../abi/metadata.js";
 import { readValue, SwiftValue } from "../abi/instance.js";
 import { projectErrorExistential } from "../abi/existential.js";
 import { shouldPassIndirectly, floatLayout } from "./calling-convention.js";
-import { symbolicate, parseSwiftSignature, resolveType } from "./symbolication.js";
+import { symbolicate, parseSwiftSignature, resolveType, resolveTypeExpr } from "./symbolication.js";
 
 export interface SwiftInvocationCallbacks {
   onEnter?: (this: InvocationContext, args: SwiftValue[]) => void;
@@ -10,26 +10,56 @@ export interface SwiftInvocationCallbacks {
 }
 
 type TypePlan =
-  | { generic: false; metadata: Metadata }
-  | { generic: true; paramIndex: number };
+  | { kind: "concrete"; metadata: Metadata }
+  | { kind: "param"; paramIndex: number }
+  | { kind: "use"; expr: string }; // param-referencing expression: A?, [A], Array<A>
 
 interface CallShape {
   args: TypePlan[];
   ret: TypePlan | null;
-  genericCount: number;
+  genericParams: string[];
   throws: boolean;
 }
 
 function planType(name: string, genericParams: string[]): TypePlan {
   const paramIndex = genericParams.indexOf(name);
   if (paramIndex !== -1) {
-    return { generic: true, paramIndex };
+    return { kind: "param", paramIndex };
   }
   const metadata = resolveType(name);
-  if (metadata === null) {
-    throw new Error(`could not resolve type: ${name}`);
+  if (metadata !== null) {
+    return { kind: "concrete", metadata };
   }
-  return { generic: false, metadata };
+  if (genericParams.some((p) => new RegExp(`\\b${p}\\b`).test(name))) {
+    return { kind: "use", expr: name };
+  }
+  throw new Error(`could not resolve type: ${name}`);
+}
+
+function planMetadata(plan: TypePlan, generics: Metadata[], genericParams: string[]): Metadata {
+  switch (plan.kind) {
+    case "concrete":
+      return plan.metadata;
+    case "param":
+      return generics[plan.paramIndex];
+    case "use": {
+      const metadata = resolveTypeExpr(plan.expr, (name) => {
+        const i = genericParams.indexOf(name);
+        return i >= 0 ? generics[i] : null;
+      });
+      if (metadata === null) {
+        throw new Error(`could not resolve generic use: ${plan.expr}`);
+      }
+      return metadata;
+    }
+  }
+}
+
+// param/use values are address-only → passed indirectly (one GP pointer, or x8 for a return).
+function isIndirectPlan(
+  plan: TypePlan
+): plan is { kind: "param"; paramIndex: number } | { kind: "use"; expr: string } {
+  return plan.kind === "param" || plan.kind === "use";
 }
 
 function callShape(target: NativePointer): CallShape {
@@ -50,7 +80,7 @@ function callShape(target: NativePointer): CallShape {
     return {
       args: parsed.argTypeNames.map((n) => planType(n, gp)),
       ret: parsed.returnTypeName === null ? null : planType(parsed.returnTypeName, gp),
-      genericCount: gp.length,
+      genericParams: gp,
       throws: parsed.throws,
     };
   }
@@ -59,12 +89,12 @@ function callShape(target: NativePointer): CallShape {
   if (memberType === null) {
     throw new Error(`could not resolve accessor type: ${symbol.demangled}`);
   }
-  const member: TypePlan = { generic: false, metadata: memberType };
+  const member: TypePlan = { kind: "concrete", metadata: memberType };
   switch (parsed.kind) {
     case "getter":
-      return { args: [], ret: member, genericCount: 0, throws: false };
+      return { args: [], ret: member, genericParams: [], throws: false };
     case "setter":
-      return { args: [member], ret: null, genericCount: 0, throws: false };
+      return { args: [member], ret: null, genericParams: [], throws: false };
     default:
       throw new Error(`cannot hook a 'modify' accessor (coroutine ABI): ${symbol.demangled}`);
   }
@@ -74,7 +104,7 @@ function returnIsIndirect(ret: TypePlan | null): boolean {
   if (ret === null) {
     return false;
   }
-  if (ret.generic) {
+  if (isIndirectPlan(ret)) {
     return true;
   }
   const md = ret.metadata;
@@ -113,14 +143,14 @@ interface MaterializedArgs {
 function materializeArgs(
   context: Arm64CpuContext,
   args: TypePlan[],
-  genericCount: number
+  genericParams: string[]
 ): MaterializedArgs {
   let ngrn = 0;
   let nsrn = 0;
   const slots: { plan: TypePlan; address: NativePointer }[] = [];
 
   for (const plan of args) {
-    if (plan.generic) {
+    if (isIndirectPlan(plan)) {
       slots.push({ plan, address: gpr(context, ngrn++) });
       continue;
     }
@@ -150,12 +180,12 @@ function materializeArgs(
   }
 
   const generics: Metadata[] = [];
-  for (let i = 0; i < genericCount; i++) {
+  for (let i = 0; i < genericParams.length; i++) {
     generics.push(new Metadata(gpr(context, ngrn++)));
   }
 
   const values = slots.map((s) =>
-    readValue(s.plan.generic ? generics[s.plan.paramIndex] : s.plan.metadata, s.address)
+    readValue(planMetadata(s.plan, generics, genericParams), s.address)
   );
   return { values, generics };
 }
@@ -164,16 +194,17 @@ function materializeReturn(
   context: Arm64CpuContext,
   ret: TypePlan | null,
   indirectReturn: NativePointer | null,
-  generics: Metadata[]
+  generics: Metadata[],
+  genericParams: string[]
 ): SwiftValue {
   if (ret === null) {
     return null;
   }
-  if (ret.generic) {
+  if (isIndirectPlan(ret)) {
     if (indirectReturn === null) {
       throw new Error("indirect return address was not captured on enter");
     }
-    return readValue(generics[ret.paramIndex], indirectReturn);
+    return readValue(planMetadata(ret, generics, genericParams), indirectReturn);
   }
 
   const returnType = ret.metadata;
@@ -224,10 +255,10 @@ interface SwiftInvocationState {
 }
 
 function attach(target: NativePointer, callbacks: SwiftInvocationCallbacks): InvocationListener {
-  const { args, ret, genericCount, throws } = callShape(target);
+  const { args, ret, genericParams, throws } = callShape(target);
   const captureIndirect = returnIsIndirect(ret);
-  const retIsGeneric = ret?.generic === true;
-  const wantsArgs = callbacks.onEnter !== undefined || retIsGeneric;
+  const returnNeedsGenerics = ret !== null && isIndirectPlan(ret) && genericParams.length > 0;
+  const wantsArgs = callbacks.onEnter !== undefined || returnNeedsGenerics;
 
   const onEnter =
     wantsArgs || captureIndirect
@@ -238,7 +269,7 @@ function attach(target: NativePointer, callbacks: SwiftInvocationCallbacks): Inv
             state.indirectReturn = context.x8;
           }
           if (wantsArgs) {
-            const { values, generics } = materializeArgs(context, args, genericCount);
+            const { values, generics } = materializeArgs(context, args, genericParams);
             state.generics = generics;
             if (callbacks.onEnter !== undefined) {
               callbacks.onEnter.call(this, values);
@@ -259,7 +290,13 @@ function attach(target: NativePointer, callbacks: SwiftInvocationCallbacks): Inv
           }
           callbacks.onLeave!.call(
             this,
-            materializeReturn(context, ret, state.indirectReturn ?? null, state.generics ?? [])
+            materializeReturn(
+              context,
+              ret,
+              state.indirectReturn ?? null,
+              state.generics ?? [],
+              genericParams
+            )
           );
         }
       : undefined;
