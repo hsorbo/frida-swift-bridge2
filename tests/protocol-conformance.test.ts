@@ -1,4 +1,5 @@
 import { test, expect, describe } from "@frida/injest/agent";
+import { loadSwiftCore } from "./swift.js";
 
 import { Swift } from "../src/index.js";
 import { findType } from "../src/reflection/registry.js";
@@ -9,16 +10,6 @@ import {
   findProtocol,
   conformsToProtocol,
 } from "../src/abi/protocol-conformance.js";
-
-function loadSwiftCore(skip: (reason?: string) => void): Module {
-  if (Process.arch !== "arm64" || Process.platform !== "darwin") {
-    skip(`needs arm64 Darwin, got ${Process.arch}/${Process.platform}`);
-  }
-  if (!Swift.available) {
-    skip("libswiftCore.dylib not loadable");
-  }
-  return Process.getModuleByName("libswiftCore.dylib");
-}
 
 describe("protocol conformances", () => {
   test("enumerates conformances whose protocol resolves", ({ skip }) => {

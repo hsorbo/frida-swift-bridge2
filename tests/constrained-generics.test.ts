@@ -1,19 +1,11 @@
 import { test, expect, describe } from "@frida/injest/agent";
+import { requireSwift } from "./swift.js";
 
 import { Swift } from "../src/index.js";
 import { findType } from "../src/reflection/registry.js";
 import { MetadataKind, instantiateGenericMetadata } from "../src/abi/metadata.js";
 import { buildGenericMetadata } from "../src/abi/generic-instantiation.js";
 import { findProtocol, conformsToProtocol } from "../src/abi/protocol-conformance.js";
-
-function requireSwift(skip: (reason?: string) => void): void {
-  if (Process.arch !== "arm64" || Process.platform !== "darwin") {
-    skip(`needs arm64 Darwin, got ${Process.arch}/${Process.platform}`);
-  }
-  if (!Swift.available) {
-    skip("libswiftCore.dylib not loadable");
-  }
-}
 
 describe("constrained generic auto-assembly", () => {
   test("Dictionary<String,Int> instantiates without supplying a witness table", ({ skip }) => {

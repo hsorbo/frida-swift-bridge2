@@ -1,17 +1,9 @@
 import { test, expect, describe } from "@frida/injest/agent";
+import { requireSwift } from "./swift.js";
 
 import { Swift } from "../src/index.js";
 import { readString } from "../src/abi/string.js";
 import { readValue } from "../src/abi/instance.js";
-
-function requireSwift(skip: (reason?: string) => void): void {
-  if (Process.arch !== "arm64" || Process.platform !== "darwin") {
-    skip(`needs arm64 Darwin, got ${Process.arch}/${Process.platform}`);
-  }
-  if (!Swift.available) {
-    skip("libswiftCore.dylib not loadable");
-  }
-}
 
 // Build a small-string _StringObject (ASCII, <= 15 bytes) in 16 bytes.
 function writeSmallString(p: NativePointer, s: string): void {

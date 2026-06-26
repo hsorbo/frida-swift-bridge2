@@ -1,15 +1,7 @@
 import { test, expect, describe } from "@frida/injest/agent";
+import { requireSwift } from "./swift.js";
 
 import { Swift, typeName } from "../src/index.js";
-
-function requireSwift(skip: (reason?: string) => void): void {
-  if (Process.arch !== "arm64" || Process.platform !== "darwin") {
-    skip(`needs arm64 Darwin, got ${Process.arch}/${Process.platform}`);
-  }
-  if (!Swift.available) {
-    skip("libswiftCore.dylib not loadable");
-  }
-}
 
 describe("typeName", () => {
   test("names a concrete stdlib type", ({ skip }) => {

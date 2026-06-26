@@ -1,17 +1,11 @@
 import { test, expect, describe } from "@frida/injest/agent";
+import { loadSwiftCore } from "./swift.js";
 
 import { enumerateTypeContextDescriptors } from "../src/macho/sections.js";
 import {
   ContextDescriptor,
   ContextDescriptorKind,
 } from "../src/abi/context-descriptor.js";
-
-function loadSwiftCore(skip: (reason?: string) => void): Module {
-  if (Process.arch !== "arm64" || Process.platform !== "darwin") {
-    skip(`needs arm64 Darwin, got ${Process.arch}/${Process.platform}`);
-  }
-  return Process.findModuleByName("libswiftCore.dylib") ?? Module.load("libswiftCore.dylib");
-}
 
 function indexByName(lib: Module): Map<string, ContextDescriptor> {
   const byName = new Map<string, ContextDescriptor>();

@@ -1,17 +1,9 @@
 import { test, expect, describe } from "@frida/injest/agent";
+import { requireSwift } from "./swift.js";
 
 import { Swift } from "../src/index.js";
 import { readValue } from "../src/abi/instance.js";
 import { readEnumCase, enumTag, injectEnumTag, projectBox } from "../src/abi/enum.js";
-
-function requireSwift(skip: (reason?: string) => void): void {
-  if (Process.arch !== "arm64" || Process.platform !== "darwin") {
-    skip(`needs arm64 Darwin, got ${Process.arch}/${Process.platform}`);
-  }
-  if (!Swift.available) {
-    skip("libswiftCore.dylib not loadable");
-  }
-}
 
 describe("enum instances", () => {
   test("tag injection round-trips and maps to the payload-first case order", ({ skip }) => {

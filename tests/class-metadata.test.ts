@@ -1,17 +1,12 @@
 import { test, expect, describe } from "@frida/injest/agent";
+import { requireSwift, type Skip } from "./swift.js";
 
-import { Swift } from "../src/index.js";
 import { findType } from "../src/reflection/registry.js";
 import { ContextDescriptorKind } from "../src/abi/context-descriptor.js";
 import { getClassMetadata, enumerateClassFields } from "../src/abi/class-metadata.js";
 
-function classOrSkip(name: string, skip: (reason?: string) => void) {
-  if (Process.arch !== "arm64" || Process.platform !== "darwin") {
-    skip(`needs arm64 Darwin, got ${Process.arch}/${Process.platform}`);
-  }
-  if (!Swift.available) {
-    skip("libswiftCore.dylib not loadable");
-  }
+function classOrSkip(name: string, skip: Skip) {
+  requireSwift(skip);
   const descriptor = findType(name);
   if (descriptor === null) {
     skip(`${name} not present in this stdlib`);

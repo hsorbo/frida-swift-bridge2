@@ -1,18 +1,10 @@
 import { test, expect, describe } from "@frida/injest/agent";
+import { requireSwift } from "./swift.js";
 
 import { Swift } from "../src/index.js";
 import { findType } from "../src/reflection/registry.js";
 import { MetadataKind } from "../src/abi/metadata.js";
 import { enumerateFields, fieldTypeIn } from "../src/abi/field-descriptor.js";
-
-function requireSwift(skip: (reason?: string) => void): void {
-  if (Process.arch !== "arm64" || Process.platform !== "darwin") {
-    skip(`needs arm64 Darwin, got ${Process.arch}/${Process.platform}`);
-  }
-  if (!Swift.available) {
-    skip("libswiftCore.dylib not loadable");
-  }
-}
 
 describe("generic field resolution", () => {
   test("instantiated metadata exposes its nominal descriptor", ({ skip }) => {
