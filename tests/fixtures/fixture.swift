@@ -26,3 +26,19 @@ public func makeLoadableStruct() -> LoadableStruct {
 public func makeBigStruct() -> BigStruct {
     return BigStruct(a: 1, b: 2, c: 3, d: 4, e: 5)
 }
+
+public func addInts(_ a: Int, _ b: Int) -> Int {
+    return a + b
+}
+
+public func sumLoadable(_ s: LoadableStruct) -> Int {
+    return s.a + s.b + s.c + s.d
+}
+
+public func sumBig(_ s: BigStruct) -> Int {
+    return s.a + s.b + s.c + s.d + s.e
+}
+
+public func makeString() -> String {
+    return "New Cairo"
+}

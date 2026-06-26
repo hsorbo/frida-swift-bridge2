@@ -73,6 +73,12 @@ export {
   NUM_WORDS_VALUE_BUFFER,
   allocateValueBuffer,
 } from "./abi/value-witness.js";
+export {
+  shouldPassIndirectly,
+  MAX_LOADABLE_SIZE,
+  makeSwiftNativeFunction,
+  SwiftNativeFunction,
+} from "./runtime/calling-convention.js";
 export { readString } from "./abi/string.js";
 export { typeName } from "./runtime/type-name.js";
 

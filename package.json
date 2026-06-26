@@ -21,6 +21,8 @@
     "watch": "tsc --watch",
     "pretest": "sh tests/fixtures/build.sh",
     "test": "injest",
+    "pretest:v8": "sh tests/fixtures/build.sh",
+    "test:v8": "injest --target local-v8",
     "prepublishOnly": "npm run build"
   },
   "dependencies": {
