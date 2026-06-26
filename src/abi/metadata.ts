@@ -1,4 +1,5 @@
 import { ContextDescriptor, ContextDescriptorKind } from "./context-descriptor.js";
+import { ValueWitnessTable } from "./value-witness.js";
 
 export enum MetadataKind {
   Class = 0x0,
@@ -9,11 +10,6 @@ export enum MetadataKind {
 
 const OFFSETOF_KIND = 0x0;
 const LAST_ENUMERATED = 0x7ff;
-
-const VWT_OFFSETOF_SIZE = 0x40;
-const VWT_OFFSETOF_STRIDE = 0x48;
-const VWT_OFFSETOF_FLAGS = 0x50;
-const VWT_ALIGNMENT_MASK = 0xff;
 
 const METADATA_REQUEST_COMPLETE = 0;
 
@@ -39,6 +35,10 @@ export class Metadata {
     return this.handle.sub(Process.pointerSize).readPointer();
   }
 
+  get valueWitnesses(): ValueWitnessTable {
+    return new ValueWitnessTable(this.valueWitnessTable, this.handle);
+  }
+
   get description(): ContextDescriptor {
     const kind = this.kind;
     if (
@@ -60,13 +60,8 @@ export class Metadata {
   }
 
   get typeLayout(): TypeLayout {
-    const vwt = this.valueWitnessTable;
-    const flags = vwt.add(VWT_OFFSETOF_FLAGS).readU32();
-    return {
-      size: vwt.add(VWT_OFFSETOF_SIZE).readU64().toNumber(),
-      stride: vwt.add(VWT_OFFSETOF_STRIDE).readU64().toNumber(),
-      alignment: (flags & VWT_ALIGNMENT_MASK) + 1,
-    };
+    const vwt = this.valueWitnesses;
+    return { size: vwt.size, stride: vwt.stride, alignment: vwt.alignment };
   }
 }
 

@@ -68,6 +68,11 @@ export {
   injectEnumTag,
   projectBox,
 } from "./abi/enum.js";
+export {
+  ValueWitnessTable,
+  NUM_WORDS_VALUE_BUFFER,
+  allocateValueBuffer,
+} from "./abi/value-witness.js";
 export { readString } from "./abi/string.js";
 export { typeName } from "./runtime/type-name.js";
 
