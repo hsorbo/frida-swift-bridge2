@@ -75,6 +75,7 @@ export {
   OpaqueExistential,
   existentialRepresentation,
   projectOpaqueExistential,
+  projectErrorExistential,
 } from "./abi/existential.js";
 export {
   ValueWitnessTable,

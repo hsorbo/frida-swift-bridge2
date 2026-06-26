@@ -74,4 +74,10 @@ describe("readValue existential", () => {
     expect(ref.isNull()).toBe(false);
     expect(readObject(ref)).toEqual({ label: "Bee" });
   });
+
+  test("decodes the boxed value behind an Error existential", ({ skip }) => {
+    const Error_ = existentialMetadata(skip, "fixture.errorType");
+    expect(existentialRepresentation(Error_)).toBe("error");
+    expect(readValue(Error_, store(skip, "fixture.storeError", Error_))).toEqual({ code: 7 });
+  });
 });

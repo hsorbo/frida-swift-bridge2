@@ -2,7 +2,11 @@ import { Metadata, MetadataKind } from "./metadata.js";
 import { enumerateFields, fieldTypeIn, resolveFieldType } from "./field-descriptor.js";
 import { readEnumCase, projectEnumData, projectBox } from "./enum.js";
 import { readString } from "./string.js";
-import { existentialRepresentation, projectOpaqueExistential } from "./existential.js";
+import {
+  existentialRepresentation,
+  projectOpaqueExistential,
+  projectErrorExistential,
+} from "./existential.js";
 import { ClassMetadata, classMetadataOf, enumerateClassFields } from "./class-metadata.js";
 
 const STRUCT_DESC_FIELD_OFFSET_VECTOR_OFFSET = 0x18;
@@ -67,16 +71,15 @@ export function readValue(metadata: Metadata, address: NativePointer): SwiftValu
 }
 
 function readExistential(metadata: Metadata, address: NativePointer): SwiftValue {
-  switch (existentialRepresentation(metadata)) {
-    case "opaque": {
-      const { type, value } = projectOpaqueExistential(address);
-      return readValue(type, value);
-    }
-    case "class":
-      return address.readPointer(); // reference; decode with readObject()
-    default:
-      return null; // Error box: needs swift_getErrorValue
+  const representation = existentialRepresentation(metadata);
+  if (representation === "class") {
+    return address.readPointer(); // reference; decode with readObject()
   }
+  const { type, value } =
+    representation === "error"
+      ? projectErrorExistential(address)
+      : projectOpaqueExistential(address);
+  return readValue(type, value);
 }
 
 export function* enumerateClassInstanceFields(object: NativePointer): Generator<InstanceField> {

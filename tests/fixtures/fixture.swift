@@ -156,6 +156,15 @@ public func storeNamed(_ p: UnsafeMutableRawPointer) {
     p.assumingMemoryBound(to: (any Named).self).initialize(to: Widget(label: "Bee"))
 }
 
+public struct CodedError: Error {
+    public let code: Int
+}
+
+public func storeError(_ p: UnsafeMutableRawPointer) {
+    p.assumingMemoryBound(to: (any Error).self).initialize(to: CodedError(code: 7))
+}
+
 public func anyType() -> UnsafeRawPointer { unsafeBitCast(Any.self, to: UnsafeRawPointer.self) }
 public func greeterType() -> UnsafeRawPointer { unsafeBitCast((any Greeter).self, to: UnsafeRawPointer.self) }
 public func namedType() -> UnsafeRawPointer { unsafeBitCast((any Named).self, to: UnsafeRawPointer.self) }
+public func errorType() -> UnsafeRawPointer { unsafeBitCast((any Error).self, to: UnsafeRawPointer.self) }

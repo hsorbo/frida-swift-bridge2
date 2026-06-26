@@ -1,4 +1,5 @@
 import { Metadata } from "./metadata.js";
+import { getSwiftCoreApi } from "../runtime/api.js";
 
 const FLAGS_OFFSET = Process.pointerSize;
 const TYPE_OFFSET = 3 * Process.pointerSize;
@@ -25,4 +26,15 @@ export interface OpaqueExistential {
 export function projectOpaqueExistential(container: NativePointer): OpaqueExistential {
   const type = new Metadata(container.add(TYPE_OFFSET).readPointer());
   return { type, value: type.valueWitnesses.projectBuffer(container) };
+}
+
+export function projectErrorExistential(container: NativePointer): OpaqueExistential {
+  const errorBox = container.readPointer();
+  const bridgedNSErrorScratch = Memory.alloc(Process.pointerSize);
+  const result = Memory.alloc(3 * Process.pointerSize);
+  getSwiftCoreApi().swift_getErrorValue(errorBox, bridgedNSErrorScratch, result);
+  return {
+    value: result.readPointer(),
+    type: new Metadata(result.add(Process.pointerSize).readPointer()),
+  };
 }
