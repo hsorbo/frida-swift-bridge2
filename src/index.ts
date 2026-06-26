@@ -5,6 +5,7 @@ import { getMetadata, Metadata } from "./abi/metadata.js";
 import { buildGenericMetadata } from "./abi/generic-instantiation.js";
 import { typeName } from "./runtime/type-name.js";
 import { symbolicate, parseSwiftSignature } from "./runtime/symbolication.js";
+import { SwiftInterceptor } from "./runtime/interceptor.js";
 
 export { isSwiftSymbol, demangle } from "./runtime/demangle.js";
 export {
@@ -95,6 +96,7 @@ export {
   resolveFunctionSignature,
   resolveType,
 } from "./runtime/symbolication.js";
+export { SwiftInterceptor, SwiftInvocationCallbacks } from "./runtime/interceptor.js";
 
 export const Swift = {
   get available(): boolean {
@@ -125,4 +127,5 @@ export const Swift = {
 
   symbolicate,
   parseSignature: parseSwiftSignature,
+  Interceptor: SwiftInterceptor,
 };

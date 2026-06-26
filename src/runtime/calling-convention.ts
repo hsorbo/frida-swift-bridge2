@@ -9,10 +9,10 @@ export function shouldPassIndirectly(metadata: Metadata): boolean {
   return !vwt.isBitwiseTakable || vwt.size > MAX_LOADABLE_SIZE;
 }
 
-type FloatClass = "double" | "float";
+export type FloatClass = "double" | "float";
 
 // Only the scalar builtins; HFAs/SIMD aggregates would need field-level classification.
-function floatClass(metadata: Metadata): FloatClass | null {
+export function floatClass(metadata: Metadata): FloatClass | null {
   switch (typeName(metadata)) {
     case "Swift.Double":
     case "Swift.Float64":
