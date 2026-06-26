@@ -1,6 +1,6 @@
 import { Metadata, MetadataKind } from "./metadata.js";
 import { enumerateFields, fieldTypeIn, resolveFieldType } from "./field-descriptor.js";
-import { readEnumCase, projectEnumData, projectBox } from "./enum.js";
+import { readEnumCase, projectEnumData, projectBox, injectEnumTag } from "./enum.js";
 import { readString } from "./string.js";
 import {
   existentialRepresentation,
@@ -44,6 +44,91 @@ const PRIMITIVE_READERS: { [typeName: string]: (p: NativePointer) => SwiftValue 
   "Swift.UnsafeMutableRawPointer": (p) => p.readPointer(),
   "Swift.OpaquePointer": (p) => p.readPointer(),
 };
+
+const PRIMITIVE_WRITERS: { [typeName: string]: (p: NativePointer, v: SwiftValue) => void } = {
+  "Swift.Int": (p, v) => p.writeS64(v as number),
+  "Swift.UInt": (p, v) => p.writeU64(v as number),
+  "Swift.Int64": (p, v) => p.writeS64(v as number),
+  "Swift.UInt64": (p, v) => p.writeU64(v as number),
+  "Swift.Int32": (p, v) => p.writeS32(v as number),
+  "Swift.UInt32": (p, v) => p.writeU32(v as number),
+  "Swift.Int16": (p, v) => p.writeS16(v as number),
+  "Swift.UInt16": (p, v) => p.writeU16(v as number),
+  "Swift.Int8": (p, v) => p.writeS8(v as number),
+  "Swift.UInt8": (p, v) => p.writeU8(v as number),
+  "Swift.Bool": (p, v) => p.writeU8(v ? 1 : 0),
+  "Swift.Double": (p, v) => p.writeDouble(v as number),
+  "Swift.Float": (p, v) => p.writeFloat(v as number),
+  "Swift.UnsafeRawPointer": (p, v) => p.writePointer(v as NativePointer),
+  "Swift.UnsafeMutableRawPointer": (p, v) => p.writePointer(v as NativePointer),
+  "Swift.OpaquePointer": (p, v) => p.writePointer(v as NativePointer),
+};
+
+export function writeValue(metadata: Metadata, address: NativePointer, value: SwiftValue): void {
+  switch (metadata.kind) {
+    case MetadataKind.Struct: {
+      const name = metadata.description.fullTypeName ?? "";
+      const writer = PRIMITIVE_WRITERS[name];
+      if (writer !== undefined) {
+        writer(address, value);
+        return;
+      }
+      if (name in PRIMITIVE_READERS) {
+        throw new Error(`writeValue: ${name} is not constructible from a JS literal`);
+      }
+      const fields = value as { [field: string]: SwiftValue };
+      for (const field of enumerateInstanceFields(metadata, address)) {
+        if (field.type === null) {
+          throw new Error(`writeValue: unresolved type for field ${field.name}`);
+        }
+        if (!(field.name in fields)) {
+          throw new Error(`writeValue: missing field ${field.name}`);
+        }
+        writeValue(field.type, field.address, fields[field.name]);
+      }
+      return;
+    }
+    case MetadataKind.Enum:
+    case MetadataKind.Optional:
+      writeEnum(metadata, address, value);
+      return;
+    default:
+      throw new Error(`writeValue: unsupported metadata kind ${metadata.kind}`);
+  }
+}
+
+function writeEnum(metadata: Metadata, address: NativePointer, value: SwiftValue): void {
+  let caseName: string;
+  let payload: SwiftValue | undefined;
+  if (typeof value === "string") {
+    caseName = value;
+  } else {
+    const entries = Object.entries(value as { [k: string]: SwiftValue });
+    if (entries.length !== 1) {
+      throw new Error("writeValue: enum value must be a case name or { case: payload }");
+    }
+    [caseName, payload] = entries[0];
+  }
+
+  const cases = [...enumerateFields(metadata.description)];
+  const tag = cases.findIndex((c) => c.name === caseName);
+  if (tag === -1) {
+    throw new Error(`writeValue: unknown enum case ${caseName}`);
+  }
+
+  const field = cases[tag];
+  if (field.mangledTypeName !== null) {
+    if (field.isIndirectCase) {
+      throw new Error(`writeValue: indirect enum case ${caseName} not supported`);
+    }
+    const payloadType = fieldTypeIn(metadata, field);
+    if (payloadType === null) {
+      throw new Error(`writeValue: unresolved payload type for case ${caseName}`);
+    }
+    writeValue(payloadType, address, payload as SwiftValue);
+  }
+  injectEnumTag(metadata, address, tag);
+}
 
 export function readValue(metadata: Metadata, address: NativePointer): SwiftValue {
   switch (metadata.kind) {

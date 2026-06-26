@@ -45,6 +45,19 @@ export interface SwiftCoreApi {
     [NativePointerValue, NativePointerValue, NativePointerValue]
   >;
   swift_getTypeName: NativeFunction<[NativePointer, UInt64], [NativePointerValue, number]>;
+  swift_allocObject: NativeFunction<
+    NativePointer,
+    [NativePointerValue, number | UInt64, number | UInt64]
+  >;
+  swift_allocBox: NativeFunction<[NativePointer, NativePointer], [NativePointerValue]>;
+  swift_retain: NativeFunction<NativePointer, [NativePointerValue]>;
+  swift_release: NativeFunction<void, [NativePointerValue]>;
+  swift_retainCount: NativeFunction<UInt64, [NativePointerValue]>;
+  swift_deallocClassInstance: NativeFunction<
+    void,
+    [NativePointerValue, number | UInt64, number | UInt64]
+  >;
+  swift_isUniquelyReferenced_native: NativeFunction<number, [NativePointerValue]>;
 }
 
 let cachedSwiftCore: SwiftCoreApi | null = null;
@@ -90,6 +103,37 @@ export function getSwiftCoreApi(): SwiftCoreApi {
       lib.getExportByName("swift_getTypeName"),
       ["pointer", "size_t"],
       ["pointer", "bool"]
+    ),
+    swift_allocObject: new NativeFunction(
+      lib.getExportByName("swift_allocObject"),
+      "pointer",
+      ["pointer", "size_t", "size_t"]
+    ),
+    swift_allocBox: new NativeFunction(
+      lib.getExportByName("swift_allocBox"),
+      ["pointer", "pointer"],
+      ["pointer"]
+    ),
+    swift_retain: new NativeFunction(lib.getExportByName("swift_retain"), "pointer", [
+      "pointer",
+    ]),
+    swift_release: new NativeFunction(lib.getExportByName("swift_release"), "void", [
+      "pointer",
+    ]),
+    swift_retainCount: new NativeFunction(
+      lib.getExportByName("swift_retainCount"),
+      "size_t",
+      ["pointer"]
+    ),
+    swift_deallocClassInstance: new NativeFunction(
+      lib.getExportByName("swift_deallocClassInstance"),
+      "void",
+      ["pointer", "size_t", "size_t"]
+    ),
+    swift_isUniquelyReferenced_native: new NativeFunction(
+      lib.getExportByName("swift_isUniquelyReferenced_native"),
+      "bool",
+      ["pointer"]
     ),
   };
   return cachedSwiftCore;

@@ -1,0 +1,63 @@
+import { test, expect, describe } from "@frida/injest/agent";
+import { type Skip } from "./swift.js";
+import { loadFixture } from "./fixtures/load.js";
+
+import { Swift, HeapObject } from "../src/index.js";
+import { makeSwiftNativeFunction } from "../src/runtime/calling-convention.js";
+
+function fixtureFn(skip: Skip, swiftName: string): NativePointer {
+  const mod = loadFixture(skip);
+  for (const e of mod.enumerateExports()) {
+    const demangled = Swift.demangle(e.name);
+    if (demangled !== null && demangled.includes(swiftName)) {
+      return e.address;
+    }
+  }
+  throw new Error(`fixture export not found: ${swiftName}`);
+}
+
+function intArg(n: number): NativePointer {
+  const cell = Memory.alloc(Process.pointerSize);
+  cell.writeS64(n);
+  return cell;
+}
+
+function makeCounter(skip: Skip, n: number): HeapObject {
+  const Int = Swift.metadataFor("Swift.Int")!;
+  const Counter = Swift.metadataFor("fixture.Counter")!;
+  const make = makeSwiftNativeFunction(fixtureFn(skip, "fixture.makeCounter"), Counter, [Int]);
+  return new HeapObject(make(intArg(n))!.readPointer());
+}
+
+describe("HeapObject", () => {
+  test("reads and writes a class stored property", ({ skip }) => {
+    const counter = makeCounter(skip, 5);
+    expect(counter.field("count").get()).toBe(5);
+    counter.field("count").set(15);
+    expect(counter.field("count").get()).toBe(15);
+    expect(counter.read()).toEqual({ count: 15 });
+  });
+
+  test("retain/release adjust the strong reference count", ({ skip }) => {
+    const counter = makeCounter(skip, 1);
+    const before = counter.retainCount;
+    counter.retain();
+    expect(counter.retainCount).toBe(before + 1);
+    counter.release();
+    expect(counter.retainCount).toBe(before);
+  });
+
+  test("reports a solely-held instance as uniquely referenced", ({ skip }) => {
+    const counter = makeCounter(skip, 1);
+    expect(counter.isUniquelyReferenced).toBe(true);
+    counter.retain();
+    expect(counter.isUniquelyReferenced).toBe(false);
+    counter.release();
+    expect(counter.isUniquelyReferenced).toBe(true);
+  });
+
+  test("exposes the instance's class metadata", ({ skip }) => {
+    const counter = makeCounter(skip, 1);
+    expect(counter.metadata.isTypeMetadata).toBe(true);
+  });
+});

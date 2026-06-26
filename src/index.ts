@@ -6,6 +6,7 @@ import { buildGenericMetadata } from "./abi/generic-instantiation.js";
 import { typeName } from "./runtime/type-name.js";
 import { symbolicate, parseSwiftSignature } from "./runtime/symbolication.js";
 import { SwiftInterceptor } from "./runtime/interceptor.js";
+import { SwiftType, typeOf } from "./runtime/swift-type.js";
 
 export { isSwiftSymbol, demangle } from "./runtime/demangle.js";
 export {
@@ -60,6 +61,7 @@ export {
   enumerateInstanceFields,
   enumerateClassInstanceFields,
   readValue,
+  writeValue,
   readObject,
 } from "./abi/instance.js";
 export {
@@ -77,6 +79,16 @@ export {
   projectOpaqueExistential,
   projectErrorExistential,
 } from "./abi/existential.js";
+export { Value } from "./abi/value.js";
+export { HeapObject } from "./abi/heap-object.js";
+export {
+  SwiftType,
+  StructType,
+  EnumType,
+  ClassType,
+  TypeMember,
+  typeOf,
+} from "./runtime/swift-type.js";
 export {
   ValueWitnessTable,
   NUM_WORDS_VALUE_BUFFER,
@@ -132,6 +144,10 @@ export const Swift = {
 
   typeName(metadata: Metadata): string {
     return typeName(metadata);
+  },
+
+  typeOf(metadata: Metadata): SwiftType {
+    return typeOf(metadata);
   },
 
   symbolicate,

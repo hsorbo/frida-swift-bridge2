@@ -164,6 +164,18 @@ public func storeError(_ p: UnsafeMutableRawPointer) {
     p.assumingMemoryBound(to: (any Error).self).initialize(to: CodedError(code: 7))
 }
 
+public enum Pick {
+    case empty
+    case value(Int)
+}
+
+public final class Counter {
+    public var count: Int
+    public init(count: Int) { self.count = count }
+}
+
+public func makeCounter(_ n: Int) -> Counter { Counter(count: n) }
+
 public func anyType() -> UnsafeRawPointer { unsafeBitCast(Any.self, to: UnsafeRawPointer.self) }
 public func greeterType() -> UnsafeRawPointer { unsafeBitCast((any Greeter).self, to: UnsafeRawPointer.self) }
 public func namedType() -> UnsafeRawPointer { unsafeBitCast((any Named).self, to: UnsafeRawPointer.self) }
