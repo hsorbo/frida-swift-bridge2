@@ -73,3 +73,8 @@ public func scaleFloat(_ x: Float) -> Float {
 public func combine(_ i: Int, _ d: Double) -> Double {
     return Double(i) + d
 }
+
+public struct Point {
+    public var x: Int
+    public var doubled: Int { x * 2 }
+}

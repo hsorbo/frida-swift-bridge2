@@ -4,6 +4,7 @@ import { findType } from "./reflection/registry.js";
 import { getMetadata, Metadata } from "./abi/metadata.js";
 import { buildGenericMetadata } from "./abi/generic-instantiation.js";
 import { typeName } from "./runtime/type-name.js";
+import { symbolicate, parseSwiftSignature } from "./runtime/symbolication.js";
 
 export { isSwiftSymbol, demangle } from "./runtime/demangle.js";
 export {
@@ -83,6 +84,17 @@ export {
 } from "./runtime/calling-convention.js";
 export { readString } from "./abi/string.js";
 export { typeName } from "./runtime/type-name.js";
+export {
+  SwiftSymbol,
+  SwiftFunctionSignature,
+  SwiftAccessorSignature,
+  ParsedSwiftSignature,
+  ResolvedFunctionSignature,
+  symbolicate,
+  parseSwiftSignature,
+  resolveFunctionSignature,
+  resolveType,
+} from "./runtime/symbolication.js";
 
 export const Swift = {
   get available(): boolean {
@@ -110,4 +122,7 @@ export const Swift = {
   typeName(metadata: Metadata): string {
     return typeName(metadata);
   },
+
+  symbolicate,
+  parseSignature: parseSwiftSignature,
 };
