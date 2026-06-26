@@ -1,4 +1,5 @@
-import { ClassMetadata, classMetadataOf } from "./class-metadata.js";
+import { Metadata } from "./metadata.js";
+import { ClassMetadata, classMetadataOf, dynamicTypeOf } from "./class-metadata.js";
 import { enumerateClassInstanceFields, readObject, SwiftValue } from "./instance.js";
 import { Value } from "./value.js";
 import { getSwiftCoreApi } from "../runtime/api.js";
@@ -8,6 +9,10 @@ export class HeapObject {
 
   get metadata(): ClassMetadata {
     return classMetadataOf(this.handle);
+  }
+
+  get dynamicType(): Metadata {
+    return dynamicTypeOf(this.handle);
   }
 
   get retainCount(): number {

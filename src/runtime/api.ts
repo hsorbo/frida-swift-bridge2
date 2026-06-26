@@ -58,6 +58,7 @@ export interface SwiftCoreApi {
     [NativePointerValue, number | UInt64, number | UInt64]
   >;
   swift_isUniquelyReferenced_native: NativeFunction<number, [NativePointerValue]>;
+  swift_getObjectType: NativeFunction<NativePointer, [NativePointerValue]>;
 }
 
 let cachedSwiftCore: SwiftCoreApi | null = null;
@@ -133,6 +134,11 @@ export function getSwiftCoreApi(): SwiftCoreApi {
     swift_isUniquelyReferenced_native: new NativeFunction(
       lib.getExportByName("swift_isUniquelyReferenced_native"),
       "bool",
+      ["pointer"]
+    ),
+    swift_getObjectType: new NativeFunction(
+      lib.getExportByName("swift_getObjectType"),
+      "pointer",
       ["pointer"]
     ),
   };

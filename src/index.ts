@@ -53,6 +53,7 @@ export {
   ClassMetadata,
   getClassMetadata,
   classMetadataOf,
+  dynamicTypeOf,
   enumerateClassFields,
 } from "./abi/class-metadata.js";
 export {

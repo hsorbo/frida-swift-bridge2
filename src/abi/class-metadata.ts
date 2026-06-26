@@ -1,6 +1,7 @@
 import { ContextDescriptor } from "./context-descriptor.js";
-import { MetadataKind, getMetadata } from "./metadata.js";
+import { Metadata, MetadataKind, getMetadata } from "./metadata.js";
 import { Field, enumerateFields } from "./field-descriptor.js";
+import { getSwiftCoreApi } from "../runtime/api.js";
 
 const OFFSETOF_SUPERCLASS = 0x8;
 const OFFSETOF_DATA = 0x20;
@@ -68,6 +69,11 @@ export function getClassMetadata(descriptor: ContextDescriptor): ClassMetadata {
 
 export function classMetadataOf(object: NativePointer): ClassMetadata {
   return new ClassMetadata(object.readPointer().strip());
+}
+
+// unwraps ObjC/tagged-pointer instances that a raw isa read (classMetadataOf) mishandles
+export function dynamicTypeOf(object: NativePointer): Metadata {
+  return new Metadata(getSwiftCoreApi().swift_getObjectType(object));
 }
 
 export interface FieldWithOffset {

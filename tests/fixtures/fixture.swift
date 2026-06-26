@@ -176,6 +176,10 @@ public final class Counter {
 
 public func makeCounter(_ n: Int) -> Counter { Counter(count: n) }
 
+public class Base { public let kind: Int; public init(kind: Int) { self.kind = kind } }
+public final class Derived: Base { public init() { super.init(kind: 99) } }
+public func makeDerivedAsBase() -> Base { Derived() }
+
 @inline(never)
 public func roundOptional<A>(_ x: A?) -> A? { x }
 public func triggerRoundOptional() -> Int { roundOptional(Optional<Int>.some(9)) ?? -1 }
