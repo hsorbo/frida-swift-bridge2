@@ -6,6 +6,7 @@ import { Swift } from "../src/index.js";
 import {
   shouldPassIndirectly,
   makeSwiftNativeFunction,
+  SwiftThrownError,
 } from "../src/runtime/calling-convention.js";
 import { readString } from "../src/abi/string.js";
 
@@ -114,5 +115,66 @@ describe("makeSwiftNativeFunction", () => {
     expect(r1.equals(r2)).toBe(false);
     expect(r1.readU64().toNumber()).toBe(3);
     expect(r2.readU64().toNumber()).toBe(30);
+  });
+
+  test("passes self in the context register and the callee mutates through it", ({ skip }) => {
+    const Int = Swift.metadataFor("Swift.Int")!;
+    const add = makeSwiftNativeFunction(fixtureFn(skip, "fixture.Accumulator.add"), null, [Int], {
+      hasSelf: true,
+    });
+    const self = Memory.alloc(8);
+    self.writeU64(0);
+    expect(add(self, intValue(5))).toBe(null);
+    expect(self.readU64().toNumber()).toBe(5);
+    add(self, intValue(10));
+    expect(self.readU64().toNumber()).toBe(15);
+  });
+
+  test("returns normally when a throwing function does not throw", ({ skip }) => {
+    const Int = Swift.metadataFor("Swift.Int")!;
+    const fn = makeSwiftNativeFunction(fixtureFn(skip, "fixture.mightThrow"), Int, [Int], {
+      throws: true,
+    });
+    expect(fn(intValue(0))!.readU64().toNumber()).toBe(99);
+  });
+
+  test("surfaces a Swift error as SwiftThrownError", ({ skip }) => {
+    const Int = Swift.metadataFor("Swift.Int")!;
+    const fn = makeSwiftNativeFunction(fixtureFn(skip, "fixture.mightThrow"), Int, [Int], {
+      throws: true,
+    });
+    let thrown: unknown;
+    try {
+      fn(intValue(1));
+    } catch (e) {
+      thrown = e;
+    }
+    expect(thrown instanceof SwiftThrownError).toBe(true);
+    expect((thrown as SwiftThrownError).error.isNull()).toBe(false);
+  });
+
+  test("passes and returns a Double in the floating-point registers", ({ skip }) => {
+    const Double_ = Swift.metadataFor("Swift.Double")!;
+    const fn = makeSwiftNativeFunction(fixtureFn(skip, "fixture.scaleDouble"), Double_, [Double_]);
+    const arg = Memory.alloc(8);
+    arg.writeDouble(21);
+    expect(fn(arg)!.readDouble()).toBe(42);
+  });
+
+  test("passes and returns a Float in the floating-point registers", ({ skip }) => {
+    const Float_ = Swift.metadataFor("Swift.Float")!;
+    const fn = makeSwiftNativeFunction(fixtureFn(skip, "fixture.scaleFloat"), Float_, [Float_]);
+    const arg = Memory.alloc(4);
+    arg.writeFloat(21);
+    expect(fn(arg)!.readFloat()).toBe(42);
+  });
+
+  test("mixes integer and floating-point argument registers", ({ skip }) => {
+    const Int = Swift.metadataFor("Swift.Int")!;
+    const Double_ = Swift.metadataFor("Swift.Double")!;
+    const fn = makeSwiftNativeFunction(fixtureFn(skip, "fixture.combine"), Double_, [Int, Double_]);
+    const d = Memory.alloc(8);
+    d.writeDouble(40);
+    expect(fn(intValue(2), d)!.readDouble()).toBe(42);
   });
 });

@@ -78,6 +78,8 @@ export {
   MAX_LOADABLE_SIZE,
   makeSwiftNativeFunction,
   SwiftNativeFunction,
+  SwiftNativeFunctionOptions,
+  SwiftThrownError,
 } from "./runtime/calling-convention.js";
 export { readString } from "./abi/string.js";
 export { typeName } from "./runtime/type-name.js";

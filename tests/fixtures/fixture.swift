@@ -42,3 +42,34 @@ public func sumBig(_ s: BigStruct) -> Int {
 public func makeString() -> String {
     return "New Cairo"
 }
+
+// self in x20: a mutating method takes self by inout pointer regardless of size.
+public struct Accumulator {
+    public var total: Int
+    public mutating func add(_ amount: Int) {
+        total += amount
+    }
+}
+
+public enum FixtureError: Error {
+    case boom
+}
+
+public func mightThrow(_ code: Int) throws -> Int {
+    if code != 0 {
+        throw FixtureError.boom
+    }
+    return 99
+}
+
+public func scaleDouble(_ x: Double) -> Double {
+    return x * 2
+}
+
+public func scaleFloat(_ x: Float) -> Float {
+    return x * 2
+}
+
+public func combine(_ i: Int, _ d: Double) -> Double {
+    return Double(i) + d
+}
