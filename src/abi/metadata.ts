@@ -6,6 +6,7 @@ export enum MetadataKind {
   Struct = 0x200,
   Enum = 0x201,
   Optional = 0x202,
+  Existential = 0x303,
 }
 
 const OFFSETOF_KIND = 0x0;

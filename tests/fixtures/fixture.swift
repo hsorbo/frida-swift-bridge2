@@ -119,3 +119,43 @@ public func scaleGeneric<T: Scalable>(_ x: T, by factor: Int) -> Int {
 public func makeScaleGeneric() -> Int {
     return scaleGeneric(6, by: 7)
 }
+
+// store* fills a caller buffer (no by-value existential return); *Type exposes the unnameable
+// existential metadata.
+public func storeAnyInt(_ p: UnsafeMutableRawPointer) {
+    p.assumingMemoryBound(to: Any.self).initialize(to: 42)
+}
+
+public func storeAnyBig(_ p: UnsafeMutableRawPointer) {
+    p.assumingMemoryBound(to: Any.self).initialize(to: BigStruct(a: 1, b: 2, c: 3, d: 4, e: 5))
+}
+
+public protocol Greeter {
+    func greet() -> String
+}
+
+public struct PoliteGreeter: Greeter {
+    public let name: String
+    public func greet() -> String { "Hello, \(name)" }
+}
+
+public func storeGreeter(_ p: UnsafeMutableRawPointer) {
+    p.assumingMemoryBound(to: (any Greeter).self).initialize(to: PoliteGreeter(name: "Ada"))
+}
+
+public protocol Named: AnyObject {
+    var label: String { get }
+}
+
+public final class Widget: Named {
+    public let label: String
+    public init(label: String) { self.label = label }
+}
+
+public func storeNamed(_ p: UnsafeMutableRawPointer) {
+    p.assumingMemoryBound(to: (any Named).self).initialize(to: Widget(label: "Bee"))
+}
+
+public func anyType() -> UnsafeRawPointer { unsafeBitCast(Any.self, to: UnsafeRawPointer.self) }
+public func greeterType() -> UnsafeRawPointer { unsafeBitCast((any Greeter).self, to: UnsafeRawPointer.self) }
+public func namedType() -> UnsafeRawPointer { unsafeBitCast((any Named).self, to: UnsafeRawPointer.self) }

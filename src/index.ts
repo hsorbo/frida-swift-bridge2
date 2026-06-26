@@ -71,6 +71,12 @@ export {
   projectBox,
 } from "./abi/enum.js";
 export {
+  ExistentialRepresentation,
+  OpaqueExistential,
+  existentialRepresentation,
+  projectOpaqueExistential,
+} from "./abi/existential.js";
+export {
   ValueWitnessTable,
   NUM_WORDS_VALUE_BUFFER,
   allocateValueBuffer,
