@@ -13,8 +13,10 @@ import {
 import { parseSwiftSignature, resolveType } from "./symbolication.js";
 import {
   BoundMethod,
+  BoundStaticMethod,
   MethodInfo,
   MethodResolveOptions,
+  bindStaticMethod,
   enumerateMethods,
   resolveMethod,
 } from "./method.js";
@@ -40,7 +42,17 @@ export class SwiftType {
   }
 }
 
-export class StructType extends SwiftType {
+export class ValueType extends SwiftType {
+  method(name: string, options: MethodResolveOptions = {}): BoundStaticMethod {
+    return bindStaticMethod(this.metadata, name, options);
+  }
+
+  call(name: string, ...args: SwiftValue[]): SwiftValue {
+    return this.method(name).call(...args);
+  }
+}
+
+export class StructType extends ValueType {
   new(value: SwiftValue): Value {
     return Value.fromJS(this.metadata, value);
   }
@@ -53,7 +65,7 @@ export class StructType extends SwiftType {
   }
 }
 
-export class EnumType extends SwiftType {
+export class EnumType extends ValueType {
   case(name: string, payload?: SwiftValue): Value {
     return Value.fromJS(this.metadata, payload === undefined ? name : { [name]: payload });
   }

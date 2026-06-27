@@ -89,6 +89,7 @@ export { Value } from "./abi/value.js";
 export { HeapObject } from "./abi/heap-object.js";
 export {
   SwiftType,
+  ValueType,
   StructType,
   EnumType,
   ClassType,
@@ -135,11 +136,13 @@ export {
   MethodResolveOptions,
   ValueMethodResolveOptions,
   BoundValueMethod,
+  BoundStaticMethod,
   GenericBoundMethod,
   AccessorKind,
   resolveMethod,
   enumerateMethods,
   bindValueMethod,
+  bindStaticMethod,
   bindGenericMethod,
   getProperty,
   setProperty,

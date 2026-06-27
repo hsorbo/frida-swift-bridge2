@@ -59,6 +59,8 @@ public struct Accumulator {
     }
     public func peek(_ x: Int) -> Int { total + x }
     public func describe(_ prefix: String) -> String { "\(prefix): \(total)" }
+    public static func zero() -> Accumulator { Accumulator(total: 0) }
+    public static func summing(_ a: Int, _ b: Int) -> Int { a + b }
 }
 
 public enum FixtureError: Error {
@@ -185,6 +187,7 @@ public func storeError(_ p: UnsafeMutableRawPointer) {
 public enum Pick {
     case empty
     case value(Int)
+    public static func tag(_ n: Int) -> Int { n * 2 }
 }
 
 public final class Counter {

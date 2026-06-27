@@ -268,6 +268,48 @@ export class BoundMethod {
   }
 }
 
+function staticInvokerFor(resolved: ResolvedMethod): SwiftNativeFunction {
+  const key = `${resolved.address}:static`;
+  let fn = invokerCache.get(key);
+  if (fn === undefined) {
+    fn = makeSwiftNativeFunction(resolved.address, resolved.returnType, resolved.argTypes, {
+      throws: resolved.throws,
+    });
+    invokerCache.set(key, fn);
+  }
+  return fn;
+}
+
+// Thin metatype: no self passed.
+export class BoundStaticMethod {
+  private readonly fn: SwiftNativeFunction;
+
+  constructor(readonly resolved: ResolvedMethod) {
+    this.fn = staticInvokerFor(resolved);
+  }
+
+  get address(): NativePointer {
+    return this.resolved.address;
+  }
+
+  call(...args: SwiftValue[]): SwiftValue {
+    const { argTypes, returnType } = this.resolved;
+    if (args.length !== argTypes.length) {
+      throw new Error(`${this.resolved.selector} expects ${argTypes.length} argument(s), got ${args.length}`);
+    }
+    const argPtrs = args.map((value, i) => marshalArg(argTypes[i], value));
+    return decodeReturn(returnType, this.fn(...argPtrs));
+  }
+}
+
+export function bindStaticMethod(
+  receiver: Metadata,
+  name: string,
+  options: MethodResolveOptions = {}
+): BoundStaticMethod {
+  return new BoundStaticMethod(resolveMethod(typeName(receiver), name, { ...options, static: true }));
+}
+
 function valueInvoker(resolved: ResolvedMethod, receiver: Metadata, indirectSelf: boolean): SwiftNativeFunction {
   const key = `${resolved.address}:${indirectSelf ? "i" : "d"}`;
   let fn = invokerCache.get(key);
