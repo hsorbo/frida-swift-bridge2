@@ -2,6 +2,10 @@ import { Metadata, MetadataKind } from "./metadata.js";
 import { readValue, writeValue, enumerateInstanceFields, SwiftValue } from "./instance.js";
 import { BoundValueMethod, bindValueMethod, ValueMethodResolveOptions } from "../runtime/method.js";
 
+// qjs and v8 (Frida 17) ship no Symbol.dispose; polyfill so `using` resolves the key below.
+const symbolCtor = Symbol as { dispose?: symbol };
+symbolCtor.dispose ??= Symbol.for("Symbol.dispose");
+
 interface OwnedState {
   disposed: boolean;
 }
@@ -97,6 +101,10 @@ export class Value {
       this.weakId = null;
     }
     this.metadata.valueWitnesses.destroy(this.address);
+  }
+
+  [Symbol.dispose](): void {
+    this.dispose();
   }
 
   private checkLive(): void {
