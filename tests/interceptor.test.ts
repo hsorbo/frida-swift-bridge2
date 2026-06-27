@@ -2,7 +2,7 @@ import { test, expect, describe } from "@frida/injest/agent";
 import { type Skip } from "./swift.js";
 import { loadFixture } from "./fixtures/load.js";
 
-import { Swift, type SwiftValue } from "../src/index.js";
+import { Swift, Metadata, type SwiftValue } from "../src/index.js";
 import { makeSwiftNativeFunction } from "../src/runtime/calling-convention.js";
 import { SwiftInterceptor } from "../src/runtime/interceptor.js";
 
@@ -27,6 +27,12 @@ function structValue(metadata: ReturnType<typeof Swift.metadataFor>, fields: num
   const p = Memory.alloc(metadata!.typeLayout.stride);
   fields.forEach((v, i) => p.add(i * 8).writeU64(v));
   return p;
+}
+
+function existentialMetadata(skip: Skip, accessor: string): Metadata {
+  const RawPointer = Swift.metadataFor("Swift.UnsafeRawPointer")!;
+  const get = makeSwiftNativeFunction(fixtureAddress(skip, accessor), RawPointer, []);
+  return new Metadata(get()!.readPointer());
 }
 
 describe("SwiftInterceptor.attach", () => {
@@ -223,5 +229,26 @@ describe("SwiftInterceptor.attach", () => {
     listener.detach();
     expect(seen[0]).toEqual({ retval: 99, error: undefined });
     expect(seen[1]).toEqual({ retval: null, error: "boom" });
+  });
+
+  test("decodes a named-protocol existential argument, projecting the dynamic value", ({ skip }) => {
+    const String_ = Swift.metadataFor("Swift.String")!;
+    const Greeter = existentialMetadata(skip, "fixture.greeterType");
+    const g = makeSwiftNativeFunction(fixtureAddress(skip, "fixture.makeGreeterExistential"), Greeter, [])()!;
+    const addr = fixtureAddress(skip, "fixture.greetExistential");
+    let seenArgs: SwiftValue[] | null = null;
+    let seenRet: SwiftValue = null;
+    const listener = SwiftInterceptor.attach(addr, {
+      onEnter(args) {
+        seenArgs = args;
+      },
+      onLeave(ret) {
+        seenRet = ret;
+      },
+    });
+    makeSwiftNativeFunction(addr, String_, [Greeter])(g);
+    listener.detach();
+    expect(seenArgs).toEqual([{ name: "Ada" }]);
+    expect(seenRet).toBe("Hello, Ada");
   });
 });

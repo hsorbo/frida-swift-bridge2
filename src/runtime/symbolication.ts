@@ -1,7 +1,10 @@
 import { demangle } from "./demangle.js";
 import { findType } from "../reflection/registry.js";
+import { findProtocol } from "../abi/protocol-conformance.js";
+import { ContextDescriptor } from "../abi/context-descriptor.js";
 import { getMetadata, Metadata } from "../abi/metadata.js";
 import { buildGenericMetadata } from "../abi/generic-instantiation.js";
+import { getSwiftCoreApi } from "./api.js";
 
 export interface SwiftSymbol {
   address: NativePointer;
@@ -223,14 +226,45 @@ export function resolveFunctionSignature(
 
 export function resolveType(name: string): Metadata | null {
   const descriptor = findType(name);
-  if (descriptor === null) {
+  if (descriptor !== null) {
+    try {
+      return getMetadata(descriptor);
+    } catch {
+      return null;
+    }
+  }
+  return resolveProtocolExistential(name);
+}
+
+function resolveProtocolExistential(name: string): Metadata | null {
+  const stripped = name.startsWith("any ") ? name.slice(4).trim() : name;
+  const parts = splitTopLevel(stripped, " & ");
+  if (parts.length === 0) {
     return null;
   }
-  try {
-    return getMetadata(descriptor);
-  } catch {
-    return null;
+  const protocols: ContextDescriptor[] = [];
+  for (const part of parts) {
+    const protocol = findProtocol(part);
+    if (protocol === null) {
+      return null;
+    }
+    protocols.push(protocol);
   }
+  const refs = Memory.alloc(Process.pointerSize * protocols.length);
+  protocols.forEach((p, i) => refs.add(i * Process.pointerSize).writePointer(p.handle));
+  const classConstraint = Math.min(...protocols.map(protocolClassConstraint));
+  const handle = getSwiftCoreApi().swift_getExistentialTypeMetadata(
+    classConstraint,
+    ptr(0),
+    protocols.length,
+    refs
+  );
+  return new Metadata(handle);
+}
+
+// ProtocolClassConstraint ABI value: Class = 0, Any = 1.
+function protocolClassConstraint(descriptor: ContextDescriptor): number {
+  return (descriptor.flags >>> 16) & 0x1;
 }
 
 function instantiate(base: string, args: (Metadata | null)[]): Metadata | null {
