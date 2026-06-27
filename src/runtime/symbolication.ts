@@ -4,7 +4,7 @@ import { findProtocol } from "../abi/protocol-conformance.js";
 import { ContextDescriptor } from "../abi/context-descriptor.js";
 import { getMetadata, Metadata } from "../abi/metadata.js";
 import { buildGenericMetadata } from "../abi/generic-instantiation.js";
-import { getSwiftCoreApi } from "./api.js";
+import { getExistentialTypeMetadata } from "../abi/existential.js";
 
 export interface SwiftSymbol {
   address: NativePointer;
@@ -250,21 +250,7 @@ function resolveProtocolExistential(name: string): Metadata | null {
     }
     protocols.push(protocol);
   }
-  const refs = Memory.alloc(Process.pointerSize * protocols.length);
-  protocols.forEach((p, i) => refs.add(i * Process.pointerSize).writePointer(p.handle));
-  const classConstraint = Math.min(...protocols.map(protocolClassConstraint));
-  const handle = getSwiftCoreApi().swift_getExistentialTypeMetadata(
-    classConstraint,
-    ptr(0),
-    protocols.length,
-    refs
-  );
-  return new Metadata(handle);
-}
-
-// ProtocolClassConstraint ABI value: Class = 0, Any = 1.
-function protocolClassConstraint(descriptor: ContextDescriptor): number {
-  return (descriptor.flags >>> 16) & 0x1;
+  return getExistentialTypeMetadata(protocols);
 }
 
 function instantiate(base: string, args: (Metadata | null)[]): Metadata | null {

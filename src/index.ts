@@ -8,6 +8,7 @@ import { symbolicate, parseSwiftSignature } from "./runtime/symbolication.js";
 import { SwiftInterceptor } from "./runtime/interceptor.js";
 import { SwiftType, typeOf, swiftNativeFunction } from "./runtime/swift-type.js";
 import { createObject } from "./runtime/object-facade.js";
+import { Protocol, ProtocolComposition } from "./runtime/protocol.js";
 
 export { isSwiftSymbol, demangle } from "./runtime/demangle.js";
 export {
@@ -42,6 +43,7 @@ export {
   findProtocol,
   conformsToProtocol,
 } from "./abi/protocol-conformance.js";
+export { Protocol, ProtocolComposition } from "./runtime/protocol.js";
 export {
   Field,
   enumerateFields,
@@ -178,4 +180,6 @@ export const Swift = {
   Interceptor: SwiftInterceptor,
   Object: createObject,
   NativeFunction: swiftNativeFunction,
+  Protocol,
+  ProtocolComposition,
 };

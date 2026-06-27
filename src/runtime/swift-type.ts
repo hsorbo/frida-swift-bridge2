@@ -21,6 +21,7 @@ import {
 import { demangle } from "./demangle.js";
 import { typeName } from "./type-name.js";
 import { getSwiftCoreApi } from "./api.js";
+import { Protocol, ProtocolComposition } from "./protocol.js";
 
 export interface TypeMember {
   name: string;
@@ -148,7 +149,11 @@ export class ClassType extends SwiftType {
   }
 }
 
-export type NativeFunctionType = SwiftType | SwiftArgType;
+export type NativeFunctionType =
+  | SwiftType
+  | Protocol
+  | ProtocolComposition
+  | SwiftArgType;
 
 export function swiftNativeFunction(
   address: NativePointer,
@@ -156,8 +161,12 @@ export function swiftNativeFunction(
   argTypes: NativeFunctionType[],
   options: SwiftNativeFunctionOptions = {}
 ): SwiftNativeFunction {
-  const lower = (t: NativeFunctionType): SwiftArgType =>
-    t instanceof SwiftType ? t.metadata : t;
+  const lower = (t: NativeFunctionType): SwiftArgType => {
+    if (t instanceof SwiftType) return t.metadata;
+    if (t instanceof ProtocolComposition) return t.metadata;
+    if (t instanceof Protocol) return new ProtocolComposition(t).metadata;
+    return t;
+  };
   return makeSwiftNativeFunction(
     address,
     returnType === null ? null : lower(returnType),

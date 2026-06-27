@@ -1,4 +1,5 @@
 import { Metadata } from "./metadata.js";
+import { ContextDescriptor } from "./context-descriptor.js";
 import { getSwiftCoreApi } from "../runtime/api.js";
 
 const FLAGS_OFFSET = Process.pointerSize;
@@ -37,4 +38,36 @@ export function projectErrorExistential(container: NativePointer): OpaqueExisten
     value: result.readPointer(),
     type: new Metadata(result.add(Process.pointerSize).readPointer()),
   };
+}
+
+// ProtocolClassConstraint ABI value: Class = 0 (class-only), Any = 1.
+export function protocolClassConstraint(descriptor: ContextDescriptor): number {
+  return (descriptor.flags >>> 16) & 0x1;
+}
+
+export function getExistentialTypeMetadata(protocols: ContextDescriptor[]): Metadata {
+  // swift_getExistentialTypeMetadata trusts the caller to pre-sort the protocol list by the
+  // compiler's canonical order (module name, then protocol name); otherwise the runtime uniques
+  // a distinct-but-equivalent instance that won't pointer-match compiler-emitted existentials.
+  const sorted = [...protocols].sort(compareProtocolDescriptors);
+  const refs = Memory.alloc(Process.pointerSize * Math.max(sorted.length, 1));
+  sorted.forEach((p, i) => refs.add(i * Process.pointerSize).writePointer(p.handle));
+  const classConstraint =
+    sorted.length === 0 ? 1 : Math.min(...sorted.map(protocolClassConstraint));
+  const handle = getSwiftCoreApi().swift_getExistentialTypeMetadata(
+    classConstraint,
+    ptr(0),
+    sorted.length,
+    refs
+  );
+  return new Metadata(handle);
+}
+
+function compareProtocolDescriptors(a: ContextDescriptor, b: ContextDescriptor): number {
+  const am = a.moduleName ?? "";
+  const bm = b.moduleName ?? "";
+  if (am !== bm) return am < bm ? -1 : 1;
+  const an = a.name ?? "";
+  const bn = b.name ?? "";
+  return an === bn ? 0 : an < bn ? -1 : 1;
 }
