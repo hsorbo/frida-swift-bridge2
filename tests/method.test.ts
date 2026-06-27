@@ -65,6 +65,16 @@ describe("resolveMethod", () => {
     expect(resolveMethod("fixture.Robot", "move", { labels: ["to"] }).selector).toBe("move(to:)");
     expect(resolveMethod("fixture.Robot", "move", { labels: ["by"] }).selector).toBe("move(by:)");
   });
+
+  test("disambiguates a same-arity, same-label overload by argTypes", ({ skip }) => {
+    loadFixture(skip);
+    expect(() => resolveMethod("fixture.Robot", "tagged")).toThrow();
+    expect(() => resolveMethod("fixture.Robot", "tagged", { labels: [null] })).toThrow();
+    const i = resolveMethod("fixture.Robot", "tagged", { argTypes: ["Swift.Int"] });
+    expect(Swift.typeName(i.argTypes[0])).toBe("Swift.Int");
+    const s = resolveMethod("fixture.Robot", "tagged", { argTypes: ["Swift.String"] });
+    expect(Swift.typeName(s.argTypes[0])).toBe("Swift.String");
+  });
 });
 
 describe("enumerateMethods", () => {
@@ -122,6 +132,13 @@ describe("HeapObject method invocation", () => {
     const obj = robotType().init("R2");
     expect(obj.method("move", { labels: ["to"] }).call(5)).toBe(5);
     expect(obj.method("move", { labels: ["by"] }).call(5)).toBe(50);
+  });
+
+  test("disambiguates a same-arity, same-label overload by argTypes", ({ skip }) => {
+    loadFixture(skip);
+    const obj = robotType().init("R2");
+    expect(obj.method("tagged", { argTypes: ["Swift.Int"] }).call(7)).toBe("int:7");
+    expect(obj.method("tagged", { argTypes: ["Swift.String"] }).call("hi")).toBe("str:hi");
   });
 });
 
