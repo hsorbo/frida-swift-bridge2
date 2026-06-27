@@ -236,6 +236,15 @@ public func unboxAnyInt(_ x: Any) -> Int { x as! Int }
 public func makeGreeterExistential() -> any Greeter { PoliteGreeter(name: "Ada") }
 public func greetExistential(_ g: any Greeter) -> String { g.greet() }
 
+public protocol Aged { var age: Int { get } }
+public struct Person: Greeter, Aged {
+    public let name: String
+    public let age: Int
+    public func greet() -> String { "Hi, \(name)" }
+}
+public func makeGreeterAged() -> any Greeter & Aged { Person(name: "Cy", age: 9) }
+public func describeGreeterAged(_ v: any Greeter & Aged) -> String { "\(v.greet()) (\(v.age))" }
+
 // Method invocation: String/labelled/void/static methods, a class arg, an arity overload, a computed property.
 public final class Robot {
     public var name: String
@@ -254,5 +263,6 @@ public final class Robot {
 
 public func anyType() -> UnsafeRawPointer { unsafeBitCast(Any.self, to: UnsafeRawPointer.self) }
 public func greeterType() -> UnsafeRawPointer { unsafeBitCast((any Greeter).self, to: UnsafeRawPointer.self) }
+public func greeterAgedType() -> UnsafeRawPointer { unsafeBitCast((any Greeter & Aged).self, to: UnsafeRawPointer.self) }
 public func namedType() -> UnsafeRawPointer { unsafeBitCast((any Named).self, to: UnsafeRawPointer.self) }
 public func errorType() -> UnsafeRawPointer { unsafeBitCast((any Error).self, to: UnsafeRawPointer.self) }

@@ -251,4 +251,25 @@ describe("SwiftInterceptor.attach", () => {
     expect(seenArgs).toEqual([{ name: "Ada" }]);
     expect(seenRet).toBe("Hello, Ada");
   });
+
+  test("decodes a protocol-composition existential argument, projecting the dynamic value", ({ skip }) => {
+    const String_ = Swift.metadataFor("Swift.String")!;
+    const GreeterAged = existentialMetadata(skip, "fixture.greeterAgedType");
+    const v = makeSwiftNativeFunction(fixtureAddress(skip, "fixture.makeGreeterAged"), GreeterAged, [])()!;
+    const addr = fixtureAddress(skip, "fixture.describeGreeterAged");
+    let seenArgs: SwiftValue[] | null = null;
+    let seenRet: SwiftValue = null;
+    const listener = SwiftInterceptor.attach(addr, {
+      onEnter(args) {
+        seenArgs = args;
+      },
+      onLeave(ret) {
+        seenRet = ret;
+      },
+    });
+    makeSwiftNativeFunction(addr, String_, [GreeterAged])(v);
+    listener.detach();
+    expect(seenArgs).toEqual([{ name: "Cy", age: 9 }]);
+    expect(seenRet).toBe("Hi, Cy (9)");
+  });
 });
