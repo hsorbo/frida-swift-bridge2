@@ -126,9 +126,12 @@ export {
   MethodKind,
   ResolvedMethod,
   MethodResolveOptions,
+  ValueMethodResolveOptions,
+  BoundValueMethod,
   AccessorKind,
   resolveMethod,
   enumerateMethods,
+  bindValueMethod,
   getProperty,
   setProperty,
 } from "./runtime/method.js";

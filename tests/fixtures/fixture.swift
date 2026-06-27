@@ -19,6 +19,14 @@ public struct BigStruct {
     public let e: Int
 }
 
+extension LoadableStruct {
+    public func dot(_ k: Int) -> Int { (a + b + c + d) * k }
+}
+
+extension BigStruct {
+    public func total() -> Int { a + b + c + d + e }
+}
+
 public func makeLoadableStruct() -> LoadableStruct {
     return LoadableStruct(a: 1, b: 2, c: 3, d: 4)
 }
@@ -43,12 +51,14 @@ public func makeString() -> String {
     return "New Cairo"
 }
 
-// self in x20: a mutating method takes self by inout pointer regardless of size.
+// Value-type methods. self routing: mutating/large → x20 pointer; small non-mutating → trailing arg.
 public struct Accumulator {
     public var total: Int
     public mutating func add(_ amount: Int) {
         total += amount
     }
+    public func peek(_ x: Int) -> Int { total + x }
+    public func describe(_ prefix: String) -> String { "\(prefix): \(total)" }
 }
 
 public enum FixtureError: Error {

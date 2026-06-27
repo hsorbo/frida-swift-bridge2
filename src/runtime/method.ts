@@ -3,7 +3,8 @@ import { readValue, writeValue, SwiftValue } from "../abi/instance.js";
 import { findType } from "../reflection/registry.js";
 import { demangle } from "./demangle.js";
 import { parseSwiftSignature, resolveType, SwiftFunctionSignature } from "./symbolication.js";
-import { makeSwiftNativeFunction, SwiftNativeFunction } from "./calling-convention.js";
+import { makeSwiftNativeFunction, SwiftNativeFunction, shouldPassIndirectly } from "./calling-convention.js";
+import { typeName } from "./type-name.js";
 
 export type MethodKind = "method" | "init";
 
@@ -30,6 +31,12 @@ export interface ResolvedMethod {
 export interface MethodResolveOptions {
   arity?: number;
   static?: boolean;
+}
+
+// mutating is unrecoverable from the symbol; the caller supplies it. It only changes self routing
+// for small loadable receivers — large/non-POD receivers pass self in x20 either way.
+export interface ValueMethodResolveOptions extends MethodResolveOptions {
+  mutating?: boolean;
 }
 
 interface MethodCandidate {
@@ -233,6 +240,64 @@ export class BoundMethod {
     const argPtrs = args.map((value, i) => marshalArg(argTypes[i], value));
     return decodeReturn(returnType, this.fn(this.self, ...argPtrs));
   }
+}
+
+function valueInvoker(resolved: ResolvedMethod, receiver: Metadata, indirectSelf: boolean): SwiftNativeFunction {
+  const key = `${resolved.address}:${indirectSelf ? "i" : "d"}`;
+  let fn = invokerCache.get(key);
+  if (fn === undefined) {
+    fn = indirectSelf
+      ? makeSwiftNativeFunction(resolved.address, resolved.returnType, resolved.argTypes, {
+          hasSelf: true,
+          throws: resolved.throws,
+        })
+      : makeSwiftNativeFunction(resolved.address, resolved.returnType, [...resolved.argTypes, receiver], {
+          throws: resolved.throws,
+        });
+    invokerCache.set(key, fn);
+  }
+  return fn;
+}
+
+// Value-type self: x20 pointer when formally indirect (mutating inout, or large/non-POD borrowed) —
+// mutation lands in the receiver buffer in place; otherwise self rides as the trailing exploded arg.
+export class BoundValueMethod {
+  private readonly fn: SwiftNativeFunction;
+  private readonly indirectSelf: boolean;
+
+  constructor(
+    readonly resolved: ResolvedMethod,
+    private readonly receiver: Metadata,
+    private readonly self: NativePointer,
+    mutating: boolean
+  ) {
+    this.indirectSelf = mutating || shouldPassIndirectly(receiver);
+    this.fn = valueInvoker(resolved, receiver, this.indirectSelf);
+  }
+
+  get address(): NativePointer {
+    return this.resolved.address;
+  }
+
+  call(...args: SwiftValue[]): SwiftValue {
+    const { argTypes, returnType } = this.resolved;
+    if (args.length !== argTypes.length) {
+      throw new Error(`${this.resolved.selector} expects ${argTypes.length} argument(s), got ${args.length}`);
+    }
+    const argPtrs = args.map((value, i) => marshalArg(argTypes[i], value));
+    const ret = this.indirectSelf ? this.fn(this.self, ...argPtrs) : this.fn(...argPtrs, this.self);
+    return decodeReturn(returnType, ret);
+  }
+}
+
+export function bindValueMethod(
+  receiver: Metadata,
+  self: NativePointer,
+  name: string,
+  options: ValueMethodResolveOptions = {}
+): BoundValueMethod {
+  const resolved = resolveMethod(typeName(receiver), name, options);
+  return new BoundValueMethod(resolved, receiver, self, options.mutating === true);
 }
 
 interface ResolvedAccessor {

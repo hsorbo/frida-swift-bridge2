@@ -1,5 +1,6 @@
 import { Metadata, MetadataKind } from "./metadata.js";
 import { readValue, writeValue, enumerateInstanceFields, SwiftValue } from "./instance.js";
+import { BoundValueMethod, bindValueMethod, ValueMethodResolveOptions } from "../runtime/method.js";
 
 interface OwnedState {
   disposed: boolean;
@@ -70,6 +71,15 @@ export class Value {
       }
     }
     throw new Error(`Value.field: no field ${name}`);
+  }
+
+  method(name: string, options: ValueMethodResolveOptions = {}): BoundValueMethod {
+    this.checkLive();
+    return bindValueMethod(this.metadata, this.address, name, options);
+  }
+
+  call(name: string, ...args: SwiftValue[]): SwiftValue {
+    return this.method(name).call(...args);
   }
 
   copy(): Value {
