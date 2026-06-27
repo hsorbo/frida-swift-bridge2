@@ -65,6 +65,7 @@ function stringInitializer(): { fn: SwiftNativeFunction; metatype: NativePointer
   return cStringInit;
 }
 
+// Returns a +1 String; the caller must move it (writeString) or destroy it (String VWT) or it leaks.
 export function createString(text: string): NativePointer {
   if (typeof text !== "string") {
     throw new Error(`createString: expected a string, got ${typeof text}`);

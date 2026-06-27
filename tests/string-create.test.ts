@@ -5,29 +5,36 @@ import { Swift, StructType } from "../src/index.js";
 import { createString, writeString } from "../src/abi/string.js";
 import { readString } from "../src/abi/string.js";
 
+// createString hands back a +1 String; read its text and settle the +1 (or it leaks __StringStorage).
+function takeText(buf: NativePointer): string | null {
+  const text = readString(buf);
+  Swift.metadataFor("Swift.String")!.valueWitnesses.destroy(buf);
+  return text;
+}
+
 describe("createString / writeString", () => {
   test("round-trips a small (inline) string", ({ skip }) => {
     loadFixture(skip);
-    expect(readString(createString("short"))).toBe("short");
+    expect(takeText(createString("short"))).toBe("short");
   });
 
   test("round-trips a large (heap) string", ({ skip }) => {
     loadFixture(skip);
     const text = "this string is definitely longer than fifteen bytes";
-    expect(readString(createString(text))).toBe(text);
+    expect(takeText(createString(text))).toBe(text);
   });
 
   test("round-trips empty and unicode strings", ({ skip }) => {
     loadFixture(skip);
-    expect(readString(createString(""))).toBe("");
-    expect(readString(createString("café ☕ 日本語"))).toBe("café ☕ 日本語");
+    expect(takeText(createString(""))).toBe("");
+    expect(takeText(createString("café ☕ 日本語"))).toBe("café ☕ 日本語");
   });
 
   test("writeString moves a value into an existing buffer", ({ skip }) => {
     loadFixture(skip);
     const buf = Memory.alloc(Process.pointerSize * 2);
     writeString(buf, "moved into place");
-    expect(readString(buf)).toBe("moved into place");
+    expect(takeText(buf)).toBe("moved into place");
   });
 });
 
