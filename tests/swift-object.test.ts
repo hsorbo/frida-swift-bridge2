@@ -29,6 +29,13 @@ describe("Swift.Object method sugar", () => {
     expect(o.at$__(5, 6)).toBe(11);
   });
 
+  test("disambiguates same-arity overloads by label key", ({ skip }) => {
+    loadFixture(skip);
+    const o = robot("R2");
+    expect(o.move$to_(5)).toBe(5);
+    expect(o.move$by_(5)).toBe(50);
+  });
+
   test("$call mirrors the escaped key", ({ skip }) => {
     loadFixture(skip);
     const o = robot("R2");

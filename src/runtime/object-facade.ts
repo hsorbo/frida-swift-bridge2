@@ -121,7 +121,7 @@ export function createObject(handle: NativePointer): SwiftObject {
       }
       let fn = callables.get(key);
       if (fn === undefined) {
-        const bound = t.method(info.name, { arity: info.argTypeNames.length });
+        const bound = t.method(info.name, { labels: info.argLabels });
         fn = (...args: SwiftValue[]) => bound.call(...args);
         callables.set(key, fn);
       }

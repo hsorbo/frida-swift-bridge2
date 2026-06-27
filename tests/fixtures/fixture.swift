@@ -255,6 +255,8 @@ public final class Robot {
     public func merged(with other: Robot) -> String { "\(name)+\(other.name)" }
     public func at(_ x: Int) -> Int { x }
     public func at(_ x: Int, _ y: Int) -> Int { x + y }
+    public func move(to step: Int) -> Int { step }
+    public func move(by step: Int) -> Int { step * 10 }
     public var badge: String {
         get { "[\(name)]" }
         set { name = newValue }

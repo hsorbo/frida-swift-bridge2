@@ -57,6 +57,14 @@ describe("resolveMethod", () => {
     expect(resolveMethod("fixture.Robot", "at", { arity: 1 }).argTypes.length).toBe(1);
     expect(resolveMethod("fixture.Robot", "at", { arity: 2 }).argTypes.length).toBe(2);
   });
+
+  test("disambiguates a same-arity overload by labels", ({ skip }) => {
+    loadFixture(skip);
+    expect(() => resolveMethod("fixture.Robot", "move")).toThrow();
+    expect(() => resolveMethod("fixture.Robot", "move", { arity: 1 })).toThrow();
+    expect(resolveMethod("fixture.Robot", "move", { labels: ["to"] }).selector).toBe("move(to:)");
+    expect(resolveMethod("fixture.Robot", "move", { labels: ["by"] }).selector).toBe("move(by:)");
+  });
 });
 
 describe("enumerateMethods", () => {
@@ -107,6 +115,13 @@ describe("HeapObject method invocation", () => {
     const obj = robotType().init("R2");
     expect(obj.method("at", { arity: 1 }).call(5)).toBe(5);
     expect(obj.method("at", { arity: 2 }).call(5, 6)).toBe(11);
+  });
+
+  test("disambiguates a same-arity overload by labels", ({ skip }) => {
+    loadFixture(skip);
+    const obj = robotType().init("R2");
+    expect(obj.method("move", { labels: ["to"] }).call(5)).toBe(5);
+    expect(obj.method("move", { labels: ["by"] }).call(5)).toBe(50);
   });
 });
 

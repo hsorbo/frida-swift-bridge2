@@ -36,6 +36,7 @@ export interface ResolvedMethod {
 
 export interface MethodResolveOptions {
   arity?: number;
+  labels?: (string | null)[]; // null = unlabelled
   static?: boolean;
   typeArguments?: Metadata[]; // present ⇒ resolve a generic method; one entry per generic parameter
   witnessTables?: NativePointer[]; // overrides the witnesses auto-resolved from the where-clause
@@ -99,6 +100,26 @@ function stripReceiverKeyword(context: string): { context: string; isStatic: boo
 
 function methodKind(name: string): MethodKind {
   return name === "init" || name === "__allocating_init" ? "init" : "method";
+}
+
+function labelsMatch(actual: (string | null)[], wanted: (string | null)[]): boolean {
+  return actual.length === wanted.length && actual.every((label, i) => label === wanted[i]);
+}
+
+function applyOverloadFilters<T extends { isStatic: boolean; signature: SwiftFunctionSignature }>(
+  candidates: T[],
+  options: MethodResolveOptions
+): T[] {
+  if (options.static !== undefined) {
+    candidates = candidates.filter((c) => c.isStatic === options.static);
+  }
+  if (options.arity !== undefined) {
+    candidates = candidates.filter((c) => c.signature.argTypeNames.length === options.arity);
+  }
+  if (options.labels !== undefined) {
+    candidates = candidates.filter((c) => labelsMatch(c.signature.argLabels, options.labels!));
+  }
+  return candidates;
 }
 
 function canonicalTypeName(typeName: string): string {
@@ -171,15 +192,12 @@ export function resolveMethod(
   options: MethodResolveOptions = {}
 ): ResolvedMethod {
   const fullName = canonicalTypeName(typeName);
-  let candidates = typeMembers(fullName).methods.filter(
-    (c) => c.name === methodName && c.signature.genericParams.length === 0
+  const candidates = applyOverloadFilters(
+    typeMembers(fullName).methods.filter(
+      (c) => c.name === methodName && c.signature.genericParams.length === 0
+    ),
+    options
   );
-  if (options.static !== undefined) {
-    candidates = candidates.filter((c) => c.isStatic === options.static);
-  }
-  if (options.arity !== undefined) {
-    candidates = candidates.filter((c) => c.signature.argTypeNames.length === options.arity);
-  }
 
   if (candidates.length === 0) {
     throw new Error(`no method ${methodName} on ${fullName}`);
@@ -187,7 +205,7 @@ export function resolveMethod(
   if (candidates.length > 1) {
     const selectors = candidates.map((c) => c.signature.selector).join(", ");
     throw new Error(
-      `ambiguous method ${methodName} on ${fullName}: ${selectors} (disambiguate with { arity })`
+      `ambiguous method ${methodName} on ${fullName}: ${selectors} (disambiguate with { arity } or { labels })`
     );
   }
 
@@ -386,21 +404,18 @@ export function bindGenericMethod(
 ): GenericBoundMethod {
   const typeArguments = options.typeArguments ?? [];
   const fullName = canonicalTypeName(typeName);
-  let candidates = typeMembers(fullName).methods.filter(
-    (c) => c.name === methodName && c.signature.genericParams.length > 0 && c.signature.simpleGenerics
+  const candidates = applyOverloadFilters(
+    typeMembers(fullName).methods.filter(
+      (c) => c.name === methodName && c.signature.genericParams.length > 0 && c.signature.simpleGenerics
+    ),
+    options
   );
-  if (options.static !== undefined) {
-    candidates = candidates.filter((c) => c.isStatic === options.static);
-  }
-  if (options.arity !== undefined) {
-    candidates = candidates.filter((c) => c.signature.argTypeNames.length === options.arity);
-  }
   if (candidates.length === 0) {
     throw new Error(`no generic method ${methodName} on ${fullName}`);
   }
   if (candidates.length > 1) {
     const selectors = candidates.map((c) => c.signature.selector).join(", ");
-    throw new Error(`ambiguous generic method ${methodName} on ${fullName}: ${selectors} (disambiguate with { arity })`);
+    throw new Error(`ambiguous generic method ${methodName} on ${fullName}: ${selectors} (disambiguate with { arity } or { labels })`);
   }
 
   const { address, signature } = candidates[0];
