@@ -4,7 +4,12 @@ import { Value } from "../abi/value.js";
 import { HeapObject } from "../abi/heap-object.js";
 import { writeValue, SwiftValue } from "../abi/instance.js";
 import { enumerateFields, fieldTypeIn } from "../abi/field-descriptor.js";
-import { makeSwiftNativeFunction } from "./calling-convention.js";
+import {
+  makeSwiftNativeFunction,
+  SwiftArgType,
+  SwiftNativeFunction,
+  SwiftNativeFunctionOptions,
+} from "./calling-convention.js";
 import { parseSwiftSignature, resolveType } from "./symbolication.js";
 import {
   BoundMethod,
@@ -141,6 +146,24 @@ export class ClassType extends SwiftType {
     }
     throw new Error(`no __allocating_init found for ${fullName}`);
   }
+}
+
+export type NativeFunctionType = SwiftType | SwiftArgType;
+
+export function swiftNativeFunction(
+  address: NativePointer,
+  returnType: NativeFunctionType | null,
+  argTypes: NativeFunctionType[],
+  options: SwiftNativeFunctionOptions = {}
+): SwiftNativeFunction {
+  const lower = (t: NativeFunctionType): SwiftArgType =>
+    t instanceof SwiftType ? t.metadata : t;
+  return makeSwiftNativeFunction(
+    address,
+    returnType === null ? null : lower(returnType),
+    argTypes.map(lower),
+    options
+  );
 }
 
 export function typeOf(metadata: Metadata): SwiftType {

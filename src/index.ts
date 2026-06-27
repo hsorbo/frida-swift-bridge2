@@ -6,7 +6,7 @@ import { buildGenericMetadata } from "./abi/generic-instantiation.js";
 import { typeName } from "./runtime/type-name.js";
 import { symbolicate, parseSwiftSignature } from "./runtime/symbolication.js";
 import { SwiftInterceptor } from "./runtime/interceptor.js";
-import { SwiftType, typeOf } from "./runtime/swift-type.js";
+import { SwiftType, typeOf, swiftNativeFunction } from "./runtime/swift-type.js";
 import { createObject } from "./runtime/object-facade.js";
 
 export { isSwiftSymbol, demangle } from "./runtime/demangle.js";
@@ -89,7 +89,9 @@ export {
   EnumType,
   ClassType,
   TypeMember,
+  NativeFunctionType,
   typeOf,
+  swiftNativeFunction,
 } from "./runtime/swift-type.js";
 export {
   ValueWitnessTable,
@@ -175,4 +177,5 @@ export const Swift = {
   parseSignature: parseSwiftSignature,
   Interceptor: SwiftInterceptor,
   Object: createObject,
+  NativeFunction: swiftNativeFunction,
 };
