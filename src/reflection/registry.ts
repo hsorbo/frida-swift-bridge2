@@ -21,6 +21,32 @@ export function* enumerateTypes(module: Module): Generator<ContextDescriptor> {
   }
 }
 
+// Stale after dlclose, but Swift dylibs are effectively never unloaded.
+const cachedTypesByModulePath = new Map<string, ContextDescriptor[]>();
+
+function typesOf(module: Module): ContextDescriptor[] {
+  let list = cachedTypesByModulePath.get(module.path);
+  if (list === undefined) {
+    list = [...enumerateTypes(module)];
+    cachedTypesByModulePath.set(module.path, list);
+  }
+  return list;
+}
+
+export function* swiftModules(): Generator<Module> {
+  yield* enumerateSwiftModules();
+}
+
+export function* swiftTypes(module?: Module): Generator<ContextDescriptor> {
+  if (module !== undefined) {
+    yield* typesOf(module);
+    return;
+  }
+  for (const m of enumerateSwiftModules()) {
+    yield* typesOf(m);
+  }
+}
+
 const resolved = new Map<string, ContextDescriptor>();
 
 export function findType(name: string): ContextDescriptor | null {
@@ -34,7 +60,7 @@ export function findType(name: string): ContextDescriptor | null {
   const moduleName = dot === -1 ? null : name.slice(0, dot);
 
   for (const module of enumerateSwiftModules()) {
-    for (const descriptor of enumerateTypes(module)) {
+    for (const descriptor of typesOf(module)) {
       if (descriptor.name !== simpleName) {
         continue;
       }

@@ -66,4 +66,42 @@ describe("registry", () => {
     requireSwift(skip);
     expect(Swift.findType("Swift.String")).not.toBeNull();
   });
+
+  test("Swift.modules() yields Swift-bearing modules", ({ skip }) => {
+    requireSwift(skip);
+    const names = new Set([...Swift.modules()].map((m) => m.name));
+    expect(names.has("libswiftCore.dylib")).toBeTruthy();
+  });
+
+  test("Swift.types(module) yields type-kind descriptors", ({ skip }) => {
+    requireSwift(skip);
+    const lib = Process.getModuleByName("libswiftCore.dylib");
+    let count = 0;
+    for (const descriptor of Swift.types(lib)) {
+      expect(descriptor.isType).toBeTruthy();
+      count++;
+    }
+    expect(count).toBeGreaterThan(0);
+  });
+
+  test("Swift.types() reflects modules loaded after first enumeration", ({ skip }) => {
+    requireSwift(skip);
+    [...Swift.modules()];
+    loadResilient(skip);
+    const names = new Set([...Swift.modules()].map((m) => m.name));
+    expect(names.has("resilient.dylib")).toBeTruthy();
+    const types = new Set([...Swift.types()].map((d) => d.fullTypeName));
+    expect(types.has("resilient.ResilientPoint")).toBeTruthy();
+  });
+
+  test("Swift.types(module) is memoized to a stable parse", ({ skip }) => {
+    requireSwift(skip);
+    const lib = Process.getModuleByName("libswiftCore.dylib");
+    const find = (name: string) =>
+      [...Swift.types(lib)].find((d) => d.fullTypeName === name) ?? null;
+    const first = find("Swift.Int");
+    const second = find("Swift.Int");
+    expect(first).not.toBeNull();
+    expect(first!.handle.equals(second!.handle)).toBeTruthy();
+  });
 });

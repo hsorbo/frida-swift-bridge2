@@ -1,6 +1,6 @@
 import { getSwiftCoreApi } from "./runtime/api.js";
 import { demangle } from "./runtime/demangle.js";
-import { findType } from "./reflection/registry.js";
+import { findType, swiftModules, swiftTypes } from "./reflection/registry.js";
 import { getMetadata, Metadata } from "./abi/metadata.js";
 import { buildGenericMetadata } from "./abi/generic-instantiation.js";
 import { typeName } from "./runtime/type-name.js";
@@ -26,6 +26,8 @@ export {
 export {
   enumerateSwiftModules,
   enumerateTypes,
+  swiftModules,
+  swiftTypes,
   findType,
 } from "./reflection/registry.js";
 export {
@@ -156,6 +158,8 @@ export const Swift = {
 
   demangle,
   findType,
+  modules: swiftModules,
+  types: swiftTypes,
 
   metadataFor(name: string, typeArguments: Metadata[] = []): Metadata | null {
     const descriptor = findType(name);
