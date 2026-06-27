@@ -218,7 +218,7 @@ public func unboxAnyInt(_ x: Any) -> Int { x as! Int }
 public func makeGreeterExistential() -> any Greeter { PoliteGreeter(name: "Ada") }
 public func greetExistential(_ g: any Greeter) -> String { g.greet() }
 
-// Method invocation: String/labelled/void/static methods, a class arg, an arity overload.
+// Method invocation: String/labelled/void/static methods, a class arg, an arity overload, a computed property.
 public final class Robot {
     public var name: String
     public init(name: String) { self.name = name }
@@ -228,6 +228,10 @@ public final class Robot {
     public func merged(with other: Robot) -> String { "\(name)+\(other.name)" }
     public func at(_ x: Int) -> Int { x }
     public func at(_ x: Int, _ y: Int) -> Int { x + y }
+    public var badge: String {
+        get { "[\(name)]" }
+        set { name = newValue }
+    }
 }
 
 public func anyType() -> UnsafeRawPointer { unsafeBitCast(Any.self, to: UnsafeRawPointer.self) }

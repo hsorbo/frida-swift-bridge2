@@ -39,8 +39,39 @@ interface MethodCandidate {
   signature: SwiftFunctionSignature;
 }
 
-const tableCache = new Map<string, MethodCandidate[]>();
+export type AccessorKind = "getter" | "setter";
+
+interface AccessorCandidate {
+  address: NativePointer;
+  member: string;
+  kind: AccessorKind;
+  typeName: string;
+}
+
+interface TypeMembers {
+  methods: MethodCandidate[];
+  accessors: AccessorCandidate[];
+}
+
+const tableCache = new Map<string, TypeMembers>();
 const invokerCache = new Map<string, SwiftNativeFunction>();
+
+function marshalArg(metadata: Metadata, value: SwiftValue): NativePointer {
+  const buffer = Memory.alloc(metadata.typeLayout.stride);
+  if (metadata.kind === MetadataKind.Class) {
+    buffer.writePointer(value as NativePointer);
+  } else {
+    writeValue(metadata, buffer, value);
+  }
+  return buffer;
+}
+
+function decodeReturn(returnType: Metadata | null, ret: NativePointer | null): SwiftValue {
+  if (returnType === null || ret === null) {
+    return null;
+  }
+  return readValue(returnType, ret);
+}
 
 function stripReceiverKeyword(context: string): { context: string; isStatic: boolean } {
   for (const keyword of ["static ", "class "]) {
@@ -67,8 +98,8 @@ function canonicalTypeName(typeName: string): string {
   return full;
 }
 
-// Misses methods defined in an extension in a different module than the type.
-function methodTable(fullName: string): MethodCandidate[] {
+// Misses members defined in an extension in a different module than the type.
+function typeMembers(fullName: string): TypeMembers {
   const cached = tableCache.get(fullName);
   if (cached !== undefined) {
     return cached;
@@ -78,28 +109,36 @@ function methodTable(fullName: string): MethodCandidate[] {
   if (module === null) {
     throw new Error(`no module owns ${fullName}`);
   }
-  const candidates: MethodCandidate[] = [];
+  const methods: MethodCandidate[] = [];
+  const accessors: AccessorCandidate[] = [];
   for (const e of module.enumerateExports()) {
     const demangled = demangle(e.name);
     if (demangled === null) {
       continue;
     }
     const signature = parseSwiftSignature(demangled);
-    if (signature === null || signature.kind !== "function") {
+    if (signature === null) {
       continue;
     }
-    const { context, isStatic } = stripReceiverKeyword(signature.context);
-    if (context !== fullName) {
-      continue;
+    if (signature.kind === "function") {
+      const { context, isStatic } = stripReceiverKeyword(signature.context);
+      if (context === fullName) {
+        methods.push({ address: e.address, name: signature.name, isStatic, signature });
+      }
+    } else if (signature.kind !== "modify") {
+      const { context } = stripReceiverKeyword(signature.context);
+      if (context === fullName) {
+        accessors.push({ address: e.address, member: signature.member, kind: signature.kind, typeName: signature.typeName });
+      }
     }
-    candidates.push({ address: e.address, name: signature.name, isStatic, signature });
   }
-  tableCache.set(fullName, candidates);
-  return candidates;
+  const members: TypeMembers = { methods, accessors };
+  tableCache.set(fullName, members);
+  return members;
 }
 
 export function enumerateMethods(typeName: string): MethodInfo[] {
-  return methodTable(canonicalTypeName(typeName)).map((c) => ({
+  return typeMembers(canonicalTypeName(typeName)).methods.map((c) => ({
     name: c.name,
     kind: methodKind(c.name),
     isStatic: c.isStatic,
@@ -117,7 +156,7 @@ export function resolveMethod(
   options: MethodResolveOptions = {}
 ): ResolvedMethod {
   const fullName = canonicalTypeName(typeName);
-  let candidates = methodTable(fullName).filter(
+  let candidates = typeMembers(fullName).methods.filter(
     (c) => c.name === methodName && c.signature.genericParams.length === 0
   );
   if (options.static !== undefined) {
@@ -191,20 +230,49 @@ export class BoundMethod {
     if (args.length !== argTypes.length) {
       throw new Error(`${this.resolved.selector} expects ${argTypes.length} argument(s), got ${args.length}`);
     }
-    const argPtrs = args.map((value, i) => {
-      const metadata = argTypes[i];
-      const buffer = Memory.alloc(metadata.typeLayout.stride);
-      if (metadata.kind === MetadataKind.Class) {
-        buffer.writePointer(value as NativePointer);
-      } else {
-        writeValue(metadata, buffer, value);
-      }
-      return buffer;
-    });
-    const ret = this.fn(this.self, ...argPtrs);
-    if (returnType === null || ret === null) {
-      return null;
-    }
-    return readValue(returnType, ret);
+    const argPtrs = args.map((value, i) => marshalArg(argTypes[i], value));
+    return decodeReturn(returnType, this.fn(this.self, ...argPtrs));
   }
+}
+
+interface ResolvedAccessor {
+  address: NativePointer;
+  type: Metadata;
+  kind: AccessorKind;
+}
+
+function resolveAccessor(typeName: string, member: string, kind: AccessorKind): ResolvedAccessor {
+  const fullName = canonicalTypeName(typeName);
+  const candidate = typeMembers(fullName).accessors.find((a) => a.member === member && a.kind === kind);
+  if (candidate === undefined) {
+    throw new Error(`no ${kind} for ${member} on ${fullName}`);
+  }
+  const type = resolveType(candidate.typeName);
+  if (type === null) {
+    throw new Error(`cannot resolve ${kind} type ${candidate.typeName} of ${fullName}.${member}`);
+  }
+  return { address: candidate.address, type, kind };
+}
+
+function invokerForAccessor(accessor: ResolvedAccessor): SwiftNativeFunction {
+  const key = accessor.address.toString();
+  let fn = invokerCache.get(key);
+  if (fn === undefined) {
+    fn =
+      accessor.kind === "getter"
+        ? makeSwiftNativeFunction(accessor.address, accessor.type, [], { hasSelf: true })
+        : makeSwiftNativeFunction(accessor.address, null, [accessor.type], { hasSelf: true });
+    invokerCache.set(key, fn);
+  }
+  return fn;
+}
+
+export function getProperty(self: NativePointer, typeName: string, member: string): SwiftValue {
+  const accessor = resolveAccessor(typeName, member, "getter");
+  return decodeReturn(accessor.type, invokerForAccessor(accessor)(self));
+}
+
+export function setProperty(self: NativePointer, typeName: string, member: string, value: SwiftValue): void {
+  const accessor = resolveAccessor(typeName, member, "setter");
+  invokerForAccessor(accessor)(self, marshalArg(accessor.type, value));
 }

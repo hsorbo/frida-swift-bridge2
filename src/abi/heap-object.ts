@@ -3,7 +3,13 @@ import { ClassMetadata, classMetadataOf, dynamicTypeOf } from "./class-metadata.
 import { enumerateClassInstanceFields, readObject, SwiftValue } from "./instance.js";
 import { Value } from "./value.js";
 import { getSwiftCoreApi } from "../runtime/api.js";
-import { BoundMethod, resolveMethod, MethodResolveOptions } from "../runtime/method.js";
+import {
+  BoundMethod,
+  resolveMethod,
+  MethodResolveOptions,
+  getProperty,
+  setProperty,
+} from "../runtime/method.js";
 
 export class HeapObject {
   constructor(readonly handle: NativePointer) {}
@@ -50,14 +56,26 @@ export class HeapObject {
   }
 
   method(name: string, options: MethodResolveOptions = {}): BoundMethod {
-    const typeName = this.metadata.description.fullTypeName;
-    if (typeName === null) {
-      throw new Error("HeapObject.method: class has no type name");
-    }
-    return new BoundMethod(resolveMethod(typeName, name, { ...options, static: false }), this.handle);
+    return new BoundMethod(resolveMethod(this.typeName, name, { ...options, static: false }), this.handle);
   }
 
   call(name: string, ...args: SwiftValue[]): SwiftValue {
     return this.method(name).call(...args);
+  }
+
+  get(name: string): SwiftValue {
+    return getProperty(this.handle, this.typeName, name);
+  }
+
+  set(name: string, value: SwiftValue): void {
+    setProperty(this.handle, this.typeName, name, value);
+  }
+
+  private get typeName(): string {
+    const name = this.metadata.description.fullTypeName;
+    if (name === null) {
+      throw new Error("HeapObject: class has no type name");
+    }
+    return name;
   }
 }

@@ -125,8 +125,11 @@ export {
   MethodKind,
   ResolvedMethod,
   MethodResolveOptions,
+  AccessorKind,
   resolveMethod,
   enumerateMethods,
+  getProperty,
+  setProperty,
 } from "./runtime/method.js";
 
 export const Swift = {

@@ -110,6 +110,28 @@ describe("HeapObject method invocation", () => {
   });
 });
 
+describe("HeapObject computed property", () => {
+  test("invokes a getter", ({ skip }) => {
+    loadFixture(skip);
+    const obj = robotType().init("R2");
+    expect(obj.get("badge")).toBe("[R2]");
+  });
+
+  test("invokes a setter, observable via getter and stored field", ({ skip }) => {
+    loadFixture(skip);
+    const obj = robotType().init("R2");
+    obj.set("badge", "D2");
+    expect(obj.field("name").get()).toBe("D2");
+    expect(obj.get("badge")).toBe("[D2]");
+  });
+
+  test("throws for an unknown property", ({ skip }) => {
+    loadFixture(skip);
+    const obj = robotType().init("R2");
+    expect(() => obj.get("nope")).toThrow();
+  });
+});
+
 describe("ClassType static invocation", () => {
   test("calls a static factory and wraps the class return", ({ skip }) => {
     loadFixture(skip);
