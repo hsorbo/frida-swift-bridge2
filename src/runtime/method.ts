@@ -1,4 +1,6 @@
-import { Metadata, MetadataKind } from "../abi/metadata.js";
+import { Metadata, MetadataKind, getMetadata } from "../abi/metadata.js";
+import { ContextDescriptorKind } from "../abi/context-descriptor.js";
+import { ClassMetadata } from "../abi/class-metadata.js";
 import { readValue, writeValue, SwiftValue } from "../abi/instance.js";
 import { findType } from "../reflection/registry.js";
 import { demangle } from "./demangle.js";
@@ -138,6 +140,26 @@ function canonicalTypeName(typeName: string): string {
   return full;
 }
 
+// typeMembers keys a method to its declaring class, so inherited ones need the superclass chain.
+// Most-derived first; non-class/generic types collapse to one level.
+function classChainNames(fullName: string): string[] {
+  const descriptor = findType(fullName);
+  if (descriptor === null || descriptor.kind !== ContextDescriptorKind.Class || descriptor.isGeneric) {
+    return [fullName];
+  }
+  const names: string[] = [];
+  let cls: ClassMetadata | null = new ClassMetadata(getMetadata(descriptor).handle);
+  while (cls !== null && cls.isTypeMetadata) {
+    const name = cls.description.fullTypeName;
+    if (name === null) {
+      break;
+    }
+    names.push(name);
+    cls = cls.superclass;
+  }
+  return names.length === 0 ? [fullName] : names;
+}
+
 // Misses members defined in an extension in a different module than the type.
 function typeMembers(fullName: string): TypeMembers {
   const cached = tableCache.get(fullName);
@@ -178,16 +200,28 @@ function typeMembers(fullName: string): TypeMembers {
 }
 
 export function enumerateMethods(typeName: string): MethodInfo[] {
-  return typeMembers(canonicalTypeName(typeName)).methods.map((c) => ({
-    name: c.name,
-    kind: methodKind(c.name),
-    isStatic: c.isStatic,
-    address: c.address,
-    argTypeNames: c.signature.argTypeNames,
-    argLabels: c.signature.argLabels,
-    returnTypeName: c.signature.returnTypeName,
-    selector: c.signature.selector,
-  }));
+  const seen = new Set<string>();
+  const methods: MethodInfo[] = [];
+  for (const className of classChainNames(canonicalTypeName(typeName))) {
+    for (const c of typeMembers(className).methods) {
+      const key = `${c.isStatic ? "s" : "i"}:${c.signature.selector}`;
+      if (seen.has(key)) {
+        continue;
+      }
+      seen.add(key);
+      methods.push({
+        name: c.name,
+        kind: methodKind(c.name),
+        isStatic: c.isStatic,
+        address: c.address,
+        argTypeNames: c.signature.argTypeNames,
+        argLabels: c.signature.argLabels,
+        returnTypeName: c.signature.returnTypeName,
+        selector: c.signature.selector,
+      });
+    }
+  }
+  return methods;
 }
 
 export function resolveMethod(
@@ -196,41 +230,43 @@ export function resolveMethod(
   options: MethodResolveOptions = {}
 ): ResolvedMethod {
   const fullName = canonicalTypeName(typeName);
-  const candidates = applyOverloadFilters(
-    typeMembers(fullName).methods.filter(
-      (c) => c.name === methodName && c.signature.genericParams.length === 0
-    ),
-    options
-  );
-
-  if (candidates.length === 0) {
-    throw new Error(`no method ${methodName} on ${fullName}`);
-  }
-  if (candidates.length > 1) {
-    const overloads = candidates
-      .map((c) => `${c.signature.selector} (${c.signature.argTypeNames.join(", ")})`)
-      .join(", ");
-    throw new Error(
-      `ambiguous method ${methodName} on ${fullName}: ${overloads} (disambiguate with { arity }, { labels }, or { argTypes })`
+  for (const className of classChainNames(fullName)) {
+    const candidates = applyOverloadFilters(
+      typeMembers(className).methods.filter(
+        (c) => c.name === methodName && c.signature.genericParams.length === 0
+      ),
+      options
     );
-  }
+    if (candidates.length === 0) {
+      continue;
+    }
+    if (candidates.length > 1) {
+      const overloads = candidates
+        .map((c) => `${c.signature.selector} (${c.signature.argTypeNames.join(", ")})`)
+        .join(", ");
+      throw new Error(
+        `ambiguous method ${methodName} on ${className}: ${overloads} (disambiguate with { arity }, { labels }, or { argTypes })`
+      );
+    }
 
-  const { address, isStatic, signature } = candidates[0];
-  const argTypes = signature.argTypeNames.map((name) => {
-    const metadata = resolveType(name);
-    if (metadata === null) {
-      throw new Error(`cannot resolve argument type ${name} of ${signature.selector}`);
+    const { address, isStatic, signature } = candidates[0];
+    const argTypes = signature.argTypeNames.map((name) => {
+      const metadata = resolveType(name);
+      if (metadata === null) {
+        throw new Error(`cannot resolve argument type ${name} of ${signature.selector}`);
+      }
+      return metadata;
+    });
+    let returnType: Metadata | null = null;
+    if (signature.returnTypeName !== null) {
+      returnType = resolveType(signature.returnTypeName);
+      if (returnType === null) {
+        throw new Error(`cannot resolve return type ${signature.returnTypeName} of ${signature.selector}`);
+      }
     }
-    return metadata;
-  });
-  let returnType: Metadata | null = null;
-  if (signature.returnTypeName !== null) {
-    returnType = resolveType(signature.returnTypeName);
-    if (returnType === null) {
-      throw new Error(`cannot resolve return type ${signature.returnTypeName} of ${signature.selector}`);
-    }
+    return { address, argTypes, returnType, throws: signature.throws, isStatic, selector: signature.selector };
   }
-  return { address, argTypes, returnType, throws: signature.throws, isStatic, selector: signature.selector };
+  throw new Error(`no method ${methodName} on ${fullName}`);
 }
 
 // Keyed by full signature, not bare address: an index invocation must not reuse a symbol-route

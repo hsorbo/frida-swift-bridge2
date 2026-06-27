@@ -1,4 +1,5 @@
 import { ContextDescriptor } from "./context-descriptor.js";
+import { ClassMetadata } from "./class-metadata.js";
 import { RelativeDirectPointer } from "../basic/relative-pointer.js";
 
 export enum MethodDescriptorKind {
@@ -11,15 +12,16 @@ export enum MethodDescriptorKind {
 }
 
 export interface VTableEntry {
-  index: number;
   kind: MethodDescriptorKind;
   isInstance: boolean;
   isDynamic: boolean;
-  impl: NativePointer;
+  declaredImpl: NativePointer;
+  metadataOffset: number; // VTableOffset + slot
 }
 
 // The override table follows the method descriptors, so it never shifts these; only a generic
 // header / resilient superclass / metadata-init would, hence the guard below.
+const OFFSETOF_VTABLE_OFFSET = 0x2c;
 const OFFSETOF_VTABLE_SIZE = 0x30;
 const OFFSETOF_METHOD_DESCRIPTORS = 0x34;
 const METHOD_DESCRIPTOR_SIZE = 8;
@@ -51,22 +53,35 @@ export function readVTable(descriptor: ContextDescriptor): VTableEntry[] {
   }
 
   const base = descriptor.handle;
+  const vtableOffset = base.add(OFFSETOF_VTABLE_OFFSET).readU32();
   const size = base.add(OFFSETOF_VTABLE_SIZE).readU32();
   const entries: VTableEntry[] = [];
   for (let i = 0; i < size; i++) {
     const md = base.add(OFFSETOF_METHOD_DESCRIPTORS + i * METHOD_DESCRIPTOR_SIZE);
-    const impl = RelativeDirectPointer.resolve(md.add(OFFSETOF_IMPL));
-    if (impl === null) {
+    const declaredImpl = RelativeDirectPointer.resolve(md.add(OFFSETOF_IMPL));
+    if (declaredImpl === null) {
       continue;
     }
     const flags = md.readU32();
     entries.push({
-      index: i,
       kind: flags & KIND_MASK,
       isInstance: (flags & IS_INSTANCE) !== 0,
       isDynamic: (flags & IS_DYNAMIC) !== 0,
-      impl,
+      declaredImpl,
+      metadataOffset: vtableOffset + i,
     });
+  }
+  return entries;
+}
+
+// A class's slots keep a fixed metadata offset in every subclass, so a base slot addresses the
+// override; overrides don't recur here (they live in the override table readVTable skips).
+export function readVTableChain(metadata: ClassMetadata): VTableEntry[] {
+  const entries: VTableEntry[] = [];
+  let cls: ClassMetadata | null = metadata;
+  while (cls !== null && cls.isTypeMetadata) {
+    entries.push(...readVTable(cls.description));
+    cls = cls.superclass;
   }
   return entries;
 }

@@ -65,6 +65,7 @@ export {
   MethodDescriptorKind,
   VTableEntry,
   readVTable,
+  readVTableChain,
 } from "./abi/class-descriptor.js";
 export {
   InstanceField,

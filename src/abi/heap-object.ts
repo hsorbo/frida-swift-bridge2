@@ -1,6 +1,6 @@
 import { Metadata } from "./metadata.js";
 import { ClassMetadata, classMetadataOf, dynamicTypeOf } from "./class-metadata.js";
-import { readVTable, VTableEntry } from "./class-descriptor.js";
+import { readVTableChain, VTableEntry } from "./class-descriptor.js";
 import { enumerateClassInstanceFields, readObject, SwiftValue } from "./instance.js";
 import { Value } from "./value.js";
 import { getSwiftCoreApi } from "../runtime/api.js";
@@ -73,21 +73,22 @@ export class HeapObject {
   }
 
   get vtable(): VTableEntry[] {
-    return readVTable(this.metadata.description);
+    return readVTableChain(this.metadata);
   }
 
-  vtableMethod(index: number, signature: VTableInvokeSignature): BoundMethod {
-    const entry = readVTable(this.metadata.description).find((e) => e.index === index);
+  vtableMethod(metadataOffset: number, signature: VTableInvokeSignature): BoundMethod {
+    const entry = this.vtable.find((e) => e.metadataOffset === metadataOffset);
     if (entry === undefined) {
-      throw new Error(`vtableMethod: no vtable entry at index ${index}`);
+      throw new Error(`vtableMethod: no vtable slot at metadata offset ${metadataOffset}`);
     }
+    const liveImpl = this.metadata.handle.add(metadataOffset * Process.pointerSize).readPointer();
     const resolved: ResolvedMethod = {
-      address: entry.impl,
+      address: liveImpl,
       argTypes: signature.argTypes,
       returnType: signature.returnType,
       throws: signature.throws ?? false,
       isStatic: !entry.isInstance,
-      selector: `#${index}`,
+      selector: `#${metadataOffset}`,
     };
     return new BoundMethod(resolved, this.handle);
   }

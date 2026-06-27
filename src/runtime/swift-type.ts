@@ -1,6 +1,6 @@
 import { Metadata, MetadataKind } from "../abi/metadata.js";
 import { ClassMetadata } from "../abi/class-metadata.js";
-import { readVTable, VTableEntry } from "../abi/class-descriptor.js";
+import { readVTableChain, VTableEntry } from "../abi/class-descriptor.js";
 import { Value } from "../abi/value.js";
 import { HeapObject } from "../abi/heap-object.js";
 import { writeValue, SwiftValue } from "../abi/instance.js";
@@ -85,7 +85,7 @@ export class ClassType extends SwiftType {
 
   get vtable(): VTableEntry[] {
     if (this.vtableEntries === null) {
-      this.vtableEntries = readVTable(new ClassMetadata(this.metadata.handle).description);
+      this.vtableEntries = readVTableChain(new ClassMetadata(this.metadata.handle));
     }
     return this.vtableEntries;
   }

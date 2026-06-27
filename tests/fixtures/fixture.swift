@@ -281,6 +281,18 @@ public class GenericHolder<T> {
     public func stored() -> Int { 0 }
 }
 
+// Inheritance + live polymorphic dispatch. Animal is non-final so speak/legs take vtable slots;
+// Cat overrides speak (filling Animal's slot in Cat's metadata) and inherits legs unchanged.
+public class Animal {
+    public init() {}
+    public func speak() -> Int { 1 }
+    public func legs() -> Int { 4 }
+}
+public final class Cat: Animal {
+    public override init() { super.init() }
+    public override func speak() -> Int { 9 }
+}
+
 public func anyType() -> UnsafeRawPointer { unsafeBitCast(Any.self, to: UnsafeRawPointer.self) }
 public func greeterType() -> UnsafeRawPointer { unsafeBitCast((any Greeter).self, to: UnsafeRawPointer.self) }
 public func greeterAgedType() -> UnsafeRawPointer { unsafeBitCast((any Greeter & Aged).self, to: UnsafeRawPointer.self) }
