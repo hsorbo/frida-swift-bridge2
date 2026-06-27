@@ -1,17 +1,25 @@
 import { Metadata } from "./metadata.js";
 import { ClassMetadata, classMetadataOf, dynamicTypeOf } from "./class-metadata.js";
+import { readVTable, VTableEntry } from "./class-descriptor.js";
 import { enumerateClassInstanceFields, readObject, SwiftValue } from "./instance.js";
 import { Value } from "./value.js";
 import { getSwiftCoreApi } from "../runtime/api.js";
 import {
   BoundMethod,
   GenericBoundMethod,
+  ResolvedMethod,
   resolveMethod,
   bindGenericMethod,
   MethodResolveOptions,
   getProperty,
   setProperty,
 } from "../runtime/method.js";
+
+interface VTableInvokeSignature {
+  returnType: Metadata | null;
+  argTypes: Metadata[];
+  throws?: boolean;
+}
 
 export class HeapObject {
   constructor(readonly handle: NativePointer) {}
@@ -62,6 +70,26 @@ export class HeapObject {
       return bindGenericMethod(this.typeName, name, this.handle, { ...options, static: false });
     }
     return new BoundMethod(resolveMethod(this.typeName, name, { ...options, static: false }), this.handle);
+  }
+
+  get vtable(): VTableEntry[] {
+    return readVTable(this.metadata.description);
+  }
+
+  vtableMethod(index: number, signature: VTableInvokeSignature): BoundMethod {
+    const entry = readVTable(this.metadata.description).find((e) => e.index === index);
+    if (entry === undefined) {
+      throw new Error(`vtableMethod: no vtable entry at index ${index}`);
+    }
+    const resolved: ResolvedMethod = {
+      address: entry.impl,
+      argTypes: signature.argTypes,
+      returnType: signature.returnType,
+      throws: signature.throws ?? false,
+      isStatic: !entry.isInstance,
+      selector: `#${index}`,
+    };
+    return new BoundMethod(resolved, this.handle);
   }
 
   call(name: string, ...args: SwiftValue[]): SwiftValue {

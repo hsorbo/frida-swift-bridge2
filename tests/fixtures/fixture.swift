@@ -268,6 +268,19 @@ public final class Robot {
     }
 }
 
+// Non-final so pub/hidden get vtable slots; hidden is internal (absent from the export trie).
+public class Dispatcher {
+    public init() {}
+    public func pub(_ x: Int) -> Int { x + 1 }
+    func hidden(_ x: Int) -> Int { x * 3 }
+}
+
+// Generic: trips readVTable's not-fixed-offset guard.
+public class GenericHolder<T> {
+    public init() {}
+    public func stored() -> Int { 0 }
+}
+
 public func anyType() -> UnsafeRawPointer { unsafeBitCast(Any.self, to: UnsafeRawPointer.self) }
 public func greeterType() -> UnsafeRawPointer { unsafeBitCast((any Greeter).self, to: UnsafeRawPointer.self) }
 public func greeterAgedType() -> UnsafeRawPointer { unsafeBitCast((any Greeter & Aged).self, to: UnsafeRawPointer.self) }

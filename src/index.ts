@@ -62,6 +62,11 @@ export {
   enumerateClassFields,
 } from "./abi/class-metadata.js";
 export {
+  MethodDescriptorKind,
+  VTableEntry,
+  readVTable,
+} from "./abi/class-descriptor.js";
+export {
   InstanceField,
   SwiftValue,
   enumerateInstanceFields,

@@ -1,5 +1,6 @@
 import { Metadata, MetadataKind } from "../abi/metadata.js";
 import { ClassMetadata } from "../abi/class-metadata.js";
+import { readVTable, VTableEntry } from "../abi/class-descriptor.js";
 import { Value } from "../abi/value.js";
 import { HeapObject } from "../abi/heap-object.js";
 import { writeValue, SwiftValue } from "../abi/instance.js";
@@ -80,6 +81,14 @@ export class EnumType extends ValueType {
 
 export class ClassType extends SwiftType {
   private initializer: { address: NativePointer; argTypes: Metadata[] } | null = null;
+  private vtableEntries: VTableEntry[] | null = null;
+
+  get vtable(): VTableEntry[] {
+    if (this.vtableEntries === null) {
+      this.vtableEntries = readVTable(new ClassMetadata(this.metadata.handle).description);
+    }
+    return this.vtableEntries;
+  }
 
   init(...args: SwiftValue[]): HeapObject {
     const { address, argTypes } = this.resolveInitializer();

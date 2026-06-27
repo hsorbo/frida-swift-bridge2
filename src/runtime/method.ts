@@ -233,8 +233,16 @@ export function resolveMethod(
   return { address, argTypes, returnType, throws: signature.throws, isStatic, selector: signature.selector };
 }
 
+// Keyed by full signature, not bare address: an index invocation must not reuse a symbol-route
+// invoker built for different types at the same impl.
+function instanceInvokerKey(resolved: ResolvedMethod): string {
+  const ret = resolved.returnType === null ? "v" : resolved.returnType.handle.toString();
+  const args = resolved.argTypes.map((t) => t.handle.toString()).join(",");
+  return `${resolved.address}|self|${ret}|${args}|${resolved.throws ? "t" : "n"}`;
+}
+
 function invokerFor(resolved: ResolvedMethod): SwiftNativeFunction {
-  const key = resolved.address.toString();
+  const key = instanceInvokerKey(resolved);
   let fn = invokerCache.get(key);
   if (fn === undefined) {
     fn = makeSwiftNativeFunction(resolved.address, resolved.returnType, resolved.argTypes, {
