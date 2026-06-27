@@ -21,6 +21,12 @@ export interface SwiftFunctionSignature {
   argLabels: (string | null)[]; // null = unlabelled
   returnTypeName: string | null;
   selector: string; // e.g. "greet(name:to:)"
+  conformanceRequirements: GenericRequirement[];
+}
+
+export interface GenericRequirement {
+  subject: string;
+  protocol: string;
 }
 
 export interface SwiftAccessorSignature {
@@ -122,7 +128,9 @@ function parseFunction(s: string): SwiftFunctionSignature | null {
   }
   const returnTypeName = tail.slice(arrow + 2).trim();
 
-  const { name, genericParams, simpleGenerics } = splitGenericClause(path.slice(dot + 1));
+  const { name, genericParams, simpleGenerics, conformanceRequirements } = splitGenericClause(
+    path.slice(dot + 1)
+  );
   const selector = `${name}(${argLabels.map((l) => `${l ?? "_"}:`).join("")})`;
 
   return {
@@ -136,6 +144,7 @@ function parseFunction(s: string): SwiftFunctionSignature | null {
     argLabels,
     returnTypeName: returnTypeName === "()" ? null : returnTypeName,
     selector,
+    conformanceRequirements,
   };
 }
 
@@ -143,10 +152,11 @@ function splitGenericClause(name: string): {
   name: string;
   genericParams: string[];
   simpleGenerics: boolean;
+  conformanceRequirements: GenericRequirement[];
 } {
   const lt = topLevelIndexOf(name, "<");
   if (lt === -1 || !name.endsWith(">")) {
-    return { name, genericParams: [], simpleGenerics: true };
+    return { name, genericParams: [], simpleGenerics: true, conformanceRequirements: [] };
   }
   const inner = name.slice(lt + 1, name.length - 1);
   const segments = splitTopLevel(inner, " where ");
@@ -157,7 +167,26 @@ function splitGenericClause(name: string): {
     name: name.slice(0, lt),
     genericParams: params.map((p) => p.split(/\s+/)[0]),
     simpleGenerics,
+    conformanceRequirements: parseConformanceRequirements(whereClause),
   };
+}
+
+function parseConformanceRequirements(whereClause: string): GenericRequirement[] {
+  if (whereClause === "") {
+    return [];
+  }
+  const requirements: GenericRequirement[] = [];
+  for (const clause of splitTopLevel(whereClause, ",")) {
+    const colon = topLevelIndexOf(clause, ":");
+    if (colon === -1) {
+      continue; // same-type (==) or layout requirement: no witness table
+    }
+    const subject = clause.slice(0, colon).trim();
+    for (const protocol of splitTopLevel(clause.slice(colon + 1), " & ")) {
+      requirements.push({ subject, protocol });
+    }
+  }
+  return requirements;
 }
 
 function argLabelAndType(item: string): { label: string | null; type: string } {

@@ -111,6 +111,7 @@ export { typeName } from "./runtime/type-name.js";
 export {
   SwiftSymbol,
   SwiftFunctionSignature,
+  GenericRequirement,
   SwiftAccessorSignature,
   ParsedSwiftSignature,
   ResolvedFunctionSignature,
@@ -128,10 +129,12 @@ export {
   MethodResolveOptions,
   ValueMethodResolveOptions,
   BoundValueMethod,
+  GenericBoundMethod,
   AccessorKind,
   resolveMethod,
   enumerateMethods,
   bindValueMethod,
+  bindGenericMethod,
   getProperty,
   setProperty,
 } from "./runtime/method.js";

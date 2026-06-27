@@ -126,6 +126,14 @@ public func scaleGeneric<T: Scalable>(_ x: T, by factor: Int) -> Int {
     return x.scaled(by: factor)
 }
 
+// Generic instance methods: self in x20, generic args indirect, type metadata + witness tables trail the args.
+public final class Box {
+    public init() {}
+    public func echo<T>(_ x: T) -> T { x }
+    public func pick<A, B>(_ a: A, _ b: B) -> A { a }
+    public func scaled<T: Scalable>(_ x: T, by k: Int) -> Int { x.scaled(by: k) }
+}
+
 public func makeScaleGeneric() -> Int {
     return scaleGeneric(6, by: 7)
 }

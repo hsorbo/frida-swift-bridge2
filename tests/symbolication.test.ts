@@ -82,7 +82,7 @@ describe("parseSwiftSignature", () => {
     expect(s.simpleGenerics).toBe(true);
   });
 
-  test("keeps a constrained generic simple and drops the where clause", () => {
+  test("keeps a constrained generic simple and captures its where-clause requirement", () => {
     const s = parseSwiftSignature(
       "fixture.scaleGeneric<A where A: fixture.Scalable>(_: A, by: Swift.Int) -> Swift.Int"
     ) as SwiftFunctionSignature;
@@ -90,6 +90,7 @@ describe("parseSwiftSignature", () => {
     expect(s.genericParams).toEqual(["A"]);
     expect(s.simpleGenerics).toBe(true);
     expect(s.argTypeNames).toEqual(["A", "Swift.Int"]);
+    expect(s.conformanceRequirements).toEqual([{ subject: "A", protocol: "fixture.Scalable" }]);
   });
 
   test("flags a same-type constraint as not simple", () => {

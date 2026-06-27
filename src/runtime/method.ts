@@ -3,8 +3,14 @@ import { readValue, writeValue, SwiftValue } from "../abi/instance.js";
 import { findType } from "../reflection/registry.js";
 import { demangle } from "./demangle.js";
 import { parseSwiftSignature, resolveType, SwiftFunctionSignature } from "./symbolication.js";
-import { makeSwiftNativeFunction, SwiftNativeFunction, shouldPassIndirectly } from "./calling-convention.js";
+import {
+  makeSwiftNativeFunction,
+  SwiftNativeFunction,
+  SwiftArgType,
+  shouldPassIndirectly,
+} from "./calling-convention.js";
 import { typeName } from "./type-name.js";
+import { findProtocol, conformsToProtocol } from "../abi/protocol-conformance.js";
 
 export type MethodKind = "method" | "init";
 
@@ -31,6 +37,8 @@ export interface ResolvedMethod {
 export interface MethodResolveOptions {
   arity?: number;
   static?: boolean;
+  typeArguments?: Metadata[]; // present ⇒ resolve a generic method; one entry per generic parameter
+  witnessTables?: NativePointer[]; // overrides the witnesses auto-resolved from the where-clause
 }
 
 // mutating is unrecoverable from the symbol; the caller supplies it. It only changes self routing
@@ -298,6 +306,114 @@ export function bindValueMethod(
 ): BoundValueMethod {
   const resolved = resolveMethod(typeName(receiver), name, options);
   return new BoundValueMethod(resolved, receiver, self, options.mutating === true);
+}
+
+type ArgPlan = { generic: true; index: number; metadata: Metadata } | { generic: false; metadata: Metadata };
+
+function planGenericType(name: string, genericParams: string[], typeArguments: Metadata[]): ArgPlan {
+  const index = genericParams.indexOf(name);
+  if (index !== -1) {
+    const metadata = typeArguments[index];
+    if (metadata === undefined) {
+      throw new Error(`missing type argument for generic parameter ${name}`);
+    }
+    return { generic: true, index, metadata };
+  }
+  const metadata = resolveType(name);
+  if (metadata === null) {
+    throw new Error(`unsupported generic signature type ${name} (only bare parameters and concrete types are supported)`);
+  }
+  return { generic: false, metadata };
+}
+
+function swiftArgType(plan: ArgPlan): SwiftArgType {
+  return plan.generic ? { genericParam: plan.index } : plan.metadata;
+}
+
+function autoWitnessTables(
+  signature: SwiftFunctionSignature,
+  typeArguments: Metadata[]
+): NativePointer[] {
+  return signature.conformanceRequirements.map((req) => {
+    const index = signature.genericParams.indexOf(req.subject);
+    const protocol = index === -1 ? null : findProtocol(req.protocol);
+    if (protocol === null) {
+      throw new Error(`cannot resolve protocol ${req.protocol} for requirement ${req.subject}`);
+    }
+    const witnessTable = conformsToProtocol(typeArguments[index], protocol);
+    if (witnessTable === null) {
+      throw new Error(`${typeName(typeArguments[index])} does not conform to ${req.protocol}`);
+    }
+    return witnessTable;
+  });
+}
+
+export class GenericBoundMethod {
+  private readonly fn: SwiftNativeFunction;
+
+  constructor(
+    private readonly argPlans: ArgPlan[],
+    private readonly returnPlan: ArgPlan | null,
+    readonly address: NativePointer,
+    readonly selector: string,
+    private readonly self: NativePointer,
+    throws: boolean,
+    typeArguments: Metadata[],
+    witnessTables: NativePointer[]
+  ) {
+    this.fn = makeSwiftNativeFunction(
+      address,
+      returnPlan === null ? null : swiftArgType(returnPlan),
+      argPlans.map(swiftArgType),
+      { hasSelf: true, throws, typeArguments, witnessTables }
+    );
+  }
+
+  call(...args: SwiftValue[]): SwiftValue {
+    if (args.length !== this.argPlans.length) {
+      throw new Error(`${this.selector} expects ${this.argPlans.length} argument(s), got ${args.length}`);
+    }
+    const argPtrs = args.map((value, i) => marshalArg(this.argPlans[i].metadata, value));
+    return decodeReturn(this.returnPlan?.metadata ?? null, this.fn(this.self, ...argPtrs));
+  }
+}
+
+export function bindGenericMethod(
+  typeName: string,
+  methodName: string,
+  self: NativePointer,
+  options: MethodResolveOptions = {}
+): GenericBoundMethod {
+  const typeArguments = options.typeArguments ?? [];
+  const fullName = canonicalTypeName(typeName);
+  let candidates = typeMembers(fullName).methods.filter(
+    (c) => c.name === methodName && c.signature.genericParams.length > 0 && c.signature.simpleGenerics
+  );
+  if (options.static !== undefined) {
+    candidates = candidates.filter((c) => c.isStatic === options.static);
+  }
+  if (options.arity !== undefined) {
+    candidates = candidates.filter((c) => c.signature.argTypeNames.length === options.arity);
+  }
+  if (candidates.length === 0) {
+    throw new Error(`no generic method ${methodName} on ${fullName}`);
+  }
+  if (candidates.length > 1) {
+    const selectors = candidates.map((c) => c.signature.selector).join(", ");
+    throw new Error(`ambiguous generic method ${methodName} on ${fullName}: ${selectors} (disambiguate with { arity })`);
+  }
+
+  const { address, signature } = candidates[0];
+  if (typeArguments.length !== signature.genericParams.length) {
+    throw new Error(`${signature.selector} needs ${signature.genericParams.length} type argument(s), got ${typeArguments.length}`);
+  }
+  const argPlans = signature.argTypeNames.map((n) => planGenericType(n, signature.genericParams, typeArguments));
+  const returnPlan =
+    signature.returnTypeName === null
+      ? null
+      : planGenericType(signature.returnTypeName, signature.genericParams, typeArguments);
+  const witnessTables = options.witnessTables ?? autoWitnessTables(signature, typeArguments);
+  return new GenericBoundMethod(argPlans, returnPlan, address, signature.selector, self, signature.throws, typeArguments, witnessTables);
 }
 
 interface ResolvedAccessor {

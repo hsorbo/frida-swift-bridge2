@@ -5,7 +5,9 @@ import { Value } from "./value.js";
 import { getSwiftCoreApi } from "../runtime/api.js";
 import {
   BoundMethod,
+  GenericBoundMethod,
   resolveMethod,
+  bindGenericMethod,
   MethodResolveOptions,
   getProperty,
   setProperty,
@@ -55,7 +57,10 @@ export class HeapObject {
     return readObject(this.handle);
   }
 
-  method(name: string, options: MethodResolveOptions = {}): BoundMethod {
+  method(name: string, options: MethodResolveOptions = {}): BoundMethod | GenericBoundMethod {
+    if (options.typeArguments !== undefined) {
+      return bindGenericMethod(this.typeName, name, this.handle, { ...options, static: false });
+    }
     return new BoundMethod(resolveMethod(this.typeName, name, { ...options, static: false }), this.handle);
   }
 
