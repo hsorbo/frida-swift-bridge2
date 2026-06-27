@@ -46,10 +46,18 @@ describe("writeValue", () => {
     expect(roundTrip(Swift.metadataFor("fixture.Pick")).write("empty")).toBe("empty");
   });
 
-  test("rejects a non-constructible primitive", ({ skip }) => {
+  test("constructs a String from a JS literal", ({ skip }) => {
     requireSwift(skip);
     const String_ = Swift.metadataFor("Swift.String")!;
-    expect(() => writeValue(String_, Memory.alloc(String_.typeLayout.stride), "hi")).toThrow();
+    const storage = Memory.alloc(String_.typeLayout.stride);
+    writeValue(String_, storage, "hi");
+    expect(readValue(String_, storage)).toBe("hi");
+  });
+
+  test("rejects an unsupported metadata kind", ({ skip }) => {
+    loadFixture(skip);
+    const Counter = Swift.metadataFor("fixture.Counter")!;
+    expect(() => writeValue(Counter, Memory.alloc(Counter.typeLayout.stride), ptr(0))).toThrow();
   });
 
   test("writes into a freshly allocated box", ({ skip }) => {

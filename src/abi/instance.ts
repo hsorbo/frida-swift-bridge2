@@ -1,7 +1,7 @@
 import { Metadata, MetadataKind } from "./metadata.js";
 import { enumerateFields, fieldTypeIn, resolveFieldType } from "./field-descriptor.js";
 import { readEnumCase, projectEnumData, projectBox, injectEnumTag } from "./enum.js";
-import { readString } from "./string.js";
+import { readString, writeString } from "./string.js";
 import {
   existentialRepresentation,
   projectOpaqueExistential,
@@ -59,6 +59,7 @@ const PRIMITIVE_WRITERS: { [typeName: string]: (p: NativePointer, v: SwiftValue)
   "Swift.Bool": (p, v) => p.writeU8(v ? 1 : 0),
   "Swift.Double": (p, v) => p.writeDouble(v as number),
   "Swift.Float": (p, v) => p.writeFloat(v as number),
+  "Swift.String": (p, v) => writeString(p, v as string),
   "Swift.UnsafeRawPointer": (p, v) => p.writePointer(v as NativePointer),
   "Swift.UnsafeMutableRawPointer": (p, v) => p.writePointer(v as NativePointer),
   "Swift.OpaquePointer": (p, v) => p.writePointer(v as NativePointer),
@@ -72,9 +73,6 @@ export function writeValue(metadata: Metadata, address: NativePointer, value: Sw
       if (writer !== undefined) {
         writer(address, value);
         return;
-      }
-      if (name in PRIMITIVE_READERS) {
-        throw new Error(`writeValue: ${name} is not constructible from a JS literal`);
       }
       const fields = value as { [field: string]: SwiftValue };
       for (const field of enumerateInstanceFields(metadata, address)) {

@@ -1,4 +1,7 @@
 import { objcUTF8String } from "../runtime/objc.js";
+import { findType } from "../reflection/registry.js";
+import { getMetadata } from "./metadata.js";
+import { makeSwiftNativeFunction, SwiftNativeFunction } from "../runtime/calling-convention.js";
 
 const DISCRIMINATOR_OFFSET = 15;
 const IS_SMALL = 0x20;
@@ -29,4 +32,52 @@ export function readString(address: NativePointer): string | null {
     ? largeAddress.add(NATIVE_BIAS)
     : largeAddress.add(SHARED_STORAGE_START).readPointer();
   return start.readUtf8String(count);
+}
+
+const STRING_STRIDE = Process.pointerSize * 2;
+const MAX_UTF8_BYTES_PER_UTF16_UNIT = 3;
+const CSTRING_INIT = "$sSS7cStringSSSPys5UInt8VG_tcfC"; // Swift.String.init(cString:)
+
+let cStringInit: { fn: SwiftNativeFunction; metatype: NativePointer } | null = null;
+
+function stringInitializer(): { fn: SwiftNativeFunction; metatype: NativePointer } {
+  if (cStringInit !== null) {
+    return cStringInit;
+  }
+  const core = Process.findModuleByName("libswiftCore.dylib");
+  if (core === null) {
+    throw new Error("libswiftCore.dylib is not loaded");
+  }
+  const address = core.findExportByName(CSTRING_INIT) ?? core.findExportByName(`_${CSTRING_INIT}`);
+  if (address === null) {
+    throw new Error(`String initializer not found: ${CSTRING_INIT}`);
+  }
+  const stringType = findType("Swift.String");
+  const pointerType = findType("Swift.UnsafeRawPointer");
+  if (stringType === null || pointerType === null) {
+    throw new Error("cannot resolve Swift.String / Swift.UnsafeRawPointer metadata");
+  }
+  const stringMetadata = getMetadata(stringType);
+  const fn = makeSwiftNativeFunction(address, stringMetadata, [getMetadata(pointerType)], {
+    hasSelf: true,
+  });
+  cStringInit = { fn, metatype: stringMetadata.handle };
+  return cStringInit;
+}
+
+export function createString(text: string): NativePointer {
+  if (typeof text !== "string") {
+    throw new Error(`createString: expected a string, got ${typeof text}`);
+  }
+  const { fn, metatype } = stringInitializer();
+  const utf8 = Memory.alloc(text.length * MAX_UTF8_BYTES_PER_UTF16_UNIT + 1);
+  utf8.writeUtf8String(text);
+  const arg = Memory.alloc(Process.pointerSize);
+  arg.writePointer(utf8);
+  return fn(metatype, arg)!;
+}
+
+// String is bitwise-takable, so copying its bytes moves the +1 result into place.
+export function writeString(dest: NativePointer, text: string): void {
+  Memory.copy(dest, createString(text), STRING_STRIDE);
 }
