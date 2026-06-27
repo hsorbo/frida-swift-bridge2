@@ -7,6 +7,7 @@ import { typeName } from "./runtime/type-name.js";
 import { symbolicate, parseSwiftSignature } from "./runtime/symbolication.js";
 import { SwiftInterceptor } from "./runtime/interceptor.js";
 import { SwiftType, typeOf } from "./runtime/swift-type.js";
+import { createObject } from "./runtime/object-facade.js";
 
 export { isSwiftSymbol, demangle } from "./runtime/demangle.js";
 export {
@@ -131,6 +132,7 @@ export {
   getProperty,
   setProperty,
 } from "./runtime/method.js";
+export { SwiftObject, createObject } from "./runtime/object-facade.js";
 
 export const Swift = {
   get available(): boolean {
@@ -166,4 +168,5 @@ export const Swift = {
   symbolicate,
   parseSignature: parseSwiftSignature,
   Interceptor: SwiftInterceptor,
+  Object: createObject,
 };
