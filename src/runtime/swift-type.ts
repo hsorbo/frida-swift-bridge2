@@ -6,6 +6,13 @@ import { writeValue, SwiftValue } from "../abi/instance.js";
 import { enumerateFields, fieldTypeIn } from "../abi/field-descriptor.js";
 import { makeSwiftNativeFunction } from "./calling-convention.js";
 import { parseSwiftSignature, resolveType } from "./symbolication.js";
+import {
+  BoundMethod,
+  MethodInfo,
+  MethodResolveOptions,
+  enumerateMethods,
+  resolveMethod,
+} from "./method.js";
 import { demangle } from "./demangle.js";
 import { typeName } from "./type-name.js";
 import { getSwiftCoreApi } from "./api.js";
@@ -20,6 +27,10 @@ export class SwiftType {
 
   get name(): string {
     return typeName(this.metadata);
+  }
+
+  get methods(): MethodInfo[] {
+    return enumerateMethods(this.name);
   }
 }
 
@@ -74,6 +85,25 @@ export class ClassType extends SwiftType {
       cls.instanceAlignment - 1
     );
     return new HeapObject(object);
+  }
+
+  method(name: string, options: MethodResolveOptions = {}): BoundMethod {
+    return new BoundMethod(
+      resolveMethod(this.fullName, name, { ...options, static: true }),
+      this.metadata.handle
+    );
+  }
+
+  call(name: string, ...args: SwiftValue[]): SwiftValue {
+    return this.method(name).call(...args);
+  }
+
+  private get fullName(): string {
+    const name = new ClassMetadata(this.metadata.handle).description.fullTypeName;
+    if (name === null) {
+      throw new Error("class has no type name");
+    }
+    return name;
   }
 
   private resolveInitializer(): { address: NativePointer; argTypes: Metadata[] } {

@@ -3,6 +3,7 @@ import { ClassMetadata, classMetadataOf, dynamicTypeOf } from "./class-metadata.
 import { enumerateClassInstanceFields, readObject, SwiftValue } from "./instance.js";
 import { Value } from "./value.js";
 import { getSwiftCoreApi } from "../runtime/api.js";
+import { BoundMethod, resolveMethod, MethodResolveOptions } from "../runtime/method.js";
 
 export class HeapObject {
   constructor(readonly handle: NativePointer) {}
@@ -46,5 +47,17 @@ export class HeapObject {
 
   read(): { [field: string]: SwiftValue } {
     return readObject(this.handle);
+  }
+
+  method(name: string, options: MethodResolveOptions = {}): BoundMethod {
+    const typeName = this.metadata.description.fullTypeName;
+    if (typeName === null) {
+      throw new Error("HeapObject.method: class has no type name");
+    }
+    return new BoundMethod(resolveMethod(typeName, name, { ...options, static: false }), this.handle);
+  }
+
+  call(name: string, ...args: SwiftValue[]): SwiftValue {
+    return this.method(name).call(...args);
   }
 }

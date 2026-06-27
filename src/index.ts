@@ -119,6 +119,15 @@ export {
   resolveType,
 } from "./runtime/symbolication.js";
 export { SwiftInterceptor, SwiftInvocationCallbacks } from "./runtime/interceptor.js";
+export {
+  BoundMethod,
+  MethodInfo,
+  MethodKind,
+  ResolvedMethod,
+  MethodResolveOptions,
+  resolveMethod,
+  enumerateMethods,
+} from "./runtime/method.js";
 
 export const Swift = {
   get available(): boolean {

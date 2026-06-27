@@ -218,6 +218,18 @@ public func unboxAnyInt(_ x: Any) -> Int { x as! Int }
 public func makeGreeterExistential() -> any Greeter { PoliteGreeter(name: "Ada") }
 public func greetExistential(_ g: any Greeter) -> String { g.greet() }
 
+// Method invocation: String/labelled/void/static methods, a class arg, an arity overload.
+public final class Robot {
+    public var name: String
+    public init(name: String) { self.name = name }
+    public func greet(_ who: String) -> String { "Hello \(who), I am \(name)" }
+    public func rename(to newName: String) { name = newName }
+    public static func make(name: String) -> Robot { Robot(name: name) }
+    public func merged(with other: Robot) -> String { "\(name)+\(other.name)" }
+    public func at(_ x: Int) -> Int { x }
+    public func at(_ x: Int, _ y: Int) -> Int { x + y }
+}
+
 public func anyType() -> UnsafeRawPointer { unsafeBitCast(Any.self, to: UnsafeRawPointer.self) }
 public func greeterType() -> UnsafeRawPointer { unsafeBitCast((any Greeter).self, to: UnsafeRawPointer.self) }
 public func namedType() -> UnsafeRawPointer { unsafeBitCast((any Named).self, to: UnsafeRawPointer.self) }

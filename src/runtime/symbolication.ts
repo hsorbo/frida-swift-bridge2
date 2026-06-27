@@ -18,7 +18,9 @@ export interface SwiftFunctionSignature {
   simpleGenerics: boolean;
   throws: boolean;
   argTypeNames: string[];
+  argLabels: (string | null)[]; // null = unlabelled
   returnTypeName: string | null;
+  selector: string; // e.g. "greet(name:to:)"
 }
 
 export interface SwiftAccessorSignature {
@@ -109,7 +111,9 @@ function parseFunction(s: string): SwiftFunctionSignature | null {
   }
 
   const inner = s.slice(open + 1, close);
-  const argTypeNames = splitTopLevel(inner, ",").map(argType);
+  const parsedArgs = splitTopLevel(inner, ",").map(argLabelAndType);
+  const argTypeNames = parsedArgs.map((a) => a.type);
+  const argLabels = parsedArgs.map((a) => a.label);
 
   const tail = s.slice(close + 1);
   const arrow = tail.indexOf("->");
@@ -119,6 +123,7 @@ function parseFunction(s: string): SwiftFunctionSignature | null {
   const returnTypeName = tail.slice(arrow + 2).trim();
 
   const { name, genericParams, simpleGenerics } = splitGenericClause(path.slice(dot + 1));
+  const selector = `${name}(${argLabels.map((l) => `${l ?? "_"}:`).join("")})`;
 
   return {
     kind: "function",
@@ -128,7 +133,9 @@ function parseFunction(s: string): SwiftFunctionSignature | null {
     simpleGenerics,
     throws: /\bthrows\b/.test(tail.slice(0, arrow)),
     argTypeNames,
+    argLabels,
     returnTypeName: returnTypeName === "()" ? null : returnTypeName,
+    selector,
   };
 }
 
@@ -153,9 +160,13 @@ function splitGenericClause(name: string): {
   };
 }
 
-function argType(item: string): string {
+function argLabelAndType(item: string): { label: string | null; type: string } {
   const colon = topLevelIndexOf(item, ": ");
-  return (colon === -1 ? item : item.slice(colon + 2)).trim();
+  if (colon === -1) {
+    return { label: null, type: item.trim() };
+  }
+  const label = item.slice(0, colon).trim();
+  return { label: label === "_" ? null : label, type: item.slice(colon + 2).trim() };
 }
 
 export function resolveFunctionSignature(
