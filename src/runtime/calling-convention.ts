@@ -68,10 +68,20 @@ export interface GenericRef {
   genericParam: number;
 }
 
-export type SwiftArgType = Metadata | GenericRef;
+// Concrete value the generic callee treats as address-only (e.g. Optional<T>): lowered indirect.
+export interface AbstractIndirect {
+  metadata: Metadata;
+  addressOnly: true;
+}
+
+export type SwiftArgType = Metadata | GenericRef | AbstractIndirect;
 
 function isGenericRef(arg: SwiftArgType): arg is GenericRef {
-  return !(arg instanceof Metadata);
+  return !(arg instanceof Metadata) && "genericParam" in arg;
+}
+
+function isAbstractIndirect(arg: SwiftArgType): arg is AbstractIndirect {
+  return !(arg instanceof Metadata) && "addressOnly" in arg;
 }
 
 interface LoweredArg {
@@ -81,7 +91,7 @@ interface LoweredArg {
 }
 
 function lowerArg(arg: SwiftArgType): LoweredArg {
-  if (isGenericRef(arg)) {
+  if (isGenericRef(arg) || isAbstractIndirect(arg)) {
     return { indirect: true, float: null, words: 0 };
   }
   const float = floatLayout(arg);
@@ -124,7 +134,9 @@ export function makeSwiftNativeFunction(
   const typeArguments = options.typeArguments ?? [];
   const witnessTables = options.witnessTables ?? [];
   const consumed = new Set(options.consumedArgs ?? []);
-  const argMetadata = argTypes.map((a) => (a instanceof Metadata ? a : null));
+  const argMetadata = argTypes.map((a) =>
+    a instanceof Metadata ? a : isAbstractIndirect(a) ? a.metadata : null
+  );
   const typeArgumentFor = (ref: GenericRef): Metadata => {
     const metadata = typeArguments[ref.genericParam];
     if (metadata === undefined) {
@@ -159,13 +171,17 @@ export function makeSwiftNativeFunction(
   let resultSize = 0;
   let resultStride = 0;
   if (returnType !== null) {
-    const genericReturn = isGenericRef(returnType);
-    const returnMetadata = genericReturn ? typeArgumentFor(returnType) : returnType;
+    const forcedIndirect = isGenericRef(returnType) || isAbstractIndirect(returnType);
+    const returnMetadata = isGenericRef(returnType)
+      ? typeArgumentFor(returnType)
+      : isAbstractIndirect(returnType)
+        ? returnType.metadata
+        : returnType;
     resultSize = returnMetadata.valueWitnesses.size;
     resultStride = returnMetadata.valueWitnesses.stride;
     if (resultSize > 0) {
-      if (genericReturn) {
-        indirectResult = true; // generic return: indirect regardless of size
+      if (forcedIndirect) {
+        indirectResult = true; // generic / address-only return: indirect regardless of size
       } else {
         floatResult = floatLayout(returnMetadata);
         if (floatResult !== null) {

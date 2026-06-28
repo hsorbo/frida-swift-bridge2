@@ -7,7 +7,7 @@ import { Value } from "../abi/value.js";
 import { readValue, writeValue, containsClassReference, SwiftValue } from "../abi/instance.js";
 import { findType } from "../reflection/registry.js";
 import { demangle } from "./demangle.js";
-import { parseSwiftSignature, resolveType, SwiftFunctionSignature } from "./symbolication.js";
+import { parseSwiftSignature, resolveType, resolveTypeExpr, SwiftFunctionSignature } from "./symbolication.js";
 import {
   makeSwiftNativeFunction,
   SwiftNativeFunction,
@@ -454,7 +454,10 @@ export function bindValueMethod(
   return new BoundValueMethod(resolved, receiver, self, options.mutating === true);
 }
 
-type ArgPlan = { generic: true; index: number; metadata: Metadata } | { generic: false; metadata: Metadata };
+type ArgPlan =
+  | { kind: "generic"; index: number; metadata: Metadata }
+  | { kind: "concrete"; metadata: Metadata }
+  | { kind: "abstractIndirect"; metadata: Metadata };
 
 function planGenericType(name: string, genericParams: string[], typeArguments: Metadata[]): ArgPlan {
   const index = genericParams.indexOf(name);
@@ -463,17 +466,67 @@ function planGenericType(name: string, genericParams: string[], typeArguments: M
     if (metadata === undefined) {
       throw new Error(`missing type argument for generic parameter ${name}`);
     }
-    return { generic: true, index, metadata };
+    return { kind: "generic", index, metadata };
   }
-  const metadata = resolveType(name);
+  const concrete = resolveType(name);
+  if (concrete !== null) {
+    return { kind: "concrete", metadata: concrete };
+  }
+  return planCompoundType(name, genericParams, typeArguments);
+}
+
+function planCompoundType(expr: string, genericParams: string[], typeArguments: Metadata[]): ArgPlan {
+  const metadata = resolveTypeExpr(expr, (name) => {
+    const i = genericParams.indexOf(name);
+    return i === -1 ? null : typeArguments[i] ?? null;
+  });
   if (metadata === null) {
-    throw new Error(`unsupported generic signature type ${name} (only bare parameters and concrete types are supported)`);
+    throw new Error(`cannot resolve generic signature type ${expr}`);
   }
-  return { generic: false, metadata };
+  return compoundIsAddressOnly(expr, genericParams)
+    ? { kind: "abstractIndirect", metadata }
+    : { kind: "concrete", metadata };
+}
+
+// Accepts the demangler's desugared spelling (Swift.Array<A>) and the sugared one ([A]). Array/Set/
+// Dictionary are a fixed-layout buffer (direct); Optional<param> embeds the abstract param (indirect).
+function compoundIsAddressOnly(expr: string, genericParams: string[]): boolean {
+  const t = expr.trim();
+  if (t.endsWith("?") || t.endsWith("!")) {
+    return optionalIsAddressOnly(t.slice(0, -1), genericParams, expr);
+  }
+  if (t.startsWith("[") && t.endsWith("]")) {
+    return false;
+  }
+  const lt = t.indexOf("<");
+  if (lt !== -1 && t.endsWith(">")) {
+    const base = t.slice(0, lt);
+    if (base === "Swift.Array" || base === "Swift.Dictionary" || base === "Swift.Set") {
+      return false;
+    }
+    if (base === "Swift.Optional") {
+      return optionalIsAddressOnly(t.slice(lt + 1, -1), genericParams, expr);
+    }
+  }
+  throw new Error(`unsupported compound generic signature type ${expr} (only [T], [K: V] and T? are supported)`);
+}
+
+function optionalIsAddressOnly(payload: string, genericParams: string[], expr: string): boolean {
+  if (genericParams.includes(payload.trim())) {
+    return true;
+  }
+  throw new Error(`unsupported compound generic signature type ${expr} (Optional payload must be a generic parameter)`);
 }
 
 function swiftArgType(plan: ArgPlan): SwiftArgType {
-  return plan.generic ? { genericParam: plan.index } : plan.metadata;
+  switch (plan.kind) {
+    case "generic":
+      return { genericParam: plan.index };
+    case "concrete":
+      return plan.metadata;
+    case "abstractIndirect":
+      return { metadata: plan.metadata, addressOnly: true };
+  }
 }
 
 function autoWitnessTables(
