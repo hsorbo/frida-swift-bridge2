@@ -3,7 +3,8 @@ import { ContextDescriptorKind } from "../abi/context-descriptor.js";
 import { ClassMetadata } from "../abi/class-metadata.js";
 import { HeapObject } from "../abi/heap-object.js";
 import { createObject, SwiftObject } from "./object-facade.js";
-import { readValue, writeValue, SwiftValue } from "../abi/instance.js";
+import { Value } from "../abi/value.js";
+import { readValue, writeValue, containsClassReference, SwiftValue } from "../abi/instance.js";
 import { findType } from "../reflection/registry.js";
 import { demangle } from "./demangle.js";
 import { parseSwiftSignature, resolveType, SwiftFunctionSignature } from "./symbolication.js";
@@ -18,7 +19,7 @@ import { findProtocol, conformsToProtocol } from "../abi/protocol-conformance.js
 
 export type MethodKind = "method" | "init";
 
-export type CallResult = SwiftValue | SwiftObject;
+export type CallResult = SwiftValue | SwiftObject | Value;
 
 export interface MethodInfo {
   name: string;
@@ -89,13 +90,17 @@ function marshalArg(metadata: Metadata, value: SwiftValue): NativePointer {
   return buffer;
 }
 
-// Returns are +1: adopt a class, destroy a read non-POD value's temp; POD owns nothing.
+// Returns are +1: adopt a class; destroy a read non-POD temp; POD owns nothing. A value embedding a
+// class ref would dangle on that destroy, so hand back an owned Value (deferred destroy) instead.
 function decodeReturn(returnType: Metadata | null, ret: NativePointer | null): CallResult {
   if (returnType === null || ret === null) {
     return null;
   }
   if (returnType.kind === MetadataKind.Class) {
     return createObject(HeapObject.adopt(ret.readPointer()));
+  }
+  if (!returnType.valueWitnesses.isPOD && containsClassReference(returnType)) {
+    return Value.adopt(returnType, ret);
   }
   const value = readValue(returnType, ret);
   if (!returnType.valueWitnesses.isPOD) {

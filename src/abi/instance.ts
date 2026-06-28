@@ -153,6 +153,39 @@ export function readValue(metadata: Metadata, address: NativePointer): SwiftValu
   }
 }
 
+const classRefCache = new Map<string, boolean>();
+
+// Mirrors readValue: true iff a class ref is reachable as a raw pointer (String et al. deep-copy, excluded).
+export function containsClassReference(metadata: Metadata): boolean {
+  if (metadata.kind === MetadataKind.Class) {
+    return true;
+  }
+  const isStruct = metadata.kind === MetadataKind.Struct;
+  const isEnum = metadata.kind === MetadataKind.Enum || metadata.kind === MetadataKind.Optional;
+  if (!isStruct && !isEnum) {
+    return false;
+  }
+  if (isStruct && PRIMITIVE_READERS[metadata.description.fullTypeName ?? ""] !== undefined) {
+    return false;
+  }
+  const key = metadata.handle.toString();
+  const cached = classRefCache.get(key);
+  if (cached !== undefined) {
+    return cached;
+  }
+  classRefCache.set(key, false); // break recursive-type cycles
+  let result = false;
+  for (const field of enumerateFields(metadata.description)) {
+    const fieldType = fieldTypeIn(metadata, field);
+    if (fieldType !== null && containsClassReference(fieldType)) {
+      result = true;
+      break;
+    }
+  }
+  classRefCache.set(key, result);
+  return result;
+}
+
 function readExistential(metadata: Metadata, address: NativePointer): SwiftValue {
   const representation = existentialRepresentation(metadata);
   if (representation === "class") {

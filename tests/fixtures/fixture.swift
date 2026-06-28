@@ -217,6 +217,9 @@ public struct Wrapper {
     public var c: Int
     public var d: Int
 }
+extension Wrapper {
+    public static func make(_ t: Token) -> Wrapper { Wrapper(token: t, a: 1, b: 2, c: 3, d: 4) }
+}
 public func makeToken(_ id: Int) -> Token { Token(id: id) }
 public func makeWrapper(_ t: Token) -> Wrapper { Wrapper(token: t, a: 1, b: 2, c: 3, d: 4) }
 @inline(never)

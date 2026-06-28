@@ -47,6 +47,10 @@ export class Value {
     return new Value(metadata, storage, { disposed: false }, null);
   }
 
+  static adopt(metadata: Metadata, address: NativePointer): Value {
+    return new Value(metadata, address, { disposed: false }, null);
+  }
+
   get owned(): boolean {
     return this.state !== null;
   }

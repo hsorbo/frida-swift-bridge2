@@ -75,6 +75,7 @@ export {
   readValue,
   writeValue,
   readObject,
+  containsClassReference,
 } from "./abi/instance.js";
 export {
   EnumCase,
