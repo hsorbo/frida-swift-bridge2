@@ -1,5 +1,6 @@
 import { Metadata, MetadataKind } from "./metadata.js";
 import { readValue, writeValue, enumerateInstanceFields, SwiftValue } from "./instance.js";
+import { decodeBridgedContainer } from "./container.js";
 import {
   BoundValueMethod,
   GenericBoundMethod,
@@ -72,6 +73,15 @@ export class Value {
   set(value: SwiftValue): void {
     this.checkLive();
     writeValue(this.metadata, this.address, value);
+  }
+
+  container(): SwiftValue {
+    this.checkLive();
+    const decoded = decodeBridgedContainer(this.metadata, this.address);
+    if (decoded === null) {
+      throw new Error("Value is not a bridged Array/Set/Dictionary");
+    }
+    return decoded.value;
   }
 
   field(name: string): Value {

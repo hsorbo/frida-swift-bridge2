@@ -23,6 +23,7 @@ export type SwiftValue =
   | string
   | NativePointer
   | { [field: string]: SwiftValue }
+  | SwiftValue[]
   | null;
 
 const PRIMITIVE_READERS: { [typeName: string]: (p: NativePointer) => SwiftValue } = {

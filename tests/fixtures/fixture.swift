@@ -146,6 +146,10 @@ public func firstGeneric<T>(_ xs: [T]) -> T { xs[0] }
 // Array return: a non-POD struct backed by a Builtin.BridgeObject (Opaque), adopted not decoded.
 public struct Bag {
     public static func ints() -> [Int] { [10, 20, 30] }
+    public static func strings() -> [String] { ["a", "bb", "ccc"] }
+    public static func empty() -> [Int] { [] }
+    public static func intSet() -> Set<Int> { [3, 1, 2] }
+    public static func intMap() -> [Int: Int] { [1: 100, 2: 200] }
 }
 
 // Generic methods on a value receiver: small explodes self as a trailing arg, the 5-Int receiver
