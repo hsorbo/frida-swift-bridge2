@@ -32,7 +32,7 @@ import {
 import { demangle } from "./demangle.js";
 import { typeName } from "./type-name.js";
 import { getSwiftCoreApi } from "./api.js";
-import { Protocol, ProtocolComposition } from "./protocol.js";
+import { Protocol, ProtocolComposition, protocolsForType } from "./protocol.js";
 
 export interface TypeMember {
   name: string;
@@ -60,6 +60,14 @@ export class SwiftType {
 
   get properties(): PropertyInfo[] {
     return enumerateProperties(this.name);
+  }
+
+  get $protocols(): { [name: string]: Protocol } {
+    return protocolsForType(this.descriptorHandle);
+  }
+
+  protected get descriptorHandle(): NativePointer {
+    return this.metadata.description.handle;
   }
 }
 
@@ -116,6 +124,10 @@ export class ClassType extends SwiftType {
       this.vtableEntries = readVTableChain(new ClassMetadata(this.metadata.handle));
     }
     return this.vtableEntries;
+  }
+
+  protected get descriptorHandle(): NativePointer {
+    return new ClassMetadata(this.metadata.handle).description.handle;
   }
 
   init(...args: SwiftValue[]): SwiftObject {

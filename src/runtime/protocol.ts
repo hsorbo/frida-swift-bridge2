@@ -1,6 +1,10 @@
 import { ContextDescriptor } from "../abi/context-descriptor.js";
 import { Metadata } from "../abi/metadata.js";
-import { findProtocol, conformsToProtocol } from "../abi/protocol-conformance.js";
+import {
+  findProtocol,
+  conformsToProtocol,
+  conformingProtocols,
+} from "../abi/protocol-conformance.js";
 import {
   getExistentialTypeMetadata,
   protocolClassConstraint,
@@ -47,6 +51,17 @@ export class Protocol {
   conformanceFor(type: Metadata): NativePointer | null {
     return conformsToProtocol(type, this.descriptor);
   }
+}
+
+export function protocolsForType(typeDescriptor: NativePointer): { [name: string]: Protocol } {
+  const map: { [name: string]: Protocol } = {};
+  for (const descriptor of conformingProtocols(typeDescriptor)) {
+    const name = descriptor.fullTypeName;
+    if (name !== null) {
+      map[name] = new Protocol(descriptor);
+    }
+  }
+  return map;
 }
 
 export class ProtocolComposition {

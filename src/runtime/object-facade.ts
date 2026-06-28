@@ -6,6 +6,7 @@ import { SwiftValue } from "../abi/instance.js";
 import { CallResult, MethodInfo, enumerateMethods, buildKeyMap } from "./method.js";
 import { typeName } from "./type-name.js";
 import { SwiftType, typeOf } from "./swift-type.js";
+import { Protocol, protocolsForType } from "./protocol.js";
 
 const RESERVED = new Set([
   "handle",
@@ -21,6 +22,7 @@ const RESERVED = new Set([
   "$fields",
   "$methods",
   "$ownMethods",
+  "$protocols",
   "$owned",
   "$call",
   "$get",
@@ -41,6 +43,7 @@ export interface SwiftObject {
   readonly $fields: { [name: string]: SwiftValue };
   readonly $methods: string[];
   readonly $ownMethods: string[];
+  readonly $protocols: { [name: string]: Protocol };
   readonly $owned: boolean;
   $call(name: string, ...args: SwiftValue[]): CallResult;
   $get(name: string): CallResult;
@@ -105,6 +108,8 @@ export function createObject(source: NativePointer | HeapObject): SwiftObject {
           return [...methodKeys().keys()];
         case "$ownMethods":
           return [...buildKeyMap(enumerateMethods(fullName(), true)).keys()];
+        case "$protocols":
+          return protocolsForType(t.metadata.description.handle);
         case "$owned":
           return t.owned;
         case "$call":

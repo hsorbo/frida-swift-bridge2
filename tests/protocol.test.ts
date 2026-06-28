@@ -6,6 +6,7 @@ import {
   Swift,
   Metadata,
   MetadataKind,
+  ClassType,
   Protocol,
   ProtocolComposition,
   readString,
@@ -64,6 +65,29 @@ describe("Protocol", () => {
   test("Swift.Protocol exposes the class on the facade", ({ skip }) => {
     loadFixture(skip);
     expect(Swift.Protocol.find("fixture.Greeter")).not.toBeNull();
+  });
+});
+
+describe("$protocols", () => {
+  test("a type reports its declared conformances as a name->Protocol map", ({ skip }) => {
+    loadFixture(skip);
+    const person = Swift.typeOf(Swift.metadataFor("fixture.Person")!);
+    const protocols = person.$protocols;
+    expect(Object.keys(protocols).sort()).toEqual(["fixture.Aged", "fixture.Greeter"]);
+    expect(protocols["fixture.Greeter"] instanceof Protocol).toBe(true);
+    expect(protocols["fixture.Greeter"].fullName).toBe("fixture.Greeter");
+  });
+
+  test("includes a retroactive conformance declared in another module", ({ skip }) => {
+    loadFixture(skip);
+    const int = Swift.typeOf(Swift.metadataFor("Swift.Int")!);
+    expect(Object.keys(int.$protocols)).toContain("fixture.Scalable");
+  });
+
+  test("is exposed on the object facade", ({ skip }) => {
+    loadFixture(skip);
+    const widget = (Swift.typeOf(Swift.metadataFor("fixture.Widget")!) as ClassType).init("w");
+    expect(Object.keys(widget.$protocols)).toContain("fixture.Named");
   });
 });
 

@@ -1,6 +1,9 @@
 import { ContextDescriptor } from "./context-descriptor.js";
 import { Metadata } from "./metadata.js";
-import { RelativeIndirectablePointer } from "../basic/relative-pointer.js";
+import {
+  RelativeDirectPointer,
+  RelativeIndirectablePointer,
+} from "../basic/relative-pointer.js";
 import { getSwiftSection } from "../macho/sections.js";
 import { enumerateSwiftModules } from "../reflection/registry.js";
 import { getSwiftCoreApi } from "../runtime/api.js";
@@ -9,7 +12,15 @@ const RECORD_SIZE = 4;
 const PROTOCOL_RECORD_INT_MASK = 0x2;
 
 const OFFSETOF_CONF_PROTOCOL = 0x0;
+const OFFSETOF_CONF_TYPE_REF = 0x4;
 const OFFSETOF_CONF_FLAGS = 0xc;
+
+const enum TypeReferenceKind {
+  DirectTypeDescriptor = 0,
+  IndirectTypeDescriptor = 1,
+  DirectObjCClassName = 2,
+  IndirectObjCClass = 3,
+}
 
 export class ProtocolConformance {
   constructor(readonly handle: NativePointer) {}
@@ -21,6 +32,21 @@ export class ProtocolConformance {
 
   get flags(): number {
     return this.handle.add(OFFSETOF_CONF_FLAGS).readU32();
+  }
+
+  // Null for ObjC class references: those name a class, not a Swift nominal descriptor.
+  get typeDescriptor(): NativePointer | null {
+    const at = this.handle.add(OFFSETOF_CONF_TYPE_REF);
+    switch ((this.flags >> 3) & 0x7) {
+      case TypeReferenceKind.DirectTypeDescriptor:
+        return RelativeDirectPointer.resolve(at);
+      case TypeReferenceKind.IndirectTypeDescriptor: {
+        const indirect = RelativeDirectPointer.resolve(at);
+        return indirect === null ? null : indirect.readPointer().strip();
+      }
+      default:
+        return null;
+    }
   }
 }
 
@@ -95,4 +121,34 @@ export function conformsToProtocol(
 ): NativePointer | null {
   const witnessTable = getSwiftCoreApi().swift_conformsToProtocol(type.handle, protocol.handle);
   return witnessTable.isNull() ? null : witnessTable;
+}
+
+const conformingProtocolsCache = new Map<string, ContextDescriptor[]>();
+
+// Scans every Swift module so retroactive conformances declared outside the type's own module are
+// included; memoized per type descriptor since the first pass is the costly part.
+export function conformingProtocols(typeDescriptor: NativePointer): ContextDescriptor[] {
+  const key = typeDescriptor.toString();
+  const cached = conformingProtocolsCache.get(key);
+  if (cached !== undefined) {
+    return cached;
+  }
+  const protocols: ContextDescriptor[] = [];
+  const seen = new Set<string>();
+  for (const module of enumerateSwiftModules()) {
+    for (const conformance of enumerateProtocolConformances(module)) {
+      const descriptor = conformance.typeDescriptor;
+      if (descriptor === null || !descriptor.equals(typeDescriptor)) {
+        continue;
+      }
+      const protocol = conformance.protocol;
+      if (protocol === null || seen.has(protocol.handle.toString())) {
+        continue;
+      }
+      seen.add(protocol.handle.toString());
+      protocols.push(protocol);
+    }
+  }
+  conformingProtocolsCache.set(key, protocols);
+  return protocols;
 }
