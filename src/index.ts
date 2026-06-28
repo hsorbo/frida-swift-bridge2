@@ -138,6 +138,7 @@ export { SwiftInterceptor, SwiftInvocationCallbacks } from "./runtime/intercepto
 export {
   BoundMethod,
   CallResult,
+  CallArg,
   MethodInfo,
   MethodKind,
   ResolvedMethod,

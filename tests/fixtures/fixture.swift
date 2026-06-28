@@ -137,6 +137,8 @@ public final class Box {
     // [T] is a fixed-layout buffer (direct); T? is address-only in the generic callee (indirect).
     public func tripled<T>(_ x: T) -> [T] { [x, x, x] }
     public func roundOpt<T>(_ x: T?) -> T? { x }
+    // Non-generic [Int] param: opaque to the JS writers, so a high-level call must byte-copy the Value.
+    public func sumInts(_ xs: [Int]) -> Int { xs.reduce(0, +) }
 }
 
 public func firstGeneric<T>(_ xs: [T]) -> T { xs[0] }

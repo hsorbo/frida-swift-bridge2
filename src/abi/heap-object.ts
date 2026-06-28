@@ -15,6 +15,7 @@ import {
   getProperty,
   setProperty,
   CallResult,
+  CallArg,
 } from "../runtime/method.js";
 
 // Also polyfilled in value.ts, but the method↔heap-object cycle can define this class first.
@@ -144,7 +145,7 @@ export class HeapObject {
     return new BoundMethod(resolved, this.handle);
   }
 
-  call(name: string, ...args: SwiftValue[]): CallResult {
+  call(name: string, ...args: CallArg[]): CallResult {
     return this.method(name).call(...args);
   }
 
@@ -152,7 +153,7 @@ export class HeapObject {
     return getProperty(this.handle, this.typeName, name);
   }
 
-  set(name: string, value: SwiftValue): void {
+  set(name: string, value: CallArg): void {
     setProperty(this.handle, this.typeName, name, value);
   }
 

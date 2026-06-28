@@ -2,7 +2,7 @@ import { test, expect, describe } from "@frida/injest/agent";
 import { type Skip } from "./swift.js";
 import { loadFixture } from "./fixtures/load.js";
 
-import { Swift, ClassType } from "../src/index.js";
+import { Swift, ClassType, Value } from "../src/index.js";
 import { makeSwiftNativeFunction } from "../src/runtime/calling-convention.js";
 
 function box() {
@@ -61,5 +61,9 @@ describe("compound generic-using exprs in generic methods", () => {
     seven.writeS64(7);
     const arrPtr = tripled(box().handle, seven)!;
     expect(firstGeneric(arrPtr)!.readS64().toNumber()).toBe(7);
+
+    // The Array is opaque to the JS writers; as a Value it byte-copies through a high-level .call() arg.
+    const arr = Value.fromCopy(ArrInt, arrPtr);
+    expect(box().method("sumInts").call(arr)).toBe(21);
   });
 });

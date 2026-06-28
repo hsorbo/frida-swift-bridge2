@@ -8,6 +8,7 @@ import {
   bindGenericTypeValueMethod,
   ValueMethodResolveOptions,
   CallResult,
+  CallArg,
 } from "../runtime/method.js";
 
 // qjs and v8 (Frida 17) ship no Symbol.dispose; polyfill so `using` resolves the key below.
@@ -100,13 +101,19 @@ export class Value {
     return bindValueMethod(this.metadata, this.address, name, options);
   }
 
-  call(name: string, ...args: SwiftValue[]): CallResult {
+  call(name: string, ...args: CallArg[]): CallResult {
     return this.method(name).call(...args);
   }
 
   copy(): Value {
     this.checkLive();
     return Value.fromCopy(this.metadata, this.address);
+  }
+
+  // Init uninitialized dest with a +1 copy; lets an opaque value cross a call boundary the JS writers can't.
+  copyInto(dest: NativePointer): void {
+    this.checkLive();
+    this.metadata.valueWitnesses.initializeWithCopy(dest, this.address);
   }
 
   dispose(): void {

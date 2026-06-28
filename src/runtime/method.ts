@@ -21,6 +21,9 @@ export type MethodKind = "method" | "init";
 
 export type CallResult = SwiftValue | SwiftObject | Value;
 
+// A high-level argument: a JS-constructible value, or an opaque Value byte-copied in (e.g. an Array).
+export type CallArg = SwiftValue | Value;
+
 export interface MethodInfo {
   name: string;
   kind: MethodKind;
@@ -80,9 +83,14 @@ interface TypeMembers {
 const tableCache = new Map<string, TypeMembers>();
 const invokerCache = new Map<string, SwiftNativeFunction>();
 
-function marshalArg(metadata: Metadata, value: SwiftValue): NativePointer {
+function marshalArg(metadata: Metadata, value: CallArg): NativePointer {
   const buffer = Memory.alloc(metadata.typeLayout.stride);
-  if (metadata.kind === MetadataKind.Class) {
+  if (value instanceof Value) {
+    if (!value.metadata.handle.equals(metadata.handle)) {
+      throw new Error(`argument is a ${typeName(value.metadata)} value, expected ${typeName(metadata)}`);
+    }
+    value.copyInto(buffer);
+  } else if (metadata.kind === MetadataKind.Class) {
     buffer.writePointer(value as NativePointer);
   } else {
     writeValue(metadata, buffer, value);
@@ -113,7 +121,7 @@ function decodeReturn(returnType: Metadata | null, ret: NativePointer | null): C
 // (try/finally covers a throwing callee). An explicitly-__owned param would double-free — known gap.
 function callBorrowingArgs(
   argTypes: Metadata[],
-  args: SwiftValue[],
+  args: CallArg[],
   returnType: Metadata | null,
   invoke: (argPtrs: NativePointer[]) => NativePointer | null
 ): CallResult {
@@ -289,7 +297,7 @@ export function resolveMethod(
 
     const { address, isStatic, signature } = candidates[0];
     const argTypes = signature.argTypeNames.map((name) => {
-      const metadata = resolveType(name);
+      const metadata = resolveTypeExpr(name, () => null);
       if (metadata === null) {
         throw new Error(`cannot resolve argument type ${name} of ${signature.selector}`);
       }
@@ -297,7 +305,7 @@ export function resolveMethod(
     });
     let returnType: Metadata | null = null;
     if (signature.returnTypeName !== null) {
-      returnType = resolveType(signature.returnTypeName);
+      returnType = resolveTypeExpr(signature.returnTypeName, () => null);
       if (returnType === null) {
         throw new Error(`cannot resolve return type ${signature.returnTypeName} of ${signature.selector}`);
       }
@@ -346,7 +354,7 @@ export class BoundMethod {
     return this.fn;
   }
 
-  call(...args: SwiftValue[]): CallResult {
+  call(...args: CallArg[]): CallResult {
     const { argTypes, returnType } = this.resolved;
     if (args.length !== argTypes.length) {
       throw new Error(`${this.resolved.selector} expects ${argTypes.length} argument(s), got ${args.length}`);
@@ -379,7 +387,7 @@ export class BoundStaticMethod {
     return this.resolved.address;
   }
 
-  call(...args: SwiftValue[]): CallResult {
+  call(...args: CallArg[]): CallResult {
     const { argTypes, returnType } = this.resolved;
     if (args.length !== argTypes.length) {
       throw new Error(`${this.resolved.selector} expects ${argTypes.length} argument(s), got ${args.length}`);
@@ -438,7 +446,7 @@ export class BoundValueMethod {
     return this.resolved.address;
   }
 
-  call(...args: SwiftValue[]): CallResult {
+  call(...args: CallArg[]): CallResult {
     const { argTypes, returnType } = this.resolved;
     if (args.length !== argTypes.length) {
       throw new Error(`${this.resolved.selector} expects ${argTypes.length} argument(s), got ${args.length}`);
@@ -586,7 +594,7 @@ export class GenericBoundMethod {
       : makeSwiftNativeFunction(plan.address, returnType, [...argTypes, routing.receiver], opts);
   }
 
-  call(...args: SwiftValue[]): CallResult {
+  call(...args: CallArg[]): CallResult {
     if (args.length !== this.plan.argPlans.length) {
       throw new Error(`${this.selector} expects ${this.plan.argPlans.length} argument(s), got ${args.length}`);
     }
@@ -763,7 +771,7 @@ export function getProperty(self: NativePointer, typeName: string, member: strin
 }
 
 // Setter newValue is +1/owned: the callee consumes the temp, so it is not destroyed here.
-export function setProperty(self: NativePointer, typeName: string, member: string, value: SwiftValue): void {
+export function setProperty(self: NativePointer, typeName: string, member: string, value: CallArg): void {
   const accessor = resolveAccessor(typeName, member, "setter");
   invokerForAccessor(accessor)(self, marshalArg(accessor.type, value));
 }
