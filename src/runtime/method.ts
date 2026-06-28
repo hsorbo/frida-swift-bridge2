@@ -396,6 +396,13 @@ export function bindStaticMethod(
   return new BoundStaticMethod(resolveMethod(typeName(receiver), name, { ...options, static: true }));
 }
 
+type SelfRouting = { indirect: true } | { indirect: false; receiver: Metadata };
+
+// Value self is indirect (x20) when mutating/inout or large/non-POD; else it rides as a trailing arg.
+function valueSelfRouting(receiver: Metadata, mutating: boolean): SelfRouting {
+  return mutating || shouldPassIndirectly(receiver) ? { indirect: true } : { indirect: false, receiver };
+}
+
 function valueInvoker(resolved: ResolvedMethod, receiver: Metadata, indirectSelf: boolean): SwiftNativeFunction {
   const key = `${resolved.address}:${indirectSelf ? "i" : "d"}`;
   let fn = invokerCache.get(key);
@@ -413,8 +420,6 @@ function valueInvoker(resolved: ResolvedMethod, receiver: Metadata, indirectSelf
   return fn;
 }
 
-// Value-type self: x20 pointer when formally indirect (mutating inout, or large/non-POD borrowed) —
-// mutation lands in the receiver buffer in place; otherwise self rides as the trailing exploded arg.
 export class BoundValueMethod {
   private readonly fn: SwiftNativeFunction;
   private readonly indirectSelf: boolean;
@@ -425,7 +430,7 @@ export class BoundValueMethod {
     private readonly self: NativePointer,
     mutating: boolean
   ) {
-    this.indirectSelf = mutating || shouldPassIndirectly(receiver);
+    this.indirectSelf = valueSelfRouting(receiver, mutating).indirect;
     this.fn = valueInvoker(resolved, receiver, this.indirectSelf);
   }
 
@@ -547,46 +552,54 @@ function autoWitnessTables(
   });
 }
 
+interface GenericMethodPlan {
+  address: NativePointer;
+  selector: string;
+  argPlans: ArgPlan[];
+  returnPlan: ArgPlan | null;
+  throws: boolean;
+  typeArguments: Metadata[];
+  witnessTables: NativePointer[];
+}
+
+// Type-metadata + witness pointers trail the formal args, so a trailing-exploded value self lands
+// before them; indirect self rides in x20 (hasSelf).
 export class GenericBoundMethod {
   private readonly fn: SwiftNativeFunction;
+  private readonly indirectSelf: boolean;
+  readonly address: NativePointer;
+  readonly selector: string;
 
   constructor(
-    private readonly argPlans: ArgPlan[],
-    private readonly returnPlan: ArgPlan | null,
-    readonly address: NativePointer,
-    readonly selector: string,
+    private readonly plan: GenericMethodPlan,
     private readonly self: NativePointer,
-    throws: boolean,
-    typeArguments: Metadata[],
-    witnessTables: NativePointer[]
+    routing: SelfRouting
   ) {
-    this.fn = makeSwiftNativeFunction(
-      address,
-      returnPlan === null ? null : swiftArgType(returnPlan),
-      argPlans.map(swiftArgType),
-      { hasSelf: true, throws, typeArguments, witnessTables }
-    );
+    this.address = plan.address;
+    this.selector = plan.selector;
+    this.indirectSelf = routing.indirect;
+    const returnType = plan.returnPlan === null ? null : swiftArgType(plan.returnPlan);
+    const argTypes = plan.argPlans.map(swiftArgType);
+    const opts = { throws: plan.throws, typeArguments: plan.typeArguments, witnessTables: plan.witnessTables };
+    this.fn = routing.indirect
+      ? makeSwiftNativeFunction(plan.address, returnType, argTypes, { hasSelf: true, ...opts })
+      : makeSwiftNativeFunction(plan.address, returnType, [...argTypes, routing.receiver], opts);
   }
 
   call(...args: SwiftValue[]): CallResult {
-    if (args.length !== this.argPlans.length) {
-      throw new Error(`${this.selector} expects ${this.argPlans.length} argument(s), got ${args.length}`);
+    if (args.length !== this.plan.argPlans.length) {
+      throw new Error(`${this.selector} expects ${this.plan.argPlans.length} argument(s), got ${args.length}`);
     }
-    const argTypes = this.argPlans.map((p) => p.metadata);
-    return callBorrowingArgs(argTypes, args, this.returnPlan?.metadata ?? null, (argPtrs) =>
-      this.fn(this.self, ...argPtrs)
+    const argTypes = this.plan.argPlans.map((p) => p.metadata);
+    return callBorrowingArgs(argTypes, args, this.plan.returnPlan?.metadata ?? null, (argPtrs) =>
+      this.indirectSelf ? this.fn(this.self, ...argPtrs) : this.fn(...argPtrs, this.self)
     );
   }
 }
 
-export function bindGenericMethod(
-  typeName: string,
-  methodName: string,
-  self: NativePointer,
-  options: MethodResolveOptions = {}
-): GenericBoundMethod {
+function planGenericMethod(typeNameArg: string, methodName: string, options: MethodResolveOptions): GenericMethodPlan {
+  const fullName = canonicalTypeName(typeNameArg);
   const typeArguments = options.typeArguments ?? [];
-  const fullName = canonicalTypeName(typeName);
   const candidates = applyOverloadFilters(
     typeMembers(fullName).methods.filter(
       (c) => c.name === methodName && c.signature.genericParams.length > 0 && c.signature.simpleGenerics
@@ -600,7 +613,6 @@ export function bindGenericMethod(
     const selectors = candidates.map((c) => c.signature.selector).join(", ");
     throw new Error(`ambiguous generic method ${methodName} on ${fullName}: ${selectors} (disambiguate with { arity } or { labels })`);
   }
-
   const { address, signature } = candidates[0];
   if (typeArguments.length !== signature.genericParams.length) {
     throw new Error(`${signature.selector} needs ${signature.genericParams.length} type argument(s), got ${typeArguments.length}`);
@@ -611,7 +623,26 @@ export function bindGenericMethod(
       ? null
       : planGenericType(signature.returnTypeName, signature.genericParams, typeArguments);
   const witnessTables = options.witnessTables ?? autoWitnessTables(signature, typeArguments);
-  return new GenericBoundMethod(argPlans, returnPlan, address, signature.selector, self, signature.throws, typeArguments, witnessTables);
+  return { address, selector: signature.selector, argPlans, returnPlan, throws: signature.throws, typeArguments, witnessTables };
+}
+
+export function bindGenericMethod(
+  typeName: string,
+  methodName: string,
+  self: NativePointer,
+  options: MethodResolveOptions = {}
+): GenericBoundMethod {
+  return new GenericBoundMethod(planGenericMethod(typeName, methodName, options), self, { indirect: true });
+}
+
+export function bindGenericValueMethod(
+  receiver: Metadata,
+  self: NativePointer,
+  methodName: string,
+  options: ValueMethodResolveOptions = {}
+): GenericBoundMethod {
+  const plan = planGenericMethod(typeName(receiver), methodName, options);
+  return new GenericBoundMethod(plan, self, valueSelfRouting(receiver, options.mutating === true));
 }
 
 interface ResolvedAccessor {

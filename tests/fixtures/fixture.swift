@@ -141,6 +141,18 @@ public final class Box {
 
 public func firstGeneric<T>(_ xs: [T]) -> T { xs[0] }
 
+// Generic methods on a value receiver: small explodes self as a trailing arg, the 5-Int receiver
+// exceeds the loadable budget and passes self in x20. scaledBy folds self + arg + witness.
+public struct SmallGenericBox {
+    public var base: Int
+    public func echo<T>(_ x: T) -> T { x }
+    public func scaledBy<T: Scalable>(_ x: T, _ k: Int) -> Int { base + x.scaled(by: k) }
+}
+public struct BigGenericBox {
+    public var a: Int; public var b: Int; public var c: Int; public var d: Int; public var e: Int
+    public func scaledBy<T: Scalable>(_ x: T, _ k: Int) -> Int { a + b + c + d + e + x.scaled(by: k) }
+}
+
 public func makeScaleGeneric() -> Int {
     return scaleGeneric(6, by: 7)
 }

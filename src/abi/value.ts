@@ -1,6 +1,13 @@
 import { Metadata, MetadataKind } from "./metadata.js";
 import { readValue, writeValue, enumerateInstanceFields, SwiftValue } from "./instance.js";
-import { BoundValueMethod, bindValueMethod, ValueMethodResolveOptions, CallResult } from "../runtime/method.js";
+import {
+  BoundValueMethod,
+  GenericBoundMethod,
+  bindValueMethod,
+  bindGenericValueMethod,
+  ValueMethodResolveOptions,
+  CallResult,
+} from "../runtime/method.js";
 
 // qjs and v8 (Frida 17) ship no Symbol.dispose; polyfill so `using` resolves the key below.
 const symbolCtor = Symbol as { dispose?: symbol };
@@ -81,8 +88,11 @@ export class Value {
     throw new Error(`Value.field: no field ${name}`);
   }
 
-  method(name: string, options: ValueMethodResolveOptions = {}): BoundValueMethod {
+  method(name: string, options: ValueMethodResolveOptions = {}): BoundValueMethod | GenericBoundMethod {
     this.checkLive();
+    if (options.typeArguments !== undefined) {
+      return bindGenericValueMethod(this.metadata, this.address, name, options);
+    }
     return bindValueMethod(this.metadata, this.address, name, options);
   }
 
