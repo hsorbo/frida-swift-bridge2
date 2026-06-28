@@ -7,6 +7,10 @@ function robot(name: string) {
   return (Swift.typeOf(Swift.metadataFor("fixture.Robot")!) as ClassType).init(name);
 }
 
+function cat() {
+  return (Swift.typeOf(Swift.metadataFor("fixture.Cat")!) as ClassType).init();
+}
+
 describe("Swift.Object method sugar", () => {
   test("calls a method via its escaped selector key", ({ skip }) => {
     loadFixture(skip);
@@ -58,6 +62,34 @@ describe("Swift.Object intrinsics", () => {
     for (const k of ["greet$_", "rename$to_", "merged$with_", "at$_", "at$__"]) {
       expect(keys).toContain(k);
     }
+  });
+
+  test("$className reflects the dynamic type", ({ skip }) => {
+    loadFixture(skip);
+    expect(cat().$className).toBe("fixture.Cat");
+    expect(robot("R2").$className).toBe("fixture.Robot");
+  });
+
+  test("$superClass wraps the parent, null at a root class", ({ skip }) => {
+    loadFixture(skip);
+    const sup = cat().$superClass;
+    expect(sup).not.toBeNull();
+    expect(sup!.name).toBe("fixture.Animal");
+    expect(robot("R2").$superClass).toBeNull();
+  });
+
+  test("$moduleName points at the defining image", ({ skip }) => {
+    loadFixture(skip);
+    expect(robot("R2").$moduleName).toContain("fixture.dylib");
+  });
+
+  test("$ownMethods excludes inherited methods that $methods includes", ({ skip }) => {
+    loadFixture(skip);
+    const o = cat();
+    expect(o.$methods).toContain("speak");
+    expect(o.$methods).toContain("legs");
+    expect(o.$ownMethods).toContain("speak");
+    expect(o.$ownMethods).not.toContain("legs");
   });
 
   test("$metadata / $dynamicType / handle expose the wrapped object", ({ skip }) => {

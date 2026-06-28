@@ -4,6 +4,8 @@ import { Metadata } from "../abi/metadata.js";
 import { Value } from "../abi/value.js";
 import { SwiftValue } from "../abi/instance.js";
 import { CallResult, MethodInfo, enumerateMethods } from "./method.js";
+import { typeName } from "./type-name.js";
+import { SwiftType, typeOf } from "./swift-type.js";
 
 const RESERVED = new Set([
   "handle",
@@ -13,8 +15,12 @@ const RESERVED = new Set([
   "hasOwnProperty",
   "$metadata",
   "$dynamicType",
+  "$className",
+  "$superClass",
+  "$moduleName",
   "$fields",
   "$methods",
+  "$ownMethods",
   "$owned",
   "$call",
   "$get",
@@ -29,8 +35,12 @@ export interface SwiftObject {
   readonly handle: NativePointer;
   readonly $metadata: ClassMetadata;
   readonly $dynamicType: Metadata;
+  readonly $className: string;
+  readonly $superClass: SwiftType | null;
+  readonly $moduleName: string | null;
   readonly $fields: { [name: string]: SwiftValue };
   readonly $methods: string[];
+  readonly $ownMethods: string[];
   readonly $owned: boolean;
   $call(name: string, ...args: SwiftValue[]): CallResult;
   $get(name: string): CallResult;
@@ -56,31 +66,35 @@ function handleOf(other: SwiftObject | HeapObject | NativePointer): NativePointe
   return (other instanceof NativePointer ? other : other.handle) as NativePointer;
 }
 
+function buildKeyMap(infos: MethodInfo[]): Map<string, MethodInfo> {
+  const map = new Map<string, MethodInfo>();
+  for (const info of infos) {
+    if (info.isStatic || info.kind !== "method") {
+      continue;
+    }
+    const base = escapeSelector(info.name, info.argLabels);
+    let key = base;
+    for (let serial = 2; map.has(key); serial++) {
+      key = `${base}${serial}`;
+    }
+    map.set(key, info);
+  }
+  return map;
+}
+
 // The proxy roots its target, so an owned target's +1 releases only when the proxy is GC'd.
 export function createObject(source: NativePointer | HeapObject): SwiftObject {
   const target = source instanceof HeapObject ? source : new HeapObject(source);
   const callables = new Map<string, (...args: SwiftValue[]) => CallResult>();
   let keyMap: Map<string, MethodInfo> | null = null;
 
+  const fullName = (): string => target.metadata.description.fullTypeName ?? "";
+
   const methodKeys = (): Map<string, MethodInfo> => {
-    if (keyMap !== null) {
-      return keyMap;
+    if (keyMap === null) {
+      keyMap = buildKeyMap(enumerateMethods(fullName()));
     }
-    const typeName = target.metadata.description.fullTypeName ?? "";
-    const map = new Map<string, MethodInfo>();
-    for (const info of enumerateMethods(typeName)) {
-      if (info.isStatic || info.kind !== "method") {
-        continue;
-      }
-      const base = escapeSelector(info.name, info.argLabels);
-      let key = base;
-      for (let serial = 2; map.has(key); serial++) {
-        key = `${base}${serial}`;
-      }
-      map.set(key, info);
-    }
-    keyMap = map;
-    return map;
+    return keyMap;
   };
 
   const proxy = new Proxy(target, {
@@ -99,10 +113,22 @@ export function createObject(source: NativePointer | HeapObject): SwiftObject {
           return t.metadata;
         case "$dynamicType":
           return t.dynamicType;
+        case "$className":
+          return typeName(t.dynamicType);
+        case "$superClass": {
+          const superclass = t.metadata.superclass;
+          return superclass !== null && superclass.isTypeMetadata
+            ? typeOf(new Metadata(superclass.handle))
+            : null;
+        }
+        case "$moduleName":
+          return Process.findModuleByAddress(t.metadata.description.handle)?.path ?? null;
         case "$fields":
           return t.read();
         case "$methods":
           return [...methodKeys().keys()];
+        case "$ownMethods":
+          return [...buildKeyMap(enumerateMethods(fullName(), true)).keys()];
         case "$owned":
           return t.owned;
         case "$call":

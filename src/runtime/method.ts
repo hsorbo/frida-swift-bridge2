@@ -263,10 +263,11 @@ function typeMembers(fullName: string): TypeMembers {
   return members;
 }
 
-export function enumerateMethods(typeName: string): MethodInfo[] {
+export function enumerateMethods(typeName: string, ownOnly = false): MethodInfo[] {
   const seen = new Set<string>();
   const methods: MethodInfo[] = [];
-  for (const className of classChainNames(canonicalTypeName(typeName))) {
+  const fullName = canonicalTypeName(typeName);
+  for (const className of ownOnly ? [fullName] : classChainNames(fullName)) {
     for (const c of typeMembers(className).methods) {
       const key = `${c.isStatic ? "s" : "i"}:${c.signature.selector}`;
       if (seen.has(key)) {
