@@ -153,36 +153,37 @@ export function readValue(metadata: Metadata, address: NativePointer): SwiftValu
   }
 }
 
-const classRefCache = new Map<string, boolean>();
+const managedRefCache = new Map<string, boolean>();
 
-// Mirrors readValue: true iff a class ref is reachable as a raw pointer (String et al. deep-copy, excluded).
-export function containsClassReference(metadata: Metadata): boolean {
+// Mirrors readValue: a reference it can't deep-copy out — a class ref, or the non-POD Opaque leaf
+// (Builtin.BridgeObject) backing Array/Set/Dictionary. Excludes primitives (String) and existentials.
+export function embedsManagedReference(metadata: Metadata): boolean {
   if (metadata.kind === MetadataKind.Class) {
     return true;
   }
   const isStruct = metadata.kind === MetadataKind.Struct;
   const isEnum = metadata.kind === MetadataKind.Enum || metadata.kind === MetadataKind.Optional;
   if (!isStruct && !isEnum) {
-    return false;
+    return metadata.kind !== MetadataKind.Existential && !metadata.valueWitnesses.isPOD;
   }
   if (isStruct && PRIMITIVE_READERS[metadata.description.fullTypeName ?? ""] !== undefined) {
     return false;
   }
   const key = metadata.handle.toString();
-  const cached = classRefCache.get(key);
+  const cached = managedRefCache.get(key);
   if (cached !== undefined) {
     return cached;
   }
-  classRefCache.set(key, false); // break recursive-type cycles
+  managedRefCache.set(key, false); // break recursive-type cycles
   let result = false;
   for (const field of enumerateFields(metadata.description)) {
     const fieldType = fieldTypeIn(metadata, field);
-    if (fieldType !== null && containsClassReference(fieldType)) {
+    if (fieldType !== null && embedsManagedReference(fieldType)) {
       result = true;
       break;
     }
   }
-  classRefCache.set(key, result);
+  managedRefCache.set(key, result);
   return result;
 }
 

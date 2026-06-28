@@ -4,7 +4,7 @@ import { ClassMetadata } from "../abi/class-metadata.js";
 import { HeapObject } from "../abi/heap-object.js";
 import { createObject, SwiftObject } from "./object-facade.js";
 import { Value } from "../abi/value.js";
-import { readValue, writeValue, containsClassReference, SwiftValue } from "../abi/instance.js";
+import { readValue, writeValue, embedsManagedReference, SwiftValue } from "../abi/instance.js";
 import { findType } from "../reflection/registry.js";
 import { demangle } from "./demangle.js";
 import { parseSwiftSignature, resolveType, resolveTypeExpr, splitBoundTypeName, SwiftFunctionSignature } from "./symbolication.js";
@@ -99,7 +99,7 @@ function marshalArg(metadata: Metadata, value: CallArg): NativePointer {
 }
 
 // Returns are +1: adopt a class; destroy a read non-POD temp; POD owns nothing. A value embedding a
-// class ref would dangle on that destroy, so hand back an owned Value (deferred destroy) instead.
+// managed reference would dangle on that destroy, so hand it back as an owned Value instead.
 function decodeReturn(returnType: Metadata | null, ret: NativePointer | null): CallResult {
   if (returnType === null || ret === null) {
     return null;
@@ -107,7 +107,7 @@ function decodeReturn(returnType: Metadata | null, ret: NativePointer | null): C
   if (returnType.kind === MetadataKind.Class) {
     return createObject(HeapObject.adopt(ret.readPointer()));
   }
-  if (!returnType.valueWitnesses.isPOD && containsClassReference(returnType)) {
+  if (!returnType.valueWitnesses.isPOD && embedsManagedReference(returnType)) {
     return Value.adopt(returnType, ret);
   }
   const value = readValue(returnType, ret);

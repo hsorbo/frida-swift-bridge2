@@ -7,7 +7,7 @@ import {
   HeapObject,
   ClassType,
   StructType,
-  containsClassReference,
+  embedsManagedReference,
 } from "../src/index.js";
 
 function metadataFor(name: string) {
@@ -15,12 +15,17 @@ function metadataFor(name: string) {
 }
 
 describe("value return embedding a class ref", () => {
-  test("containsClassReference distinguishes a borrowed ref from a deep-copied field", ({ skip }) => {
+  test("embedsManagedReference distinguishes a borrowed ref from a deep-copied field", ({ skip }) => {
     loadFixture(skip);
-    expect(containsClassReference(metadataFor("fixture.Token"))).toBe(true);
-    expect(containsClassReference(metadataFor("fixture.Wrapper"))).toBe(true);
-    expect(containsClassReference(metadataFor("fixture.LoadableStruct"))).toBe(false);
-    expect(containsClassReference(metadataFor("fixture.PoliteGreeter"))).toBe(false);
+    expect(embedsManagedReference(metadataFor("fixture.Token"))).toBe(true);
+    expect(embedsManagedReference(metadataFor("fixture.Wrapper"))).toBe(true);
+    expect(embedsManagedReference(metadataFor("fixture.LoadableStruct"))).toBe(false);
+    expect(embedsManagedReference(metadataFor("fixture.PoliteGreeter"))).toBe(false);
+    // Array/Set/Dictionary: a Builtin.BridgeObject (Opaque) backing, not a class ref.
+    const Int = metadataFor("Swift.Int");
+    expect(embedsManagedReference(Swift.metadataFor("Swift.Array", [Int])!)).toBe(true);
+    expect(embedsManagedReference(Swift.metadataFor("Swift.Set", [Int])!)).toBe(true);
+    expect(embedsManagedReference(Swift.metadataFor("Swift.Dictionary", [Int, Int])!)).toBe(true);
   });
 
   test("a returned aggregate owns its embedded class ref and releases it on dispose", ({ skip }) => {
@@ -42,5 +47,22 @@ describe("value return embedding a class ref", () => {
 
     owned.dispose();
     expect(view.retainCount).toBe(before); // disposing the aggregate releases the embedded ref
+  });
+});
+
+describe("bridge-object container return", () => {
+  test("a returned Array is adopted as an owned Value, not decoded lossily", ({ skip }) => {
+    loadFixture(skip);
+    const arr = (Swift.typeOf(metadataFor("fixture.Bag")) as StructType).call("ints");
+    expect(arr instanceof Value).toBe(true);
+
+    const owned = arr as Value;
+    expect(owned.owned).toBe(true);
+
+    // +1 buffer survived a premature destroy: it sums back through a [Int] param.
+    const box = Swift.typeOf(metadataFor("fixture.Box")) as ClassType;
+    expect(box.init().method("sumInts").call(owned)).toBe(60);
+
+    owned.dispose();
   });
 });

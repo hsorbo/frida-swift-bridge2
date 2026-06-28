@@ -143,6 +143,11 @@ public final class Box {
 
 public func firstGeneric<T>(_ xs: [T]) -> T { xs[0] }
 
+// Array return: a non-POD struct backed by a Builtin.BridgeObject (Opaque), adopted not decoded.
+public struct Bag {
+    public static func ints() -> [Int] { [10, 20, 30] }
+}
+
 // Generic methods on a value receiver: small explodes self as a trailing arg, the 5-Int receiver
 // exceeds the loadable budget and passes self in x20. scaledBy folds self + arg + witness.
 public struct SmallGenericBox {
