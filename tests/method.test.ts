@@ -1,7 +1,7 @@
 import { test, expect, describe } from "@frida/injest/agent";
 import { loadFixture } from "./fixtures/load.js";
 
-import { Swift, ClassType, HeapObject } from "../src/index.js";
+import { Swift, ClassType, SwiftObject } from "../src/index.js";
 import {
   resolveMethod,
   enumerateMethods,
@@ -167,8 +167,8 @@ describe("HeapObject computed property", () => {
 describe("ClassType static invocation", () => {
   test("calls a static factory and wraps the class return", ({ skip }) => {
     loadFixture(skip);
-    const made = robotType().call("make", "Forged") as HeapObject;
-    expect(made.owned).toBe(true);
+    const made = robotType().call("make", "Forged") as SwiftObject;
+    expect(made.$owned).toBe(true);
     expect(made.field("name").get()).toBe("Forged");
   });
 });

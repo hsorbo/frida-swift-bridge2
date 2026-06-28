@@ -3,6 +3,7 @@ import { ClassMetadata } from "../abi/class-metadata.js";
 import { readVTableChain, VTableEntry } from "../abi/class-descriptor.js";
 import { Value } from "../abi/value.js";
 import { HeapObject } from "../abi/heap-object.js";
+import { createObject, SwiftObject } from "./object-facade.js";
 import { writeValue, SwiftValue } from "../abi/instance.js";
 import { enumerateFields, fieldTypeIn } from "../abi/field-descriptor.js";
 import {
@@ -91,7 +92,7 @@ export class ClassType extends SwiftType {
     return this.vtableEntries;
   }
 
-  init(...args: SwiftValue[]): HeapObject {
+  init(...args: SwiftValue[]): SwiftObject {
     const { address, argTypes } = this.resolveInitializer();
     if (args.length !== argTypes.length) {
       throw new Error(`init expects ${argTypes.length} argument(s), got ${args.length}`);
@@ -102,17 +103,17 @@ export class ClassType extends SwiftType {
       writeValue(argTypes[i], buffer, value);
       return buffer;
     });
-    return HeapObject.adopt(call(this.metadata.handle, ...argPtrs)!.readPointer());
+    return createObject(HeapObject.adopt(call(this.metadata.handle, ...argPtrs)!.readPointer()));
   }
 
-  alloc(): HeapObject {
+  alloc(): SwiftObject {
     const cls = new ClassMetadata(this.metadata.handle);
     const object = getSwiftCoreApi().swift_allocObject(
       cls.handle,
       cls.instanceSize,
       cls.instanceAlignment - 1
     );
-    return new HeapObject(object);
+    return createObject(new HeapObject(object));
   }
 
   method(name: string, options: MethodResolveOptions = {}): BoundMethod {

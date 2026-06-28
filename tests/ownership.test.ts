@@ -1,7 +1,7 @@
 import { test, expect, describe } from "@frida/injest/agent";
 import { loadFixture } from "./fixtures/load.js";
 
-import { Swift, ClassType, HeapObject } from "../src/index.js";
+import { Swift, ClassType, HeapObject, SwiftObject } from "../src/index.js";
 
 function robotType(): ClassType {
   return Swift.typeOf(Swift.metadataFor("fixture.Robot")!) as ClassType;
@@ -13,32 +13,32 @@ function stringStorage(inlineString: NativePointer): HeapObject {
   return new HeapObject(inlineString.add(8).readPointer().and(LARGE_ADDRESS_MASK));
 }
 
-describe("HeapObject ownership", () => {
-  test("adopt + dispose drops the strong count once; double dispose is a no-op", ({ skip }) => {
+describe("ownership", () => {
+  test("$dispose drops the strong count once; double dispose is a no-op", ({ skip }) => {
     loadFixture(skip);
     const owned = robotType().init("R2");
-    expect(owned.owned).toBe(true);
-    owned.retain(); // outlive the dispose so view can observe the drop
+    expect(owned.$owned).toBe(true);
+    owned.$retain(); // outlive the dispose so view can observe the drop
     const view = new HeapObject(owned.handle);
     const before = view.retainCount;
-    owned.dispose();
+    owned.$dispose();
     expect(view.retainCount).toBe(before - 1);
-    owned.dispose();
+    owned.$dispose();
     expect(view.retainCount).toBe(before - 1);
     view.release();
   });
 
   test("a class return is owned; disposing a borrowed wrapper does not release", ({ skip }) => {
     loadFixture(skip);
-    const made = robotType().call("make", "Forged") as HeapObject;
-    expect(made.owned).toBe(true);
-    made.retain();
+    const made = robotType().call("make", "Forged") as SwiftObject;
+    expect(made.$owned).toBe(true);
+    made.$retain();
     const view = new HeapObject(made.handle);
     expect(view.owned).toBe(false);
     const before = view.retainCount;
-    view.dispose();
+    view.dispose(); // borrowed → no-op
     expect(view.retainCount).toBe(before);
-    made.dispose();
+    made.$dispose(); // owned → release once
     expect(view.retainCount).toBe(before - 1);
     view.release();
   });
@@ -48,10 +48,10 @@ describe("HeapObject ownership", () => {
   test("a String getter return destroys its +1 temp, leaking no __StringStorage ref", ({ skip }) => {
     loadFixture(skip);
     const r = robotType().init("a deliberately long, heap-allocated robot name");
-    const storage = stringStorage(r.field("name").address);
+    const storage = stringStorage(r.$field("name").address);
     const before = storage.retainCount;
     for (let i = 0; i < 20; i++) {
-      expect(typeof r.get("name")).toBe("string");
+      expect(typeof r.$get("name")).toBe("string");
     }
     expect(storage.retainCount).toBe(before);
   });

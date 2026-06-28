@@ -1,14 +1,14 @@
 import { test, expect, describe } from "@frida/injest/agent";
 import { loadFixture } from "./fixtures/load.js";
 
-import { Swift, ClassType, HeapObject } from "../src/index.js";
+import { Swift, ClassType, SwiftObject } from "../src/index.js";
 
-function box(): HeapObject {
-  return (Swift.typeOf(Swift.metadataFor("fixture.Box")!) as ClassType).init() as HeapObject;
+function box(): SwiftObject {
+  return (Swift.typeOf(Swift.metadataFor("fixture.Box")!) as ClassType).init();
 }
 
-function robot(name: string): HeapObject {
-  return (Swift.typeOf(Swift.metadataFor("fixture.Robot")!) as ClassType).init(name) as HeapObject;
+function robot(name: string): SwiftObject {
+  return (Swift.typeOf(Swift.metadataFor("fixture.Robot")!) as ClassType).init(name);
 }
 
 describe("generic method invocation", () => {
@@ -41,7 +41,7 @@ describe("generic method invocation", () => {
     loadFixture(skip);
     const Robot = Swift.metadataFor("fixture.Robot")!;
     const r = robot("R2");
-    const back = box().method("echo", { typeArguments: [Robot] }).call(r.handle) as HeapObject;
+    const back = box().method("echo", { typeArguments: [Robot] }).call(r.handle) as SwiftObject;
     expect(back.handle.equals(r.handle)).toBe(true);
   });
 

@@ -2,6 +2,7 @@ import { Metadata, MetadataKind, getMetadata } from "../abi/metadata.js";
 import { ContextDescriptorKind } from "../abi/context-descriptor.js";
 import { ClassMetadata } from "../abi/class-metadata.js";
 import { HeapObject } from "../abi/heap-object.js";
+import { createObject, SwiftObject } from "./object-facade.js";
 import { readValue, writeValue, SwiftValue } from "../abi/instance.js";
 import { findType } from "../reflection/registry.js";
 import { demangle } from "./demangle.js";
@@ -17,8 +18,8 @@ import { findProtocol, conformsToProtocol } from "../abi/protocol-conformance.js
 
 export type MethodKind = "method" | "init";
 
-// Separate from SwiftValue (no class case there) to avoid an instance.ts → heap-object.ts cycle.
-export type CallResult = SwiftValue | HeapObject;
+// Separate from SwiftValue (no class case there); a class return is the owning SwiftObject proxy.
+export type CallResult = SwiftValue | SwiftObject;
 
 export interface MethodInfo {
   name: string;
@@ -95,7 +96,7 @@ function decodeReturn(returnType: Metadata | null, ret: NativePointer | null): C
     return null;
   }
   if (returnType.kind === MetadataKind.Class) {
-    return HeapObject.adopt(ret.readPointer());
+    return createObject(HeapObject.adopt(ret.readPointer()));
   }
   const value = readValue(returnType, ret);
   if (!returnType.valueWitnesses.isPOD) {

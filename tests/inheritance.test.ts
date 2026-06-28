@@ -1,7 +1,7 @@
 import { test, expect, describe } from "@frida/injest/agent";
 import { loadFixture } from "./fixtures/load.js";
 
-import { Swift, ClassType, Metadata, MethodDescriptorKind } from "../src/index.js";
+import { Swift, ClassType, Metadata, MethodDescriptorKind, VTableEntry } from "../src/index.js";
 import { resolveMethod, enumerateMethods } from "../src/runtime/method.js";
 
 function animalType(): ClassType {
@@ -39,8 +39,7 @@ describe("inherited methods (symbol route)", () => {
 
   test("the facade exposes inherited methods", ({ skip }) => {
     loadFixture(skip);
-    const owned = catType().init(); // facade only borrows the handle; keep the owner alive
-    const cat = Swift.Object(owned.handle);
+    const cat = catType().init();
     expect(cat.$methods).toContain("legs");
     expect(cat.legs()).toBe(4);
   });
@@ -74,7 +73,7 @@ describe("live polymorphic dispatch (metadata vtable)", () => {
     loadFixture(skip);
     const instanceMethods = catType()
       .init()
-      .vtable.filter((e) => e.kind === MethodDescriptorKind.Method && e.isInstance);
+      .vtable.filter((e: VTableEntry) => e.kind === MethodDescriptorKind.Method && e.isInstance);
     expect(instanceMethods.length).toBe(2); // speak + legs, both from Animal's descriptor
   });
 });
