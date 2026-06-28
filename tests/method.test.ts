@@ -167,8 +167,8 @@ describe("HeapObject computed property", () => {
 describe("ClassType static invocation", () => {
   test("calls a static factory and wraps the class return", ({ skip }) => {
     loadFixture(skip);
-    const ret = robotType().call("make", "Forged") as NativePointer;
-    const made = new HeapObject(ret);
+    const made = robotType().call("make", "Forged") as HeapObject;
+    expect(made.owned).toBe(true);
     expect(made.field("name").get()).toBe("Forged");
   });
 });

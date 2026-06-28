@@ -13,7 +13,16 @@ import {
   MethodResolveOptions,
   getProperty,
   setProperty,
+  CallResult,
 } from "../runtime/method.js";
+
+// Also polyfilled in value.ts, but the method↔heap-object cycle can define this class first.
+const symbolCtor = Symbol as { dispose?: symbol };
+symbolCtor.dispose ??= Symbol.for("Symbol.dispose");
+
+interface OwnedState {
+  disposed: boolean;
+}
 
 interface VTableInvokeSignature {
   returnType: Metadata | null;
@@ -22,7 +31,28 @@ interface VTableInvokeSignature {
 }
 
 export class HeapObject {
+  private state: OwnedState | null = null;
+  private weakId: WeakRefId | null = null;
+
   constructor(readonly handle: NativePointer) {}
+
+  static adopt(handle: NativePointer): HeapObject {
+    const object = new HeapObject(handle);
+    const state: OwnedState = { disposed: false };
+    object.state = state;
+    const release = getSwiftCoreApi().swift_release;
+    object.weakId = Script.bindWeak(object, () => {
+      if (!state.disposed) {
+        state.disposed = true;
+        release(handle);
+      }
+    });
+    return object;
+  }
+
+  get owned(): boolean {
+    return this.state !== null;
+  }
 
   get metadata(): ClassMetadata {
     return classMetadataOf(this.handle);
@@ -40,6 +70,7 @@ export class HeapObject {
     return Boolean(getSwiftCoreApi().swift_isUniquelyReferenced_native(this.handle));
   }
 
+  // On an owned object use dispose(), not release(): raw release plus GC release double-frees.
   retain(): this {
     getSwiftCoreApi().swift_retain(this.handle);
     return this;
@@ -47,6 +78,22 @@ export class HeapObject {
 
   release(): void {
     getSwiftCoreApi().swift_release(this.handle);
+  }
+
+  dispose(): void {
+    if (this.state === null || this.state.disposed) {
+      return;
+    }
+    this.state.disposed = true;
+    if (this.weakId !== null) {
+      Script.unbindWeak(this.weakId);
+      this.weakId = null;
+    }
+    getSwiftCoreApi().swift_release(this.handle);
+  }
+
+  [Symbol.dispose](): void {
+    this.dispose();
   }
 
   field(name: string): Value {
@@ -93,11 +140,11 @@ export class HeapObject {
     return new BoundMethod(resolved, this.handle);
   }
 
-  call(name: string, ...args: SwiftValue[]): SwiftValue {
+  call(name: string, ...args: SwiftValue[]): CallResult {
     return this.method(name).call(...args);
   }
 
-  get(name: string): SwiftValue {
+  get(name: string): CallResult {
     return getProperty(this.handle, this.typeName, name);
   }
 

@@ -15,6 +15,7 @@ import { parseSwiftSignature, resolveType } from "./symbolication.js";
 import {
   BoundMethod,
   BoundStaticMethod,
+  CallResult,
   MethodInfo,
   MethodResolveOptions,
   bindStaticMethod,
@@ -48,7 +49,7 @@ export class ValueType extends SwiftType {
     return bindStaticMethod(this.metadata, name, options);
   }
 
-  call(name: string, ...args: SwiftValue[]): SwiftValue {
+  call(name: string, ...args: SwiftValue[]): CallResult {
     return this.method(name).call(...args);
   }
 }
@@ -101,7 +102,7 @@ export class ClassType extends SwiftType {
       writeValue(argTypes[i], buffer, value);
       return buffer;
     });
-    return new HeapObject(call(this.metadata.handle, ...argPtrs)!.readPointer());
+    return HeapObject.adopt(call(this.metadata.handle, ...argPtrs)!.readPointer());
   }
 
   alloc(): HeapObject {
@@ -121,7 +122,7 @@ export class ClassType extends SwiftType {
     );
   }
 
-  call(name: string, ...args: SwiftValue[]): SwiftValue {
+  call(name: string, ...args: SwiftValue[]): CallResult {
     return this.method(name).call(...args);
   }
 

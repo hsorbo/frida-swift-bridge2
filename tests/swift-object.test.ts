@@ -1,10 +1,16 @@
 import { test, expect, describe } from "@frida/injest/agent";
 import { loadFixture } from "./fixtures/load.js";
 
-import { Swift, ClassType } from "../src/index.js";
+import { Swift, ClassType, HeapObject } from "../src/index.js";
+
+// Keep init()'s owned wrapper reachable: the facade only borrows the handle, so GC of the owner
+// would release the facade's object out from under it.
+const owners: HeapObject[] = [];
 
 function robot(name: string) {
-  return Swift.Object((Swift.typeOf(Swift.metadataFor("fixture.Robot")!) as ClassType).init(name).handle);
+  const owned = (Swift.typeOf(Swift.metadataFor("fixture.Robot")!) as ClassType).init(name);
+  owners.push(owned);
+  return Swift.Object(owned.handle);
 }
 
 describe("Swift.Object method sugar", () => {

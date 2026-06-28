@@ -41,8 +41,8 @@ describe("generic method invocation", () => {
     loadFixture(skip);
     const Robot = Swift.metadataFor("fixture.Robot")!;
     const r = robot("R2");
-    const back = box().method("echo", { typeArguments: [Robot] }).call(r.handle) as NativePointer;
-    expect(back.equals(r.handle)).toBe(true);
+    const back = box().method("echo", { typeArguments: [Robot] }).call(r.handle) as HeapObject;
+    expect(back.handle.equals(r.handle)).toBe(true);
   });
 
   test("a bound generic method is reusable across calls", ({ skip }) => {

@@ -2,7 +2,7 @@ import { HeapObject } from "../abi/heap-object.js";
 import { ClassMetadata } from "../abi/class-metadata.js";
 import { Metadata } from "../abi/metadata.js";
 import { SwiftValue } from "../abi/instance.js";
-import { MethodInfo, enumerateMethods } from "./method.js";
+import { CallResult, MethodInfo, enumerateMethods } from "./method.js";
 
 const RESERVED = new Set([
   "handle",
@@ -27,8 +27,8 @@ export interface SwiftObject {
   readonly $dynamicType: Metadata;
   readonly $fields: { [name: string]: SwiftValue };
   readonly $methods: string[];
-  $call(name: string, ...args: SwiftValue[]): SwiftValue;
-  $get(name: string): SwiftValue;
+  $call(name: string, ...args: SwiftValue[]): CallResult;
+  $get(name: string): CallResult;
   $set(name: string, value: SwiftValue): void;
   $retain(): SwiftObject;
   $release(): void;
@@ -51,7 +51,7 @@ function handleOf(other: SwiftObject | HeapObject | NativePointer): NativePointe
 
 export function createObject(handle: NativePointer): SwiftObject {
   const target = new HeapObject(handle);
-  const callables = new Map<string, (...args: SwiftValue[]) => SwiftValue>();
+  const callables = new Map<string, (...args: SwiftValue[]) => CallResult>();
   let keyMap: Map<string, MethodInfo> | null = null;
 
   const methodKeys = (): Map<string, MethodInfo> => {

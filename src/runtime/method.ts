@@ -1,6 +1,7 @@
 import { Metadata, MetadataKind, getMetadata } from "../abi/metadata.js";
 import { ContextDescriptorKind } from "../abi/context-descriptor.js";
 import { ClassMetadata } from "../abi/class-metadata.js";
+import { HeapObject } from "../abi/heap-object.js";
 import { readValue, writeValue, SwiftValue } from "../abi/instance.js";
 import { findType } from "../reflection/registry.js";
 import { demangle } from "./demangle.js";
@@ -15,6 +16,9 @@ import { typeName } from "./type-name.js";
 import { findProtocol, conformsToProtocol } from "../abi/protocol-conformance.js";
 
 export type MethodKind = "method" | "init";
+
+// Separate from SwiftValue (no class case there) to avoid an instance.ts → heap-object.ts cycle.
+export type CallResult = SwiftValue | HeapObject;
 
 export interface MethodInfo {
   name: string;
@@ -85,11 +89,19 @@ function marshalArg(metadata: Metadata, value: SwiftValue): NativePointer {
   return buffer;
 }
 
-function decodeReturn(returnType: Metadata | null, ret: NativePointer | null): SwiftValue {
+// Returns are +1: adopt a class, destroy a read non-POD value's temp; POD owns nothing.
+function decodeReturn(returnType: Metadata | null, ret: NativePointer | null): CallResult {
   if (returnType === null || ret === null) {
     return null;
   }
-  return readValue(returnType, ret);
+  if (returnType.kind === MetadataKind.Class) {
+    return HeapObject.adopt(ret.readPointer());
+  }
+  const value = readValue(returnType, ret);
+  if (!returnType.valueWitnesses.isPOD) {
+    returnType.valueWitnesses.destroy(ret);
+  }
+  return value;
 }
 
 function stripReceiverKeyword(context: string): { context: string; isStatic: boolean } {
@@ -308,7 +320,7 @@ export class BoundMethod {
     return this.fn;
   }
 
-  call(...args: SwiftValue[]): SwiftValue {
+  call(...args: SwiftValue[]): CallResult {
     const { argTypes, returnType } = this.resolved;
     if (args.length !== argTypes.length) {
       throw new Error(`${this.resolved.selector} expects ${argTypes.length} argument(s), got ${args.length}`);
@@ -342,7 +354,7 @@ export class BoundStaticMethod {
     return this.resolved.address;
   }
 
-  call(...args: SwiftValue[]): SwiftValue {
+  call(...args: SwiftValue[]): CallResult {
     const { argTypes, returnType } = this.resolved;
     if (args.length !== argTypes.length) {
       throw new Error(`${this.resolved.selector} expects ${argTypes.length} argument(s), got ${args.length}`);
@@ -397,7 +409,7 @@ export class BoundValueMethod {
     return this.resolved.address;
   }
 
-  call(...args: SwiftValue[]): SwiftValue {
+  call(...args: SwiftValue[]): CallResult {
     const { argTypes, returnType } = this.resolved;
     if (args.length !== argTypes.length) {
       throw new Error(`${this.resolved.selector} expects ${argTypes.length} argument(s), got ${args.length}`);
@@ -479,7 +491,7 @@ export class GenericBoundMethod {
     );
   }
 
-  call(...args: SwiftValue[]): SwiftValue {
+  call(...args: SwiftValue[]): CallResult {
     if (args.length !== this.argPlans.length) {
       throw new Error(`${this.selector} expects ${this.argPlans.length} argument(s), got ${args.length}`);
     }
@@ -555,7 +567,7 @@ function invokerForAccessor(accessor: ResolvedAccessor): SwiftNativeFunction {
   return fn;
 }
 
-export function getProperty(self: NativePointer, typeName: string, member: string): SwiftValue {
+export function getProperty(self: NativePointer, typeName: string, member: string): CallResult {
   const accessor = resolveAccessor(typeName, member, "getter");
   return decodeReturn(accessor.type, invokerForAccessor(accessor)(self));
 }

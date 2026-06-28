@@ -1,6 +1,6 @@
 import { Metadata, MetadataKind } from "./metadata.js";
 import { readValue, writeValue, enumerateInstanceFields, SwiftValue } from "./instance.js";
-import { BoundValueMethod, bindValueMethod, ValueMethodResolveOptions } from "../runtime/method.js";
+import { BoundValueMethod, bindValueMethod, ValueMethodResolveOptions, CallResult } from "../runtime/method.js";
 
 // qjs and v8 (Frida 17) ship no Symbol.dispose; polyfill so `using` resolves the key below.
 const symbolCtor = Symbol as { dispose?: symbol };
@@ -82,7 +82,7 @@ export class Value {
     return bindValueMethod(this.metadata, this.address, name, options);
   }
 
-  call(name: string, ...args: SwiftValue[]): SwiftValue {
+  call(name: string, ...args: SwiftValue[]): CallResult {
     return this.method(name).call(...args);
   }
 

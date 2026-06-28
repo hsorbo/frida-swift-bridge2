@@ -39,7 +39,8 @@ describe("inherited methods (symbol route)", () => {
 
   test("the facade exposes inherited methods", ({ skip }) => {
     loadFixture(skip);
-    const cat = Swift.Object(catType().init().handle);
+    const owned = catType().init(); // facade only borrows the handle; keep the owner alive
+    const cat = Swift.Object(owned.handle);
     expect(cat.$methods).toContain("legs");
     expect(cat.legs()).toBe(4);
   });
