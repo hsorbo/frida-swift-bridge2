@@ -73,6 +73,7 @@ interface AccessorCandidate {
   member: string;
   kind: AccessorKind;
   typeName: string;
+  isStatic: boolean;
 }
 
 interface TypeMembers {
@@ -234,9 +235,9 @@ function typeMembers(fullName: string): TypeMembers {
         methods.push({ address: e.address, name: signature.name, isStatic, signature });
       }
     } else if (signature.kind !== "modify") {
-      const { context } = stripReceiverKeyword(signature.context);
+      const { context, isStatic } = stripReceiverKeyword(signature.context);
       if (context === fullName) {
-        accessors.push({ address: e.address, member: signature.member, kind: signature.kind, typeName: signature.typeName });
+        accessors.push({ address: e.address, member: signature.member, kind: signature.kind, typeName: signature.typeName, isStatic });
       }
     }
   }
@@ -268,6 +269,42 @@ export function enumerateMethods(typeName: string): MethodInfo[] {
     }
   }
   return methods;
+}
+
+export interface PropertyInfo {
+  name: string;
+  typeName: string;
+  isStatic: boolean;
+  writable: boolean;
+}
+
+// One entry per property: getter and setter symbols merge into a single writable flag. Walks the
+// class chain like enumerateMethods so a subclass property shadows the superclass one of the same name.
+export function enumerateProperties(typeName: string): PropertyInfo[] {
+  const seen = new Set<string>();
+  const properties: PropertyInfo[] = [];
+  for (const className of classChainNames(canonicalTypeName(typeName))) {
+    const atThisLevel = new Map<string, PropertyInfo>();
+    for (const a of typeMembers(className).accessors) {
+      const key = `${a.isStatic ? "s" : "i"}:${a.member}`;
+      if (seen.has(key)) {
+        continue;
+      }
+      let info = atThisLevel.get(key);
+      if (info === undefined) {
+        info = { name: a.member, typeName: a.typeName, isStatic: a.isStatic, writable: false };
+        atThisLevel.set(key, info);
+        properties.push(info);
+      }
+      if (a.kind === "setter") {
+        info.writable = true;
+      }
+    }
+    for (const key of atThisLevel.keys()) {
+      seen.add(key);
+    }
+  }
+  return properties;
 }
 
 export function resolveMethod(

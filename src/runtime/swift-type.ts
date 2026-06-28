@@ -19,8 +19,10 @@ import {
   CallResult,
   MethodInfo,
   MethodResolveOptions,
+  PropertyInfo,
   bindStaticMethod,
   enumerateMethods,
+  enumerateProperties,
   resolveMethod,
 } from "./method.js";
 import { demangle } from "./demangle.js";
@@ -42,6 +44,10 @@ export class SwiftType {
 
   get methods(): MethodInfo[] {
     return enumerateMethods(this.name);
+  }
+
+  get properties(): PropertyInfo[] {
+    return enumerateProperties(this.name);
   }
 }
 

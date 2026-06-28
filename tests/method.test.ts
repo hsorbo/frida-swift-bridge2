@@ -1,10 +1,11 @@
 import { test, expect, describe } from "@frida/injest/agent";
 import { loadFixture } from "./fixtures/load.js";
 
-import { Swift, ClassType, SwiftObject } from "../src/index.js";
+import { Swift, ClassType, StructType, SwiftObject } from "../src/index.js";
 import {
   resolveMethod,
   enumerateMethods,
+  enumerateProperties,
 } from "../src/runtime/method.js";
 import { parseSwiftSignature, type SwiftFunctionSignature } from "../src/runtime/symbolication.js";
 
@@ -97,6 +98,33 @@ describe("enumerateMethods", () => {
     expect(eq.isStatic).toBe(true);
     expect(eq.returnTypeName).toBe("Swift.Bool");
     expect(methods.find((m) => m.name === "echo")!.returnTypeName).toBe("A");
+  });
+});
+
+describe("enumerateProperties", () => {
+  test("merges get/set into one writable entry per property", ({ skip }) => {
+    loadFixture(skip);
+    const props = enumerateProperties("fixture.Point");
+    const doubled = props.find((p) => p.name === "doubled")!;
+    expect(doubled.typeName).toBe("Swift.Int");
+    expect(doubled.isStatic).toBe(false);
+    expect(doubled.writable).toBe(false);
+    expect(props.find((p) => p.name === "x")!.writable).toBe(true);
+    expect(props.filter((p) => p.name === "x").length).toBe(1);
+  });
+
+  test("is exposed on the type wrapper as .properties", ({ skip }) => {
+    loadFixture(skip);
+    const point = Swift.typeOf(Swift.metadataFor("fixture.Point")!) as StructType;
+    expect(point.properties.map((p) => p.name).sort()).toEqual(["doubled", "x"]);
+  });
+
+  test("lists class properties with their types", ({ skip }) => {
+    loadFixture(skip);
+    const props = enumerateProperties("fixture.Robot");
+    const badge = props.find((p) => p.name === "badge")!;
+    expect(badge.typeName).toBe("Swift.String");
+    expect(badge.writable).toBe(true);
   });
 });
 
