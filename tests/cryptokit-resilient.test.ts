@@ -3,6 +3,8 @@ import { requireSwift, type Skip } from "./swift.js";
 
 import {
   Swift,
+  StructType,
+  Value,
   isResilientValueType,
   makeSwiftNativeFunction,
   resolveMethod,
@@ -46,5 +48,18 @@ describe("resilient auto-detection (CryptoKit)", () => {
     expect(isResilientValueType(Swift.metadataFor("Swift.Int")!)).toBe(false);
 
     expect(getProperty(makeKey(256), "CryptoKit.SymmetricKey", "bitCount")).toBe(256);
+  });
+
+  test("constructs a resilient value type through the type wrapper", ({ skip }) => {
+    loadCryptoKit(skip);
+
+    const sizeMd = Swift.metadataFor("CryptoKit.SymmetricKeySize")!;
+    const sizeBuf = Memory.alloc(sizeMd.typeLayout.stride);
+    sizeBuf.writeU64(256);
+
+    const keyType = Swift.typeOf(Swift.metadataFor("CryptoKit.SymmetricKey")!) as StructType;
+    const key = keyType.initializer({ labels: ["size"] }).call(Value.borrow(sizeMd, sizeBuf));
+
+    expect(getProperty(key.address, "CryptoKit.SymmetricKey", "bitCount")).toBe(256);
   });
 });

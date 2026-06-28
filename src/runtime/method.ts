@@ -220,26 +220,43 @@ function typeMembers(fullName: string): TypeMembers {
   }
   const methods: MethodCandidate[] = [];
   const accessors: AccessorCandidate[] = [];
-  for (const e of module.enumerateExports()) {
-    const demangled = demangle(e.name);
+  const seen = new Set<string>();
+  // initsOnly restricts the symbol-table pass to initializers: value-type inits are omitted from the
+  // export trie in non-library-evolution builds, but regular non-exported methods stay reachable only
+  // via the vtable, not the symbol route. The export trie carries everything else.
+  const consider = (name: string, address: NativePointer, initsOnly: boolean): void => {
+    if (address.isNull() || seen.has(address.toString())) {
+      return;
+    }
+    seen.add(address.toString());
+    const demangled = demangle(name);
     if (demangled === null) {
-      continue;
+      return;
     }
     const signature = parseSwiftSignature(demangled);
     if (signature === null) {
-      continue;
+      return;
     }
     if (signature.kind === "function") {
-      const { context, isStatic } = stripReceiverKeyword(signature.context);
-      if (context === fullName) {
-        methods.push({ address: e.address, name: signature.name, isStatic, signature });
+      if (initsOnly && signature.name !== "init") {
+        return;
       }
-    } else if (signature.kind !== "modify") {
       const { context, isStatic } = stripReceiverKeyword(signature.context);
       if (context === fullName) {
-        accessors.push({ address: e.address, member: signature.member, kind: signature.kind, typeName: signature.typeName, isStatic });
+        methods.push({ address, name: signature.name, isStatic, signature });
+      }
+    } else if (!initsOnly && signature.kind !== "modify") {
+      const { context, isStatic } = stripReceiverKeyword(signature.context);
+      if (context === fullName) {
+        accessors.push({ address, member: signature.member, kind: signature.kind, typeName: signature.typeName, isStatic });
       }
     }
+  };
+  for (const e of module.enumerateExports()) {
+    consider(e.name, e.address, false);
+  }
+  for (const s of module.enumerateSymbols()) {
+    consider(s.name, s.address, true);
   }
   const members: TypeMembers = { methods, accessors };
   tableCache.set(fullName, members);
@@ -439,6 +456,43 @@ export function bindStaticMethod(
   options: MethodResolveOptions = {}
 ): BoundStaticMethod {
   return new BoundStaticMethod(resolveMethod(typeName(receiver), name, { ...options, static: true }));
+}
+
+// A value-type initializer is self-less: the @thin metatype self is erased, so it lowers like a
+// static factory returning the type (the +1/owned return is adopted as a Value). Init params are
+// +1/consumed — the callee owns the arg temps, so they are not destroyed here. Mirrors ClassType.init.
+export class BoundValueInitializer {
+  private readonly fn: SwiftNativeFunction;
+
+  constructor(readonly resolved: ResolvedMethod) {
+    this.fn = staticInvokerFor(resolved);
+  }
+
+  get address(): NativePointer {
+    return this.resolved.address;
+  }
+
+  call(...args: CallArg[]): Value {
+    const { argTypes, returnType, selector } = this.resolved;
+    if (returnType === null) {
+      throw new Error(`${selector} is not a value initializer`);
+    }
+    if (args.length !== argTypes.length) {
+      throw new Error(`${selector} expects ${argTypes.length} argument(s), got ${args.length}`);
+    }
+    const ret = this.fn(...args.map((value, i) => marshalArg(argTypes[i], value)));
+    if (ret === null) {
+      throw new Error(`${selector} returned no value`);
+    }
+    return Value.adopt(returnType, ret);
+  }
+}
+
+export function bindValueInitializer(
+  receiver: Metadata,
+  options: MethodResolveOptions = {}
+): BoundValueInitializer {
+  return new BoundValueInitializer(resolveMethod(typeName(receiver), "init", options));
 }
 
 type SelfRouting = { indirect: true } | { indirect: false; receiver: Metadata };

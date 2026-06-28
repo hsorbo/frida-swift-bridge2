@@ -16,11 +16,14 @@ import { parseSwiftSignature, resolveType } from "./symbolication.js";
 import {
   BoundMethod,
   BoundStaticMethod,
+  BoundValueInitializer,
+  CallArg,
   CallResult,
   MethodInfo,
   MethodResolveOptions,
   PropertyInfo,
   bindStaticMethod,
+  bindValueInitializer,
   enumerateMethods,
   enumerateProperties,
   resolveMethod,
@@ -58,6 +61,14 @@ export class ValueType extends SwiftType {
 
   call(name: string, ...args: SwiftValue[]): CallResult {
     return this.method(name).call(...args);
+  }
+
+  initializer(options: MethodResolveOptions = {}): BoundValueInitializer {
+    return bindValueInitializer(this.metadata, options);
+  }
+
+  init(...args: CallArg[]): Value {
+    return this.initializer().call(...args);
   }
 }
 
