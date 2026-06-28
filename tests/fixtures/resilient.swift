@@ -11,3 +11,23 @@ public struct ResilientPoint {
         self.y = y
     }
 }
+
+// non-frozen ⇒ passed @in / returned @out across the resilience boundary, despite its 16-byte size
+public func translate(_ p: ResilientPoint, dx: Int, dy: Int) -> ResilientPoint {
+    return ResilientPoint(x: p.x + dx, y: p.y + dy)
+}
+
+// @frozen ⇒ visible layout ⇒ direct ABI even in a resilient module (the heuristic's false-positive case)
+@frozen public struct FrozenPoint {
+    public var x: Int
+    public var y: Int
+
+    public init(x: Int, y: Int) {
+        self.x = x
+        self.y = y
+    }
+}
+
+public func translateFrozen(_ p: FrozenPoint, dx: Int, dy: Int) -> FrozenPoint {
+    return FrozenPoint(x: p.x + dx, y: p.y + dy)
+}

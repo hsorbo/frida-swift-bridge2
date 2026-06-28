@@ -112,6 +112,7 @@ export {
 } from "./abi/value-witness.js";
 export {
   shouldPassIndirectly,
+  isResilientValueType,
   MAX_LOADABLE_SIZE,
   makeSwiftNativeFunction,
   SwiftNativeFunction,

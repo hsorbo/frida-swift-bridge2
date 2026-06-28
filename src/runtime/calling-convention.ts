@@ -5,10 +5,24 @@ import { typeName } from "./type-name.js";
 
 export const MAX_LOADABLE_SIZE = Process.pointerSize * 4;
 
+// Resilience (passed address-only across the module boundary) isn't in metadata; the layout-string
+// bit is the only proxy, set by Apple's library-evolution frameworks. Apple-only — AbstractIndirect
+// overrides.
+export function isResilientValueType(metadata: Metadata): boolean {
+  const kind = metadata.kind;
+  if (kind !== MetadataKind.Struct && kind !== MetadataKind.Enum && kind !== MetadataKind.Optional) {
+    return false;
+  }
+  return metadata.description.hasLayoutString;
+}
+
 // Integer/pointer-class only; floating-point uses the separate v-register budget below.
 export function shouldPassIndirectly(metadata: Metadata): boolean {
   if (metadata.kind === MetadataKind.Existential && existentialRepresentation(metadata) === "opaque") {
     return true; // opaque existentials are address-only
+  }
+  if (isResilientValueType(metadata)) {
+    return true;
   }
   const vwt = metadata.valueWitnesses;
   return !vwt.isBitwiseTakable || vwt.size > MAX_LOADABLE_SIZE;
@@ -94,12 +108,13 @@ function lowerArg(arg: SwiftArgType): LoweredArg {
   if (isGenericRef(arg) || isAbstractIndirect(arg)) {
     return { indirect: true, float: null, words: 0 };
   }
+  // indirect before HFA: a resilient float aggregate is @in, not spread across v-registers
+  if (shouldPassIndirectly(arg)) {
+    return { indirect: true, float: null, words: 0 };
+  }
   const float = floatLayout(arg);
   if (float !== null) {
     return { indirect: false, float, words: 0 };
-  }
-  if (shouldPassIndirectly(arg)) {
-    return { indirect: true, float: null, words: 0 };
   }
   return { indirect: false, float: null, words: Math.ceil(arg.valueWitnesses.size / 8) };
 }
@@ -180,15 +195,12 @@ export function makeSwiftNativeFunction(
     resultSize = returnMetadata.valueWitnesses.size;
     resultStride = returnMetadata.valueWitnesses.stride;
     if (resultSize > 0) {
-      if (forcedIndirect) {
-        indirectResult = true; // generic / address-only return: indirect regardless of size
+      // indirect (x8) before HFA, as in lowerArg
+      if (forcedIndirect || shouldPassIndirectly(returnMetadata)) {
+        indirectResult = true;
       } else {
         floatResult = floatLayout(returnMetadata);
-        if (floatResult !== null) {
-          // captured from v0..v(count-1)
-        } else if (shouldPassIndirectly(returnMetadata)) {
-          indirectResult = true;
-        } else {
+        if (floatResult === null) {
           directWords = Math.ceil(resultSize / 8);
         }
       }
