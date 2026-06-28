@@ -173,6 +173,26 @@ describe("SwiftInterceptor.attach", () => {
     expect(seenRet).toBe(11);
   });
 
+  test("decodes a generic function taking a metatype argument", ({ skip }) => {
+    const Int = Swift.metadataFor("Swift.Int")!;
+    const identity = fixtureAddress(skip, "fixture.metatypeIdentity");
+    const driver = fixtureAddress(skip, "fixture.makeMetatypeInt");
+    let seenArgs: SwiftValue[] | null = null;
+    let seenRet: SwiftValue = null;
+    const listener = SwiftInterceptor.attach(identity, {
+      onEnter(args) {
+        seenArgs = args;
+      },
+      onLeave(ret) {
+        seenRet = ret;
+      },
+    });
+    makeSwiftNativeFunction(driver, Int, [])();
+    listener.detach();
+    expect(seenArgs).toEqual(["Swift.Int", 5]);
+    expect(seenRet).toBe(5);
+  });
+
   test("decodes a constrained generic arg, ignoring the trailing witness table", ({ skip }) => {
     const scaleGeneric = fixtureAddress(skip, "fixture.scaleGeneric");
     const driver = fixtureAddress(skip, "fixture.makeScaleGeneric");

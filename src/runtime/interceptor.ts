@@ -3,6 +3,7 @@ import { readValue, SwiftValue } from "../abi/instance.js";
 import { projectErrorExistential } from "../abi/existential.js";
 import { shouldPassIndirectly, floatLayout } from "./calling-convention.js";
 import { symbolicate, parseSwiftSignature, resolveType, resolveTypeExpr } from "./symbolication.js";
+import { typeName } from "./type-name.js";
 
 export interface SwiftInvocationCallbacks {
   onEnter?: (this: InvocationContext, args: SwiftValue[]) => void;
@@ -12,7 +13,8 @@ export interface SwiftInvocationCallbacks {
 type TypePlan =
   | { kind: "concrete"; metadata: Metadata }
   | { kind: "param"; paramIndex: number }
-  | { kind: "use"; expr: string }; // param-referencing expression: A?, [A], Array<A>
+  | { kind: "use"; expr: string } // param-referencing expression: A?, [A], Array<A>
+  | { kind: "metatype" }; // T.Type: one GP holding the metadata pointer directly (loadable POD)
 
 interface CallShape {
   args: TypePlan[];
@@ -30,13 +32,20 @@ function planType(name: string, genericParams: string[]): TypePlan {
   if (metadata !== null) {
     return { kind: "concrete", metadata };
   }
+  if (name.endsWith(".Type")) {
+    return { kind: "metatype" };
+  }
   if (genericParams.some((p) => new RegExp(`\\b${p}\\b`).test(name))) {
     return { kind: "use", expr: name };
   }
   throw new Error(`could not resolve type: ${name}`);
 }
 
-function planMetadata(plan: TypePlan, generics: Metadata[], genericParams: string[]): Metadata {
+function planMetadata(
+  plan: Exclude<TypePlan, { kind: "metatype" }>,
+  generics: Metadata[],
+  genericParams: string[]
+): Metadata {
   switch (plan.kind) {
     case "concrete":
       return plan.metadata;
@@ -100,8 +109,16 @@ function callShape(target: NativePointer): CallShape {
   }
 }
 
+// A metatype value is the type-metadata pointer itself, surfaced as its qualified name.
+function decodeMetatype(metadataPointer: NativePointer): SwiftValue {
+  return typeName(new Metadata(metadataPointer));
+}
+
 function returnIsIndirect(ret: TypePlan | null): boolean {
   if (ret === null) {
+    return false;
+  }
+  if (ret.kind === "metatype") {
     return false;
   }
   if (isIndirectPlan(ret)) {
@@ -150,6 +167,10 @@ function materializeArgs(
   const slots: { plan: TypePlan; address: NativePointer }[] = [];
 
   for (const plan of args) {
+    if (plan.kind === "metatype") {
+      slots.push({ plan, address: gpr(context, ngrn++) }); // address IS the metadata pointer
+      continue;
+    }
     if (isIndirectPlan(plan)) {
       slots.push({ plan, address: gpr(context, ngrn++) });
       continue;
@@ -185,7 +206,9 @@ function materializeArgs(
   }
 
   const values = slots.map((s) =>
-    readValue(planMetadata(s.plan, generics, genericParams), s.address)
+    s.plan.kind === "metatype"
+      ? decodeMetatype(s.address)
+      : readValue(planMetadata(s.plan, generics, genericParams), s.address)
   );
   return { values, generics };
 }
@@ -199,6 +222,9 @@ function materializeReturn(
 ): SwiftValue {
   if (ret === null) {
     return null;
+  }
+  if (ret.kind === "metatype") {
+    return decodeMetatype(context.x0);
   }
   if (isIndirectPlan(ret)) {
     if (indirectReturn === null) {

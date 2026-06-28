@@ -341,6 +341,11 @@ public final class Cat: Animal {
     public override func speak() -> Int { 9 }
 }
 
+// Metatype argument in a generic: `T.Type` lowers to a single metadata pointer (loadable, one GP).
+@inline(never)
+public func metatypeIdentity<T>(_ t: T.Type, _ x: T) -> T { x }
+public func makeMetatypeInt() -> Int { metatypeIdentity(Int.self, 5) }
+
 public func anyType() -> UnsafeRawPointer { unsafeBitCast(Any.self, to: UnsafeRawPointer.self) }
 public func greeterType() -> UnsafeRawPointer { unsafeBitCast((any Greeter).self, to: UnsafeRawPointer.self) }
 public func greeterAgedType() -> UnsafeRawPointer { unsafeBitCast((any Greeter & Aged).self, to: UnsafeRawPointer.self) }
