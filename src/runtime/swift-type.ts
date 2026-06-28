@@ -98,6 +98,7 @@ export class ClassType extends SwiftType {
       throw new Error(`init expects ${argTypes.length} argument(s), got ${args.length}`);
     }
     const call = makeSwiftNativeFunction(address, this.metadata, argTypes, { hasSelf: true });
+    // Initializer params are +1/owned: the callee consumes each temp, so they are not destroyed here.
     const argPtrs = args.map((value, i) => {
       const buffer = Memory.alloc(argTypes[i].typeLayout.stride);
       writeValue(argTypes[i], buffer, value);

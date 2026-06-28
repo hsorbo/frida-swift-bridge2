@@ -55,4 +55,13 @@ describe("ownership", () => {
     }
     expect(storage.retainCount).toBe(before);
   });
+
+  // rename retains the +0/guaranteed arg into the field; a leaked temp would leave rc 2, not 1.
+  test("a regular method's String arg +1 temp is destroyed, not leaked alongside the stored field", ({ skip }) => {
+    loadFixture(skip);
+    const r = robotType().init("short");
+    r.$call("rename", "a deliberately long, heap-allocated robot name");
+    const storage = stringStorage(r.$field("name").address);
+    expect(storage.retainCount).toBe(1);
+  });
 });

@@ -104,6 +104,27 @@ function decodeReturn(returnType: Metadata | null, ret: NativePointer | null): C
   return value;
 }
 
+// +0/guaranteed args: the callee borrows, so each non-POD value temp is ours to destroy post-call
+// (try/finally covers a throwing callee). An explicitly-__owned param would double-free — known gap.
+function callBorrowingArgs(
+  argTypes: Metadata[],
+  args: SwiftValue[],
+  returnType: Metadata | null,
+  invoke: (argPtrs: NativePointer[]) => NativePointer | null
+): CallResult {
+  const argPtrs = args.map((value, i) => marshalArg(argTypes[i], value));
+  try {
+    return decodeReturn(returnType, invoke(argPtrs));
+  } finally {
+    for (let i = 0; i < argTypes.length; i++) {
+      const metadata = argTypes[i];
+      if (metadata.kind !== MetadataKind.Class && !metadata.valueWitnesses.isPOD) {
+        metadata.valueWitnesses.destroy(argPtrs[i]);
+      }
+    }
+  }
+}
+
 function stripReceiverKeyword(context: string): { context: string; isStatic: boolean } {
   for (const keyword of ["static ", "class "]) {
     if (context.startsWith(keyword)) {
@@ -325,8 +346,7 @@ export class BoundMethod {
     if (args.length !== argTypes.length) {
       throw new Error(`${this.resolved.selector} expects ${argTypes.length} argument(s), got ${args.length}`);
     }
-    const argPtrs = args.map((value, i) => marshalArg(argTypes[i], value));
-    return decodeReturn(returnType, this.fn(this.self, ...argPtrs));
+    return callBorrowingArgs(argTypes, args, returnType, (argPtrs) => this.fn(this.self, ...argPtrs));
   }
 }
 
@@ -359,8 +379,7 @@ export class BoundStaticMethod {
     if (args.length !== argTypes.length) {
       throw new Error(`${this.resolved.selector} expects ${argTypes.length} argument(s), got ${args.length}`);
     }
-    const argPtrs = args.map((value, i) => marshalArg(argTypes[i], value));
-    return decodeReturn(returnType, this.fn(...argPtrs));
+    return callBorrowingArgs(argTypes, args, returnType, (argPtrs) => this.fn(...argPtrs));
   }
 }
 
@@ -414,9 +433,9 @@ export class BoundValueMethod {
     if (args.length !== argTypes.length) {
       throw new Error(`${this.resolved.selector} expects ${argTypes.length} argument(s), got ${args.length}`);
     }
-    const argPtrs = args.map((value, i) => marshalArg(argTypes[i], value));
-    const ret = this.indirectSelf ? this.fn(this.self, ...argPtrs) : this.fn(...argPtrs, this.self);
-    return decodeReturn(returnType, ret);
+    return callBorrowingArgs(argTypes, args, returnType, (argPtrs) =>
+      this.indirectSelf ? this.fn(this.self, ...argPtrs) : this.fn(...argPtrs, this.self)
+    );
   }
 }
 
@@ -495,8 +514,10 @@ export class GenericBoundMethod {
     if (args.length !== this.argPlans.length) {
       throw new Error(`${this.selector} expects ${this.argPlans.length} argument(s), got ${args.length}`);
     }
-    const argPtrs = args.map((value, i) => marshalArg(this.argPlans[i].metadata, value));
-    return decodeReturn(this.returnPlan?.metadata ?? null, this.fn(this.self, ...argPtrs));
+    const argTypes = this.argPlans.map((p) => p.metadata);
+    return callBorrowingArgs(argTypes, args, this.returnPlan?.metadata ?? null, (argPtrs) =>
+      this.fn(this.self, ...argPtrs)
+    );
   }
 }
 
@@ -572,6 +593,7 @@ export function getProperty(self: NativePointer, typeName: string, member: strin
   return decodeReturn(accessor.type, invokerForAccessor(accessor)(self));
 }
 
+// Setter newValue is +1/owned: the callee consumes the temp, so it is not destroyed here.
 export function setProperty(self: NativePointer, typeName: string, member: string, value: SwiftValue): void {
   const accessor = resolveAccessor(typeName, member, "setter");
   invokerForAccessor(accessor)(self, marshalArg(accessor.type, value));
