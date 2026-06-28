@@ -56,8 +56,7 @@ function handleOf(other: SwiftObject | HeapObject | NativePointer): NativePointe
   return (other instanceof NativePointer ? other : other.handle) as NativePointer;
 }
 
-// Owns when handed an owned HeapObject (init/call/adopt): the proxy roots its target, so the +1
-// outlives reachability and releases on GC. A raw pointer is wrapped as a borrow.
+// The proxy roots its target, so an owned target's +1 releases only when the proxy is GC'd.
 export function createObject(source: NativePointer | HeapObject): SwiftObject {
   const target = source instanceof HeapObject ? source : new HeapObject(source);
   const callables = new Map<string, (...args: SwiftValue[]) => CallResult>();
@@ -131,8 +130,7 @@ export function createObject(source: NativePointer | HeapObject): SwiftObject {
         case "valueOf":
           return () => `<${t.metadata.description.fullTypeName ?? "Swift.Object"}: ${t.handle}>`;
       }
-      // The low-level HeapObject API wins over a same-named no-arg Swift method (reach the latter
-      // via $call); escaped selectors (greet$_) never collide with it.
+      // A real HeapObject member wins over a same-named no-arg Swift method (reach that via $call).
       if (Reflect.has(t, key)) {
         const member = Reflect.get(t, key);
         return typeof member === "function" ? member.bind(t) : member;

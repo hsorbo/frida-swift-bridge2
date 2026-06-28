@@ -106,6 +106,7 @@ export class ClassType extends SwiftType {
     return createObject(HeapObject.adopt(call(this.metadata.handle, ...argPtrs)!.readPointer()));
   }
 
+  // +1 raw storage; initialize fields before the wrapper is released (deinit runs over them).
   alloc(): SwiftObject {
     const cls = new ClassMetadata(this.metadata.handle);
     const object = getSwiftCoreApi().swift_allocObject(
@@ -113,7 +114,7 @@ export class ClassType extends SwiftType {
       cls.instanceSize,
       cls.instanceAlignment - 1
     );
-    return createObject(new HeapObject(object));
+    return createObject(HeapObject.adopt(object));
   }
 
   method(name: string, options: MethodResolveOptions = {}): BoundMethod {

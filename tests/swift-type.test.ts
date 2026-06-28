@@ -40,6 +40,7 @@ describe("type wrappers", () => {
     const t = Swift.typeOf(Swift.metadataFor("fixture.Counter")!) as ClassType;
     const obj = t.alloc();
     expect(obj.handle.isNull()).toBe(false);
+    expect(obj.$owned).toBe(true);
     obj.field("count").set(3);
     expect(obj.field("count").get()).toBe(3);
   });

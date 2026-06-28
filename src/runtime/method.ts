@@ -18,7 +18,6 @@ import { findProtocol, conformsToProtocol } from "../abi/protocol-conformance.js
 
 export type MethodKind = "method" | "init";
 
-// Separate from SwiftValue (no class case there); a class return is the owning SwiftObject proxy.
 export type CallResult = SwiftValue | SwiftObject;
 
 export interface MethodInfo {
