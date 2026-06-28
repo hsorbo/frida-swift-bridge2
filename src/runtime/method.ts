@@ -289,6 +289,32 @@ export function enumerateMethods(typeName: string, ownOnly = false): MethodInfo[
   return methods;
 }
 
+// "greet(name:to:)" → "greet$name_to_"; unlabelled args contribute a bare "_"; no-arg stays "greet".
+function escapeSelector(name: string, argLabels: (string | null)[]): string {
+  if (argLabels.length === 0) {
+    return name;
+  }
+  return `${name}$${argLabels.map((l) => `${l ?? ""}_`).join("")}`;
+}
+
+// Maps each escaped selector key to its method, disambiguating same-key overloads with a serial
+// suffix. wantStatic picks static vs instance methods; initializers are always excluded.
+export function buildKeyMap(infos: MethodInfo[], wantStatic = false): Map<string, MethodInfo> {
+  const map = new Map<string, MethodInfo>();
+  for (const info of infos) {
+    if (info.kind !== "method" || info.isStatic !== wantStatic) {
+      continue;
+    }
+    const base = escapeSelector(info.name, info.argLabels);
+    let key = base;
+    for (let serial = 2; map.has(key); serial++) {
+      key = `${base}${serial}`;
+    }
+    map.set(key, info);
+  }
+  return map;
+}
+
 export interface PropertyInfo {
   name: string;
   typeName: string;

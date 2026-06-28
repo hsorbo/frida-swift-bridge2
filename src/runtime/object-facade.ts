@@ -3,7 +3,7 @@ import { ClassMetadata } from "../abi/class-metadata.js";
 import { Metadata } from "../abi/metadata.js";
 import { Value } from "../abi/value.js";
 import { SwiftValue } from "../abi/instance.js";
-import { CallResult, MethodInfo, enumerateMethods } from "./method.js";
+import { CallResult, MethodInfo, enumerateMethods, buildKeyMap } from "./method.js";
 import { typeName } from "./type-name.js";
 import { SwiftType, typeOf } from "./swift-type.js";
 
@@ -54,32 +54,8 @@ export interface SwiftObject {
   [key: string]: any;
 }
 
-// "greet(name:to:)" → "greet$name_to_"; unlabelled args contribute a bare "_"; no-arg stays "greet".
-function escapeSelector(name: string, argLabels: (string | null)[]): string {
-  if (argLabels.length === 0) {
-    return name;
-  }
-  return `${name}$${argLabels.map((l) => `${l ?? ""}_`).join("")}`;
-}
-
 function handleOf(other: SwiftObject | HeapObject | NativePointer): NativePointer {
   return (other instanceof NativePointer ? other : other.handle) as NativePointer;
-}
-
-function buildKeyMap(infos: MethodInfo[]): Map<string, MethodInfo> {
-  const map = new Map<string, MethodInfo>();
-  for (const info of infos) {
-    if (info.isStatic || info.kind !== "method") {
-      continue;
-    }
-    const base = escapeSelector(info.name, info.argLabels);
-    let key = base;
-    for (let serial = 2; map.has(key); serial++) {
-      key = `${base}${serial}`;
-    }
-    map.set(key, info);
-  }
-  return map;
 }
 
 // The proxy roots its target, so an owned target's +1 releases only when the proxy is GC'd.

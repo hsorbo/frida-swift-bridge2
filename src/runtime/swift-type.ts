@@ -24,6 +24,7 @@ import {
   PropertyInfo,
   bindStaticMethod,
   bindValueInitializer,
+  buildKeyMap,
   enumerateMethods,
   enumerateProperties,
   resolveMethod,
@@ -47,6 +48,14 @@ export class SwiftType {
 
   get methods(): MethodInfo[] {
     return enumerateMethods(this.name);
+  }
+
+  get $methods(): string[] {
+    return [...buildKeyMap(enumerateMethods(this.name)).keys()];
+  }
+
+  get $staticMethods(): string[] {
+    return [...buildKeyMap(enumerateMethods(this.name), true).keys()];
   }
 
   get properties(): PropertyInfo[] {
