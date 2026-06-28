@@ -56,9 +56,9 @@ describe("Swift.Object intrinsics", () => {
     expect(o.$get("badge")).toBe("[D2]");
   });
 
-  test("$methods lists the escaped, callable keys", ({ skip }) => {
+  test("$type.methods() lists the escaped, callable keys", ({ skip }) => {
     loadFixture(skip);
-    const keys = robot("R2").$methods;
+    const keys = robot("R2").$type.methods();
     for (const k of ["greet$_", "rename$to_", "merged$with_", "at$_", "at$__"]) {
       expect(keys).toContain(k);
     }
@@ -70,33 +70,33 @@ describe("Swift.Object intrinsics", () => {
     expect(robot("R2").$className).toBe("fixture.Robot");
   });
 
-  test("$superClass wraps the parent, null at a root class", ({ skip }) => {
+  test("$type.superClass wraps the parent, null at a root class", ({ skip }) => {
     loadFixture(skip);
-    const sup = cat().$superClass;
+    const sup = cat().$type.superClass;
     expect(sup).not.toBeNull();
     expect(sup!.name).toBe("fixture.Animal");
-    expect(robot("R2").$superClass).toBeNull();
+    expect(robot("R2").$type.superClass).toBeNull();
   });
 
-  test("$moduleName points at the defining image", ({ skip }) => {
+  test("$type.moduleName points at the defining image", ({ skip }) => {
     loadFixture(skip);
-    expect(robot("R2").$moduleName).toContain("fixture.dylib");
+    expect(robot("R2").$type.moduleName).toContain("fixture.dylib");
   });
 
-  test("$ownMethods excludes inherited methods that $methods includes", ({ skip }) => {
+  test("methods({ inherited: false }) excludes inherited methods that methods() includes", ({ skip }) => {
     loadFixture(skip);
-    const o = cat();
-    expect(o.$methods).toContain("speak");
-    expect(o.$methods).toContain("legs");
-    expect(o.$ownMethods).toContain("speak");
-    expect(o.$ownMethods).not.toContain("legs");
+    const t = cat().$type;
+    expect(t.methods()).toContain("speak");
+    expect(t.methods()).toContain("legs");
+    expect(t.methods({ inherited: false })).toContain("speak");
+    expect(t.methods({ inherited: false })).not.toContain("legs");
   });
 
-  test("$metadata / $dynamicType / handle expose the wrapped object", ({ skip }) => {
+  test("$type / handle expose the wrapped object", ({ skip }) => {
     loadFixture(skip);
     const o = robot("R2");
-    expect(o.$metadata.description.fullTypeName).toBe("fixture.Robot");
-    expect(Swift.typeName(o.$dynamicType)).toBe("fixture.Robot");
+    expect(o.$type.name).toBe("fixture.Robot");
+    expect(Swift.typeName(o.$type.metadata)).toBe("fixture.Robot");
     expect(o.handle.isNull()).toBe(false);
   });
 
@@ -106,7 +106,7 @@ describe("Swift.Object intrinsics", () => {
     expect(o.equals(Swift.Object(o.handle))).toBe(true);
     expect(o.equals(robot("R2"))).toBe(false);
     expect("greet$_" in o).toBe(true);
-    expect("$metadata" in o).toBe(true);
+    expect("$type" in o).toBe(true);
     expect("nope" in o).toBe(false);
   });
 

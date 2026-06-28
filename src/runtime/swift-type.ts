@@ -19,7 +19,6 @@ import {
   BoundValueInitializer,
   CallArg,
   CallResult,
-  MethodInfo,
   MethodResolveOptions,
   PropertyInfo,
   bindStaticMethod,
@@ -39,6 +38,11 @@ export interface TypeMember {
   type: Metadata | null;
 }
 
+export interface MethodQuery {
+  static?: boolean;
+  inherited?: boolean;
+}
+
 export class SwiftType {
   constructor(readonly metadata: Metadata) {}
 
@@ -46,24 +50,25 @@ export class SwiftType {
     return typeName(this.metadata);
   }
 
-  get methods(): MethodInfo[] {
-    return enumerateMethods(this.name);
+  get superClass(): SwiftType | null {
+    return null;
   }
 
-  get $methods(): string[] {
-    return [...buildKeyMap(enumerateMethods(this.name)).keys()];
+  get moduleName(): string | null {
+    return Process.findModuleByAddress(this.descriptorHandle)?.path ?? null;
   }
 
-  get $staticMethods(): string[] {
-    return [...buildKeyMap(enumerateMethods(this.name), true).keys()];
+  methods(options: MethodQuery = {}): string[] {
+    const { static: wantStatic = false, inherited = true } = options;
+    return [...buildKeyMap(enumerateMethods(this.name, !inherited), wantStatic).keys()];
+  }
+
+  protocols(): { [name: string]: Protocol } {
+    return protocolsForType(this.descriptorHandle);
   }
 
   get properties(): PropertyInfo[] {
     return enumerateProperties(this.name);
-  }
-
-  get $protocols(): { [name: string]: Protocol } {
-    return protocolsForType(this.descriptorHandle);
   }
 
   protected get descriptorHandle(): NativePointer {
@@ -128,6 +133,13 @@ export class ClassType extends SwiftType {
 
   protected get descriptorHandle(): NativePointer {
     return new ClassMetadata(this.metadata.handle).description.handle;
+  }
+
+  get superClass(): SwiftType | null {
+    const superclass = new ClassMetadata(this.metadata.handle).superclass;
+    return superclass !== null && superclass.isTypeMetadata
+      ? typeOf(new Metadata(superclass.handle))
+      : null;
   }
 
   init(...args: SwiftValue[]): SwiftObject {

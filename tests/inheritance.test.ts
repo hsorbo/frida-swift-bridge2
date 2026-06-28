@@ -40,7 +40,7 @@ describe("inherited methods (symbol route)", () => {
   test("the facade exposes inherited methods", ({ skip }) => {
     loadFixture(skip);
     const cat = catType().init();
-    expect(cat.$methods).toContain("legs");
+    expect(cat.$type.methods()).toContain("legs");
     expect(cat.legs()).toBe(4);
   });
 });

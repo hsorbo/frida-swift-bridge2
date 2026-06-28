@@ -52,17 +52,17 @@ describe("type wrappers", () => {
     expect(Swift.typeOf(Swift.metadataFor("fixture.Counter")!) instanceof ClassType).toBe(true);
   });
 
-  test("$methods / $staticMethods split instance from static keys", ({ skip }) => {
+  test("methods() static option splits instance from static keys", ({ skip }) => {
     loadFixture(skip);
     const t = Swift.typeOf(Swift.metadataFor("fixture.Accumulator")!) as StructType;
-    expect(t.$methods.sort()).toEqual(["add$_", "describe$_", "peek$_"]);
-    expect(t.$staticMethods.sort()).toEqual(["summing$__", "zero"]);
+    expect(t.methods().sort()).toEqual(["add$_", "describe$_", "peek$_"]);
+    expect(t.methods({ static: true }).sort()).toEqual(["summing$__", "zero"]);
   });
 
-  test("$methods on a type mirrors the same keys an instance exposes", ({ skip }) => {
+  test("type methods mirror the keys an instance's type exposes", ({ skip }) => {
     loadFixture(skip);
     const t = Swift.typeOf(Swift.metadataFor("fixture.Cat")!) as ClassType;
-    expect(t.$methods.sort()).toEqual(t.init().$methods.sort());
-    expect(t.$staticMethods).toEqual([]);
+    expect(t.methods().sort()).toEqual(t.init().$type.methods().sort());
+    expect(t.methods({ static: true })).toEqual([]);
   });
 });
