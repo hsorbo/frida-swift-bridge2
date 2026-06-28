@@ -265,6 +265,16 @@ function instantiate(base: string, args: (Metadata | null)[]): Metadata | null {
   }
 }
 
+// "fixture.Box<Swift.Int, Swift.String>" → { base: "fixture.Box", arguments: ["Swift.Int", "Swift.String"] };
+// an unparameterized name yields no arguments.
+export function splitBoundTypeName(name: string): { base: string; arguments: string[] } {
+  const lt = topLevelIndexOf(name, "<");
+  if (lt === -1 || !name.endsWith(">")) {
+    return { base: name, arguments: [] };
+  }
+  return { base: name.slice(0, lt), arguments: splitTopLevel(name.slice(lt + 1, -1), ",") };
+}
+
 // Desugars A? / [A] / [K: V] / Base<...>, resolving each leaf via resolveParam (generics) or findType.
 export function resolveTypeExpr(
   expr: string,

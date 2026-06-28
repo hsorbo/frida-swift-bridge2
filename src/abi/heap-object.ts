@@ -10,6 +10,7 @@ import {
   ResolvedMethod,
   resolveMethod,
   bindGenericMethod,
+  bindGenericTypeClassMethod,
   MethodResolveOptions,
   getProperty,
   setProperty,
@@ -115,6 +116,9 @@ export class HeapObject {
   method(name: string, options: MethodResolveOptions = {}): BoundMethod | GenericBoundMethod {
     if (options.typeArguments !== undefined) {
       return bindGenericMethod(this.typeName, name, this.handle, { ...options, static: false });
+    }
+    if (this.metadata.description.isGeneric) {
+      return bindGenericTypeClassMethod(this.dynamicType, this.handle, name, options);
     }
     return new BoundMethod(resolveMethod(this.typeName, name, { ...options, static: false }), this.handle);
   }

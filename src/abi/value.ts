@@ -5,6 +5,7 @@ import {
   GenericBoundMethod,
   bindValueMethod,
   bindGenericValueMethod,
+  bindGenericTypeValueMethod,
   ValueMethodResolveOptions,
   CallResult,
 } from "../runtime/method.js";
@@ -92,6 +93,9 @@ export class Value {
     this.checkLive();
     if (options.typeArguments !== undefined) {
       return bindGenericValueMethod(this.metadata, this.address, name, options);
+    }
+    if (this.metadata.description.isGeneric) {
+      return bindGenericTypeValueMethod(this.metadata, this.address, name, options);
     }
     return bindValueMethod(this.metadata, this.address, name, options);
   }

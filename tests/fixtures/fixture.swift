@@ -153,6 +153,19 @@ public struct BigGenericBox {
     public func scaledBy<T: Scalable>(_ x: T, _ k: Int) -> Int { a + b + c + d + e + x.scaled(by: k) }
 }
 
+// Methods on a generic *type*: a value type hands its instantiated Self metadata as the lone trailing
+// arg (the callee derives T's metadata + Scalable witness from it); self rides indirectly in x20.
+// stored() returns the type param T (address-only). WideScalar makes the box exceed loadable.
+public struct WideScalar: Scalable {
+    public var a: Int; public var b: Int; public var c: Int; public var d: Int; public var e: Int
+    public func scaled(by factor: Int) -> Int { (a + b + c + d + e) * factor }
+}
+public struct ConstrainedBox<T: Scalable> {
+    public var value: T
+    public func scaledStored(by k: Int) -> Int { value.scaled(by: k) }
+    public func stored() -> T { value }
+}
+
 public func makeScaleGeneric() -> Int {
     return scaleGeneric(6, by: 7)
 }
@@ -295,11 +308,15 @@ public class Dispatcher {
     func hidden(_ x: Int) -> Int { x * 3 }
 }
 
-// Generic: trips readVTable's not-fixed-offset guard.
-public class GenericHolder<T> {
-    public init() {}
-    public func stored() -> Int { 0 }
+// Generic class: Self metadata (hence T's metadata + Scalable witness) is recovered from the instance
+// isa, so its methods take no trailing type args. Still trips readVTable's not-fixed-offset guard.
+public class GenericHolder<T: Scalable> {
+    public var value: T
+    public init(value: T) { self.value = value }
+    public func stored() -> T { value }
+    public func scaledStored(by k: Int) -> Int { value.scaled(by: k) }
 }
+public func makeHolder(_ n: Int) -> GenericHolder<Int> { GenericHolder(value: n) }
 
 // Inheritance + live polymorphic dispatch. Animal is non-final so speak/legs take vtable slots;
 // Cat overrides speak (filling Animal's slot in Cat's metadata) and inherits legs unchanged.

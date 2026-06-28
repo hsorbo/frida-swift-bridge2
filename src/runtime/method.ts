@@ -7,7 +7,7 @@ import { Value } from "../abi/value.js";
 import { readValue, writeValue, containsClassReference, SwiftValue } from "../abi/instance.js";
 import { findType } from "../reflection/registry.js";
 import { demangle } from "./demangle.js";
-import { parseSwiftSignature, resolveType, resolveTypeExpr, SwiftFunctionSignature } from "./symbolication.js";
+import { parseSwiftSignature, resolveType, resolveTypeExpr, splitBoundTypeName, SwiftFunctionSignature } from "./symbolication.js";
 import {
   makeSwiftNativeFunction,
   SwiftNativeFunction,
@@ -643,6 +643,86 @@ export function bindGenericValueMethod(
 ): GenericBoundMethod {
   const plan = planGenericMethod(typeName(receiver), methodName, options);
   return new GenericBoundMethod(plan, self, valueSelfRouting(receiver, options.mutating === true));
+}
+
+// A bare type parameter (T) is address-only in the generic context but concretely sized by the
+// instance's type argument; concrete and compound types lower as elsewhere.
+function planTypeMemberArg(name: string, typeParams: string[], typeArguments: Metadata[]): ArgPlan {
+  const index = typeParams.indexOf(name.trim());
+  if (index !== -1) {
+    return { kind: "abstractIndirect", metadata: typeArguments[index] };
+  }
+  const concrete = resolveType(name);
+  if (concrete !== null) {
+    return { kind: "concrete", metadata: concrete };
+  }
+  return planCompoundType(name, typeParams, typeArguments);
+}
+
+// The enclosing generic type's concrete arguments, recovered from the instance's bound type name
+// ("Foo<Swift.Int>" → Int) so it works for both value and class metadata. Parameters are named A,
+// B... by declaration order to match the demangled signatures.
+function genericTypeArguments(receiver: Metadata): { unboundName: string; typeParams: string[]; typeArguments: Metadata[] } {
+  const { base, arguments: argNames } = splitBoundTypeName(typeName(receiver));
+  const typeArguments = argNames.map((n) => {
+    const metadata = resolveTypeExpr(n, () => null);
+    if (metadata === null) {
+      throw new Error(`cannot resolve type argument ${n} of ${base}`);
+    }
+    return metadata;
+  });
+  return { unboundName: base, typeParams: typeArguments.map((_, i) => String.fromCharCode(65 + i)), typeArguments };
+}
+
+// Methods on a generic type, no method-level generics. self is always indirect (class: object in
+// x20; value: its bytes, address-only in the generic context). A value type trails its Self metadata
+// — the callee reads T's metadata + witnesses from that vector; a class recovers them from the isa.
+function planGenericTypeMethod(receiver: Metadata, methodName: string, options: MethodResolveOptions, trailsSelfMetadata: boolean): GenericMethodPlan {
+  const { unboundName, typeParams, typeArguments } = genericTypeArguments(receiver);
+  const candidates = applyOverloadFilters(
+    typeMembers(unboundName).methods.filter(
+      (c) => c.name === methodName && c.signature.genericParams.length === 0 && c.signature.simpleGenerics
+    ),
+    options
+  );
+  if (candidates.length === 0) {
+    throw new Error(`no method ${methodName} on ${unboundName}`);
+  }
+  if (candidates.length > 1) {
+    const overloads = candidates.map((c) => c.signature.selector).join(", ");
+    throw new Error(`ambiguous method ${methodName} on ${unboundName}: ${overloads} (disambiguate with { arity }, { labels }, or { argTypes })`);
+  }
+  const { address, signature } = candidates[0];
+  const argPlans = signature.argTypeNames.map((n) => planTypeMemberArg(n, typeParams, typeArguments));
+  const returnPlan =
+    signature.returnTypeName === null ? null : planTypeMemberArg(signature.returnTypeName, typeParams, typeArguments);
+  return {
+    address,
+    selector: signature.selector,
+    argPlans,
+    returnPlan,
+    throws: signature.throws,
+    typeArguments: trailsSelfMetadata ? [receiver] : [],
+    witnessTables: [],
+  };
+}
+
+export function bindGenericTypeValueMethod(
+  receiver: Metadata,
+  self: NativePointer,
+  methodName: string,
+  options: MethodResolveOptions = {}
+): GenericBoundMethod {
+  return new GenericBoundMethod(planGenericTypeMethod(receiver, methodName, options, true), self, { indirect: true });
+}
+
+export function bindGenericTypeClassMethod(
+  receiver: Metadata,
+  self: NativePointer,
+  methodName: string,
+  options: MethodResolveOptions = {}
+): GenericBoundMethod {
+  return new GenericBoundMethod(planGenericTypeMethod(receiver, methodName, options, false), self, { indirect: true });
 }
 
 interface ResolvedAccessor {
