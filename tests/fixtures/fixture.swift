@@ -351,3 +351,11 @@ public func greeterType() -> UnsafeRawPointer { unsafeBitCast((any Greeter).self
 public func greeterAgedType() -> UnsafeRawPointer { unsafeBitCast((any Greeter & Aged).self, to: UnsafeRawPointer.self) }
 public func namedType() -> UnsafeRawPointer { unsafeBitCast((any Named).self, to: UnsafeRawPointer.self) }
 public func errorType() -> UnsafeRawPointer { unsafeBitCast((any Error).self, to: UnsafeRawPointer.self) }
+
+// Method-name rendering: an operator and a generic return.
+public struct Selectors {
+    public var n: Int
+    public init(n: Int) { self.n = n }
+    public static func == (lhs: Selectors, rhs: Selectors) -> Bool { lhs.n == rhs.n }
+    public func echo<T>(_ x: T) -> T { x }
+}

@@ -88,6 +88,16 @@ describe("enumerateMethods", () => {
     expect(methods.some((m) => m.name === "make" && m.isStatic)).toBe(true);
     expect(methods.filter((m) => m.name === "at").length).toBe(2);
   });
+
+  test("strips the operator fixity keyword; a generic return is still a bare placeholder", ({ skip }) => {
+    loadFixture(skip);
+    const methods = enumerateMethods("fixture.Selectors");
+    const eq = methods.find((m) => m.name === "==")!;
+    expect(eq.selector).toBe("==(_:_:)");
+    expect(eq.isStatic).toBe(true);
+    expect(eq.returnTypeName).toBe("Swift.Bool");
+    expect(methods.find((m) => m.name === "echo")!.returnTypeName).toBe("A");
+  });
 });
 
 describe("HeapObject method invocation", () => {

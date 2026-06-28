@@ -131,9 +131,10 @@ function parseFunction(s: string): SwiftFunctionSignature | null {
   }
   const returnTypeName = tail.slice(arrow + 2).trim();
 
-  const { name, genericParams, simpleGenerics, conformanceRequirements } = splitGenericClause(
+  const { name: declName, genericParams, simpleGenerics, conformanceRequirements } = splitGenericClause(
     path.slice(dot + 1)
   );
+  const name = stripOperatorFixity(declName);
   const selector = `${name}(${argLabels.map((l) => `${l ?? "_"}:`).join("")})`;
 
   return {
@@ -190,6 +191,11 @@ function parseConformanceRequirements(whereClause: string): GenericRequirement[]
     }
   }
   return requirements;
+}
+
+// "== infix" → "=="
+function stripOperatorFixity(name: string): string {
+  return name.replace(/ (?:infix|prefix|postfix)$/, "");
 }
 
 function argLabelAndType(item: string): { label: string | null; type: string } {
