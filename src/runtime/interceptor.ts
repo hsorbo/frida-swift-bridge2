@@ -1,13 +1,17 @@
 import { Metadata, MetadataKind } from "../abi/metadata.js";
-import { readValue, SwiftValue } from "../abi/instance.js";
+import { readValue, embedsManagedReference, SwiftValue } from "../abi/instance.js";
+import { Value } from "../abi/value.js";
+import { HeapObject } from "../abi/heap-object.js";
 import { projectErrorExistential } from "../abi/existential.js";
 import { shouldPassIndirectly, floatLayout } from "./calling-convention.js";
 import { symbolicate, parseSwiftSignature, resolveType, resolveTypeExpr } from "./symbolication.js";
 import { typeName } from "./type-name.js";
+import { createObject } from "./object-facade.js";
+import { CallResult } from "./method.js";
 
 export interface SwiftInvocationCallbacks {
   onEnter?: (this: InvocationContext, args: SwiftValue[]) => void;
-  onLeave?: (this: InvocationContext, retval: SwiftValue, error?: SwiftValue) => void;
+  onLeave?: (this: InvocationContext, retval: CallResult, error?: SwiftValue) => void;
 }
 
 type TypePlan =
@@ -213,13 +217,24 @@ function materializeArgs(
   return { values, generics };
 }
 
+// Mirrors method.ts decodeReturn, but borrows: an interceptor only observes the caller's +1, so it
+// neither adopts nor destroys. A non-POD value embedding a managed reference can't be deep-copied
+// out, so it surfaces as a live Value valid for the callback's duration; everything else stays a
+// snapshot. The borrowed address is the caller's storage, so writing through it edits the return.
+function decodeReturnValue(metadata: Metadata, address: NativePointer): CallResult {
+  if (!metadata.valueWitnesses.isPOD && embedsManagedReference(metadata)) {
+    return Value.borrow(metadata, address);
+  }
+  return readValue(metadata, address);
+}
+
 function materializeReturn(
   context: Arm64CpuContext,
   ret: TypePlan | null,
   indirectReturn: NativePointer | null,
   generics: Metadata[],
   genericParams: string[]
-): SwiftValue {
+): CallResult {
   if (ret === null) {
     return null;
   }
@@ -230,7 +245,7 @@ function materializeReturn(
     if (indirectReturn === null) {
       throw new Error("indirect return address was not captured on enter");
     }
-    return readValue(planMetadata(ret, generics, genericParams), indirectReturn);
+    return decodeReturnValue(planMetadata(ret, generics, genericParams), indirectReturn);
   }
 
   const returnType = ret.metadata;
@@ -250,22 +265,24 @@ function materializeReturn(
     return readValue(returnType, scratch);
   }
   if (returnType.kind === MetadataKind.Class) {
-    return readValue(returnType, Memory.alloc(8).writePointer(context.x0));
+    return createObject(new HeapObject(context.x0));
   }
   if (shouldPassIndirectly(returnType)) {
     if (indirectReturn === null) {
       throw new Error("indirect return address was not captured on enter");
     }
-    return readValue(returnType, indirectReturn);
+    return decodeReturnValue(returnType, indirectReturn);
   }
 
+  // Direct multi-register return: the bytes live only in x0..xN, so a non-POD value is borrowed over
+  // this private reassembly — readable/callable in the callback, but not write-through to the caller.
   const count = words(returnType);
   const scratch = Memory.alloc(Math.max(count, 1) * 8);
   const regs = context as unknown as Record<string, NativePointer>;
   for (let w = 0; w < count; w++) {
     scratch.add(w * 8).writePointer(regs[`x${w}`]);
   }
-  return readValue(returnType, scratch);
+  return decodeReturnValue(returnType, scratch);
 }
 
 function decodeThrownError(errorBox: NativePointer): SwiftValue {

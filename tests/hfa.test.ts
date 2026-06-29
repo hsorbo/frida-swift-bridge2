@@ -2,7 +2,7 @@ import { test, expect, describe } from "@frida/injest/agent";
 import { type Skip } from "./swift.js";
 import { loadFixture } from "./fixtures/load.js";
 
-import { Swift, readValue, type SwiftValue } from "../src/index.js";
+import { Swift, readValue, type SwiftValue, type CallResult } from "../src/index.js";
 import { makeSwiftNativeFunction } from "../src/runtime/calling-convention.js";
 import { SwiftInterceptor } from "../src/runtime/interceptor.js";
 
@@ -76,7 +76,7 @@ describe("homogeneous float aggregates (HFA)", () => {
     expect(seenArgs).toEqual([{ x: 1.5, y: 2.5 }]);
 
     const mkAddr = fixtureAddress(skip, "fixture.makeDoublePair");
-    let seenRet: SwiftValue = null;
+    let seenRet: CallResult = null;
     const l2 = SwiftInterceptor.attach(mkAddr, {
       onLeave(ret) {
         seenRet = ret;

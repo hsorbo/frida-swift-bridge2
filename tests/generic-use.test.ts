@@ -2,7 +2,7 @@ import { test, expect, describe } from "@frida/injest/agent";
 import { type Skip } from "./swift.js";
 import { loadFixture } from "./fixtures/load.js";
 
-import { Swift, type SwiftValue } from "../src/index.js";
+import { Swift, type SwiftValue, type CallResult } from "../src/index.js";
 import { makeSwiftNativeFunction } from "../src/runtime/calling-convention.js";
 import { SwiftInterceptor } from "../src/runtime/interceptor.js";
 
@@ -23,7 +23,7 @@ describe("hook decodes generic uses", () => {
     const roundOptional = fixtureAddress(skip, "fixture.roundOptional");
     const trigger = fixtureAddress(skip, "fixture.triggerRoundOptional");
     let seenArgs: SwiftValue[] | null = null;
-    let seenRet: SwiftValue = null;
+    let seenRet: CallResult = null;
     const listener = SwiftInterceptor.attach(roundOptional, {
       onEnter(args) {
         seenArgs = args;
