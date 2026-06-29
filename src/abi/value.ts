@@ -11,6 +11,7 @@ import {
   CallResult,
   CallArg,
 } from "../runtime/method.js";
+import { SwiftType, typeOf } from "../runtime/swift-type.js";
 
 // qjs and v8 (Frida 17) ship no Symbol.dispose; polyfill so `using` resolves the key below.
 const symbolCtor = Symbol as { dispose?: symbol };
@@ -63,6 +64,10 @@ export class ValueInstance {
 
   get owned(): boolean {
     return this.state !== null;
+  }
+
+  get $type(): SwiftType {
+    return typeOf(this.metadata);
   }
 
   get(): SwiftValue {

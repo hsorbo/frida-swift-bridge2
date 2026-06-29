@@ -62,6 +62,19 @@ describe("ValueInstance", () => {
     expect(() => v.get()).toThrow();
   });
 
+  test("$type exposes the value's SwiftType for symmetric reflection", ({ skip }) => {
+    loadFixture(skip);
+    const v = ValueInstance.fromJS(Swift.metadataFor("fixture.LoadableStruct")!, {
+      a: 1,
+      b: 2,
+      c: 3,
+      d: 4,
+    });
+    expect(v.$type.name).toBe("fixture.LoadableStruct");
+    expect(Swift.typeName(v.$type.metadata)).toBe("fixture.LoadableStruct");
+    v.dispose();
+  });
+
   test("borrowed value reads foreign memory and never disposes", ({ skip }) => {
     requireSwift(skip);
     const Int = Swift.metadataFor("Swift.Int")!;
