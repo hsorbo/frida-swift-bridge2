@@ -23,7 +23,6 @@ import {
   PropertyInfo,
   bindStaticMethod,
   bindValueInitializer,
-  buildKeyMap,
   enumerateMethods,
   enumerateProperties,
   resolveMethod,
@@ -60,7 +59,9 @@ export class SwiftType {
 
   methods(options: MethodQuery = {}): string[] {
     const { static: wantStatic = false, inherited = true } = options;
-    return [...buildKeyMap(enumerateMethods(this.name, !inherited), wantStatic).keys()];
+    return enumerateMethods(this.name, !inherited)
+      .filter((m) => m.kind === "method" && m.isStatic === wantStatic)
+      .map((m) => m.selector);
   }
 
   protocols(): { [name: string]: Protocol } {
@@ -89,14 +90,14 @@ export class ValueType extends SwiftType {
     return bindValueInitializer(this.metadata, options);
   }
 
-  init(...args: CallArg[]): ValueInstance {
+  init(...args: CallArg[]): SwiftObject {
     return this.initializer().call(...args);
   }
 }
 
 export class StructType extends ValueType {
-  new(value: SwiftValue): ValueInstance {
-    return ValueInstance.fromJS(this.metadata, value);
+  new(value: SwiftValue): SwiftObject {
+    return createObject(ValueInstance.fromJS(this.metadata, value));
   }
 
   get fields(): TypeMember[] {
@@ -108,8 +109,8 @@ export class StructType extends ValueType {
 }
 
 export class EnumType extends ValueType {
-  case(name: string, payload?: SwiftValue): ValueInstance {
-    return ValueInstance.fromJS(this.metadata, payload === undefined ? name : { [name]: payload });
+  case(name: string, payload?: SwiftValue): SwiftObject {
+    return createObject(ValueInstance.fromJS(this.metadata, payload === undefined ? name : { [name]: payload }));
   }
 
   get cases(): TypeMember[] {

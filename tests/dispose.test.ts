@@ -9,7 +9,7 @@ describe("Symbol.dispose", () => {
     const v = ValueInstance.fromJS(Swift.metadataFor("Swift.Int")!, 42);
     v[Symbol.dispose]();
     v[Symbol.dispose]();
-    expect(() => v.get()).toThrow();
+    expect(() => v.read()).toThrow();
   });
 
   test("using disposes an owned value at block scope", () => {
@@ -18,8 +18,8 @@ describe("Symbol.dispose", () => {
     {
       using v = ValueInstance.fromJS(Swift.metadataFor("Swift.Int")!, 7);
       captured = v;
-      expect(v.get()).toBe(7);
+      expect(v.read()).toBe(7);
     }
-    expect(() => captured.get()).toThrow();
+    expect(() => captured.read()).toThrow();
   });
 });

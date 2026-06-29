@@ -14,15 +14,15 @@ describe("ValueInstance", () => {
       d: 4,
     });
     expect(v.owned).toBe(true);
-    expect(v.get()).toEqual({ a: 1, b: 2, c: 3, d: 4 });
+    expect(v.read()).toEqual({ a: 1, b: 2, c: 3, d: 4 });
     v.dispose();
   });
 
   test("set overwrites a primitive in place", () => {
     requireSwift();
     const v = ValueInstance.fromJS(Swift.metadataFor("Swift.Int")!, 1);
-    v.set(7);
-    expect(v.get()).toBe(7);
+    v.write(7);
+    expect(v.read()).toBe(7);
     v.dispose();
   });
 
@@ -36,9 +36,9 @@ describe("ValueInstance", () => {
     });
     const b = v.field("b");
     expect(b.owned).toBe(false);
-    b.set(99);
-    expect(b.get()).toBe(99);
-    expect(v.get()).toEqual({ a: 1, b: 99, c: 3, d: 4 });
+    b.write(99);
+    expect(b.read()).toBe(99);
+    expect(v.read()).toEqual({ a: 1, b: 99, c: 3, d: 4 });
     v.dispose();
   });
 
@@ -47,9 +47,9 @@ describe("ValueInstance", () => {
     const Loadable = Swift.metadataFor("fixture.LoadableStruct")!;
     const v = ValueInstance.fromJS(Loadable, { a: 1, b: 2, c: 3, d: 4 });
     const c = v.copy();
-    c.field("a").set(100);
-    expect(c.get()).toEqual({ a: 100, b: 2, c: 3, d: 4 });
-    expect(v.get()).toEqual({ a: 1, b: 2, c: 3, d: 4 });
+    c.field("a").write(100);
+    expect(c.read()).toEqual({ a: 100, b: 2, c: 3, d: 4 });
+    expect(v.read()).toEqual({ a: 1, b: 2, c: 3, d: 4 });
     v.dispose();
     c.dispose();
   });
@@ -59,10 +59,10 @@ describe("ValueInstance", () => {
     const v = ValueInstance.fromJS(Swift.metadataFor("Swift.Int")!, 42);
     v.dispose();
     v.dispose();
-    expect(() => v.get()).toThrow();
+    expect(() => v.read()).toThrow();
   });
 
-  test("$type exposes the value's SwiftType for symmetric reflection", () => {
+  test("type exposes the value's SwiftType for symmetric reflection", () => {
     loadFixture();
     const v = ValueInstance.fromJS(Swift.metadataFor("fixture.LoadableStruct")!, {
       a: 1,
@@ -70,15 +70,15 @@ describe("ValueInstance", () => {
       c: 3,
       d: 4,
     });
-    expect(v.$type.name).toBe("fixture.LoadableStruct");
-    expect(Swift.typeName(v.$type.metadata)).toBe("fixture.LoadableStruct");
+    expect(v.type.name).toBe("fixture.LoadableStruct");
+    expect(Swift.typeName(v.type.metadata)).toBe("fixture.LoadableStruct");
     v.dispose();
   });
 
-  test("$kind tags the wrapper as a value instance", () => {
+  test("kind tags the wrapper as a value instance", () => {
     requireSwift();
     const v = ValueInstance.fromJS(Swift.metadataFor("Swift.Int")!, 1);
-    expect(v.$kind).toBe("value");
+    expect(v.kind).toBe("value");
     v.dispose();
   });
 
@@ -89,8 +89,8 @@ describe("ValueInstance", () => {
     writeValue(Int, buffer, 5);
     const v = ValueInstance.borrow(Int, buffer);
     expect(v.owned).toBe(false);
-    expect(v.get()).toBe(5);
+    expect(v.read()).toBe(5);
     v.dispose();
-    expect(v.get()).toBe(5);
+    expect(v.read()).toBe(5);
   });
 });

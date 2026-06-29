@@ -19,7 +19,7 @@ describe("ownership", () => {
     const owned = robotType().init("R2");
     expect(owned.$owned).toBe(true);
     owned.$retain(); // outlive the dispose so view can observe the drop
-    const view = new ClassInstance(owned.handle);
+    const view = new ClassInstance(owned.$handle);
     const before = view.retainCount;
     owned.$dispose();
     expect(view.retainCount).toBe(before - 1);
@@ -33,7 +33,7 @@ describe("ownership", () => {
     const made = robotType().call("make", "Forged") as SwiftObject;
     expect(made.$owned).toBe(true);
     made.$retain();
-    const view = new ClassInstance(made.handle);
+    const view = new ClassInstance(made.$handle);
     expect(view.owned).toBe(false);
     const before = view.retainCount;
     view.dispose(); // borrowed → no-op
@@ -48,7 +48,7 @@ describe("ownership", () => {
   test("a String getter return destroys its +1 temp, leaking no __StringStorage ref", () => {
     loadFixture();
     const r = robotType().init("a deliberately long, heap-allocated robot name");
-    const storage = stringStorage(r.$field("name").address);
+    const storage = stringStorage(r.$field("name").handle);
     const before = storage.retainCount;
     for (let i = 0; i < 20; i++) {
       expect(typeof r.$get("name")).toBe("string");
@@ -61,7 +61,7 @@ describe("ownership", () => {
     loadFixture();
     const r = robotType().init("short");
     r.$call("rename", "a deliberately long, heap-allocated robot name");
-    const storage = stringStorage(r.$field("name").address);
+    const storage = stringStorage(r.$field("name").handle);
     expect(storage.retainCount).toBe(1);
   });
 });

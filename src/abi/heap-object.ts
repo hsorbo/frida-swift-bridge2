@@ -16,6 +16,7 @@ import {
   setProperty,
   CallResult,
   CallArg,
+  RawInstance,
 } from "../runtime/method.js";
 
 // Also polyfilled in value.ts, but the method↔heap-object cycle can define this class first.
@@ -32,7 +33,7 @@ interface VTableInvokeSignature {
   throws?: boolean;
 }
 
-export class ClassInstance {
+export class ClassInstance implements RawInstance {
   private state: OwnedState | null = null;
   private weakId: WeakRefId | null = null;
 

@@ -143,7 +143,7 @@ export { SwiftInterceptor, SwiftInvocationCallbacks } from "./runtime/intercepto
 export {
   BoundMethod,
   CallResult,
-  Instance,
+  isSwiftObject,
   CallArg,
   MethodInfo,
   MethodKind,
@@ -163,8 +163,6 @@ export {
   bindStaticMethod,
   bindValueInitializer,
   bindGenericMethod,
-  getProperty,
-  setProperty,
 } from "./runtime/method.js";
 export { SwiftObject, createObject } from "./runtime/object-facade.js";
 

@@ -8,7 +8,6 @@ import {
   isResilientValueType,
   makeSwiftNativeFunction,
   resolveMethod,
-  getProperty,
 } from "../src/index.js";
 
 // markResilient drives auto-detection for a real Apple resilient framework on any OS; the
@@ -48,7 +47,8 @@ describe("resilient auto-detection (CryptoKit)", () => {
     expect(isResilientValueType(Swift.metadataFor("CryptoKit.SymmetricKeySize")!)).toBe(true);
     expect(isResilientValueType(Swift.metadataFor("Swift.Int")!)).toBe(false);
 
-    expect(getProperty(makeKey(256), "CryptoKit.SymmetricKey", "bitCount")).toBe(256);
+    const keyMd = Swift.metadataFor("CryptoKit.SymmetricKey")!;
+    expect(ValueInstance.borrow(keyMd, makeKey(256)).get("bitCount")).toBe(256);
   });
 
   test("constructs a resilient value type through the type wrapper", () => {
@@ -61,6 +61,6 @@ describe("resilient auto-detection (CryptoKit)", () => {
     const keyType = Swift.typeOf(Swift.metadataFor("CryptoKit.SymmetricKey")!) as StructType;
     const key = keyType.initializer({ labels: ["size"] }).call(ValueInstance.borrow(sizeMd, sizeBuf));
 
-    expect(getProperty(key.address, "CryptoKit.SymmetricKey", "bitCount")).toBe(256);
+    expect(key.$get("bitCount")).toBe(256);
   });
 });

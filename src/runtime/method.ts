@@ -2,7 +2,7 @@ import { Metadata, MetadataKind, getMetadata } from "../abi/metadata.js";
 import { ContextDescriptorKind } from "../abi/context-descriptor.js";
 import { ClassMetadata } from "../abi/class-metadata.js";
 import { ClassInstance } from "../abi/heap-object.js";
-import { createObject, SwiftObject } from "./object-facade.js";
+import { createObject, SwiftObject, RAW } from "./object-facade.js";
 import { ValueInstance } from "../abi/value.js";
 import { readValue, writeValue, embedsManagedReference, SwiftValue } from "../abi/instance.js";
 import { findType } from "../reflection/registry.js";
@@ -19,13 +19,25 @@ import { findProtocol, conformsToProtocol } from "../abi/protocol-conformance.js
 
 export type MethodKind = "method" | "init";
 
-// A live bridge wrapper, discriminable via $kind, as opposed to a plain-JS SwiftValue.
-export type Instance = SwiftObject | ValueInstance;
+export type CallResult = SwiftValue | SwiftObject;
 
-export type CallResult = SwiftValue | Instance;
+export function isSwiftObject(value: CallResult): value is SwiftObject {
+  return typeof value === "object" && value !== null && "$kind" in value;
+}
 
-// A high-level argument: a JS-constructible value, or an opaque ValueInstance byte-copied in (e.g. an Array).
-export type CallArg = SwiftValue | ValueInstance;
+// A JS value, a ValueInstance (byte-copied in, e.g. an Array), or a facade (unwrapped in marshalArg).
+export type CallArg = SwiftValue | ValueInstance | SwiftObject;
+
+export interface RawInstance {
+  readonly handle: NativePointer;
+  readonly owned: boolean;
+  get(name: string): CallResult;
+  set(name: string, value: CallArg): void;
+  call(name: string, ...args: CallArg[]): CallResult;
+  field(name: string): ValueInstance;
+  dispose(): void;
+  [Symbol.dispose](): void;
+}
 
 export interface MethodInfo {
   name: string;
@@ -87,17 +99,26 @@ interface TypeMembers {
 const tableCache = new Map<string, TypeMembers>();
 const invokerCache = new Map<string, SwiftNativeFunction>();
 
+function rawArg(value: CallArg): CallArg | ClassInstance {
+  return value !== null && typeof value === "object"
+    ? (value as { [RAW]?: ClassInstance | ValueInstance })[RAW] ?? value
+    : value;
+}
+
 function marshalArg(metadata: Metadata, value: CallArg): NativePointer {
+  const arg = rawArg(value);
   const buffer = Memory.alloc(metadata.typeLayout.stride);
-  if (value instanceof ValueInstance) {
-    if (!value.metadata.handle.equals(metadata.handle)) {
-      throw new Error(`argument is a ${typeName(value.metadata)} value, expected ${typeName(metadata)}`);
+  if (arg instanceof ValueInstance) {
+    if (!arg.metadata.handle.equals(metadata.handle)) {
+      throw new Error(`argument is a ${typeName(arg.metadata)} value, expected ${typeName(metadata)}`);
     }
-    value.copyInto(buffer);
+    arg.copyInto(buffer);
+  } else if (arg instanceof ClassInstance) {
+    buffer.writePointer(arg.handle);
   } else if (metadata.kind === MetadataKind.Class) {
-    buffer.writePointer(value as NativePointer);
+    buffer.writePointer(arg as NativePointer);
   } else {
-    writeValue(metadata, buffer, value);
+    writeValue(metadata, buffer, arg as SwiftValue);
   }
   return buffer;
 }
@@ -112,7 +133,7 @@ function decodeReturn(returnType: Metadata | null, ret: NativePointer | null): C
     return createObject(ClassInstance.adopt(ret.readPointer()));
   }
   if (!returnType.valueWitnesses.isPOD && embedsManagedReference(returnType)) {
-    return ValueInstance.adopt(returnType, ret);
+    return createObject(ValueInstance.adopt(returnType, ret));
   }
   const value = readValue(returnType, ret);
   if (!returnType.valueWitnesses.isPOD) {
@@ -290,32 +311,6 @@ export function enumerateMethods(typeName: string, ownOnly = false): MethodInfo[
     }
   }
   return methods;
-}
-
-// "greet(name:to:)" → "greet$name_to_"; unlabelled args contribute a bare "_"; no-arg stays "greet".
-function escapeSelector(name: string, argLabels: (string | null)[]): string {
-  if (argLabels.length === 0) {
-    return name;
-  }
-  return `${name}$${argLabels.map((l) => `${l ?? ""}_`).join("")}`;
-}
-
-// Maps each escaped selector key to its method, disambiguating same-key overloads with a serial
-// suffix. wantStatic picks static vs instance methods; initializers are always excluded.
-export function buildKeyMap(infos: MethodInfo[], wantStatic = false): Map<string, MethodInfo> {
-  const map = new Map<string, MethodInfo>();
-  for (const info of infos) {
-    if (info.kind !== "method" || info.isStatic !== wantStatic) {
-      continue;
-    }
-    const base = escapeSelector(info.name, info.argLabels);
-    let key = base;
-    for (let serial = 2; map.has(key); serial++) {
-      key = `${base}${serial}`;
-    }
-    map.set(key, info);
-  }
-  return map;
 }
 
 export interface PropertyInfo {
@@ -502,7 +497,7 @@ export class BoundValueInitializer {
     return this.resolved.address;
   }
 
-  call(...args: CallArg[]): ValueInstance {
+  call(...args: CallArg[]): SwiftObject {
     const { argTypes, returnType, selector } = this.resolved;
     if (returnType === null) {
       throw new Error(`${selector} is not a value initializer`);
@@ -514,7 +509,7 @@ export class BoundValueInitializer {
     if (ret === null) {
       throw new Error(`${selector} returned no value`);
     }
-    return ValueInstance.adopt(returnType, ret);
+    return createObject(ValueInstance.adopt(returnType, ret));
   }
 }
 

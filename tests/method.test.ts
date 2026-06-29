@@ -132,28 +132,28 @@ describe("ClassInstance method invocation", () => {
   test("calls an instance method with a String arg and return", () => {
     loadFixture();
     const obj = robotType().init("R2");
-    expect(obj.call("greet", "Alice")).toBe("Hello Alice, I am R2");
+    expect(obj.$call("greet", "Alice")).toBe("Hello Alice, I am R2");
   });
 
   test("calls a void method that mutates state", () => {
     loadFixture();
     const obj = robotType().init("old");
-    expect(obj.field("name").get()).toBe("old");
-    obj.call("rename", "new");
-    expect(obj.field("name").get()).toBe("new");
+    expect(obj.$field("name").read()).toBe("old");
+    obj.$call("rename", "new");
+    expect(obj.$field("name").read()).toBe("new");
   });
 
   test("passes a class-typed argument", () => {
     loadFixture();
     const a = robotType().init("Ada");
     const b = robotType().init("Bee");
-    expect(a.call("merged", b.handle)).toBe("Ada+Bee");
+    expect(a.$call("merged", b.$handle)).toBe("Ada+Bee");
   });
 
   test("reuses a resolved method across calls", () => {
     loadFixture();
     const obj = robotType().init("R2");
-    const greet = obj.method("greet");
+    const greet = obj.$method("greet");
     expect(greet.call("X")).toBe("Hello X, I am R2");
     expect(greet.call("Y")).toBe("Hello Y, I am R2");
   });
@@ -161,22 +161,22 @@ describe("ClassInstance method invocation", () => {
   test("disambiguates an overload by arity", () => {
     loadFixture();
     const obj = robotType().init("R2");
-    expect(obj.method("at", { arity: 1 }).call(5)).toBe(5);
-    expect(obj.method("at", { arity: 2 }).call(5, 6)).toBe(11);
+    expect(obj.$method("at", { arity: 1 }).call(5)).toBe(5);
+    expect(obj.$method("at", { arity: 2 }).call(5, 6)).toBe(11);
   });
 
   test("disambiguates a same-arity overload by labels", () => {
     loadFixture();
     const obj = robotType().init("R2");
-    expect(obj.method("move", { labels: ["to"] }).call(5)).toBe(5);
-    expect(obj.method("move", { labels: ["by"] }).call(5)).toBe(50);
+    expect(obj.$method("move", { labels: ["to"] }).call(5)).toBe(5);
+    expect(obj.$method("move", { labels: ["by"] }).call(5)).toBe(50);
   });
 
   test("disambiguates a same-arity, same-label overload by argTypes", () => {
     loadFixture();
     const obj = robotType().init("R2");
-    expect(obj.method("tagged", { argTypes: ["Swift.Int"] }).call(7)).toBe("int:7");
-    expect(obj.method("tagged", { argTypes: ["Swift.String"] }).call("hi")).toBe("str:hi");
+    expect(obj.$method("tagged", { argTypes: ["Swift.Int"] }).call(7)).toBe("int:7");
+    expect(obj.$method("tagged", { argTypes: ["Swift.String"] }).call("hi")).toBe("str:hi");
   });
 });
 
@@ -184,21 +184,21 @@ describe("ClassInstance computed property", () => {
   test("invokes a getter", () => {
     loadFixture();
     const obj = robotType().init("R2");
-    expect(obj.get("badge")).toBe("[R2]");
+    expect(obj.$get("badge")).toBe("[R2]");
   });
 
   test("invokes a setter, observable via getter and stored field", () => {
     loadFixture();
     const obj = robotType().init("R2");
-    obj.set("badge", "D2");
-    expect(obj.field("name").get()).toBe("D2");
-    expect(obj.get("badge")).toBe("[D2]");
+    obj.$set("badge", "D2");
+    expect(obj.$field("name").read()).toBe("D2");
+    expect(obj.$get("badge")).toBe("[D2]");
   });
 
   test("throws for an unknown property", () => {
     loadFixture();
     const obj = robotType().init("R2");
-    expect(() => obj.get("nope")).toThrow();
+    expect(() => obj.$get("nope")).toThrow();
   });
 });
 
@@ -207,6 +207,6 @@ describe("ClassType static invocation", () => {
     loadFixture();
     const made = robotType().call("make", "Forged") as SwiftObject;
     expect(made.$owned).toBe(true);
-    expect(made.field("name").get()).toBe("Forged");
+    expect(made.$field("name").read()).toBe("Forged");
   });
 });

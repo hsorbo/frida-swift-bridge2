@@ -17,7 +17,7 @@ describe("ValueInstance method invocation", () => {
     loadFixture();
     const v = value("fixture.Accumulator", { total: 5 });
     v.method("add", { mutating: true }).call(3);
-    expect((v.get() as { total: number }).total).toBe(8);
+    expect((v.read() as { total: number }).total).toBe(8);
   });
 
   test("String arg and return marshal across a trailing-self call", () => {

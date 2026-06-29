@@ -7,11 +7,15 @@ import {
   bindValueMethod,
   bindGenericValueMethod,
   bindGenericTypeValueMethod,
+  getProperty,
+  setProperty,
   ValueMethodResolveOptions,
   CallResult,
   CallArg,
+  RawInstance,
 } from "../runtime/method.js";
 import { SwiftType, typeOf } from "../runtime/swift-type.js";
+import { typeName } from "../runtime/type-name.js";
 
 // qjs and v8 (Frida 17) ship no Symbol.dispose; polyfill so `using` resolves the key below.
 const symbolCtor = Symbol as { dispose?: symbol };
@@ -21,18 +25,18 @@ interface OwnedState {
   disposed: boolean;
 }
 
-export class ValueInstance {
+export class ValueInstance implements RawInstance {
   private weakId: WeakRefId | null = null;
 
   private constructor(
     readonly metadata: Metadata,
-    readonly address: NativePointer,
+    readonly handle: NativePointer,
     private readonly state: OwnedState | null,
     private readonly keepAlive: unknown
   ) {
     if (state !== null) {
       const vwt = metadata.valueWitnesses;
-      const addr = address;
+      const addr = handle;
       this.weakId = Script.bindWeak(this, () => {
         if (!state.disposed) {
           state.disposed = true;
@@ -42,8 +46,8 @@ export class ValueInstance {
     }
   }
 
-  static borrow(metadata: Metadata, address: NativePointer, keepAlive: unknown = null): ValueInstance {
-    return new ValueInstance(metadata, address, null, keepAlive);
+  static borrow(metadata: Metadata, handle: NativePointer, keepAlive: unknown = null): ValueInstance {
+    return new ValueInstance(metadata, handle, null, keepAlive);
   }
 
   static fromJS(metadata: Metadata, value: SwiftValue): ValueInstance {
@@ -58,35 +62,45 @@ export class ValueInstance {
     return new ValueInstance(metadata, storage, { disposed: false }, null);
   }
 
-  static adopt(metadata: Metadata, address: NativePointer): ValueInstance {
-    return new ValueInstance(metadata, address, { disposed: false }, null);
+  static adopt(metadata: Metadata, handle: NativePointer): ValueInstance {
+    return new ValueInstance(metadata, handle, { disposed: false }, null);
   }
 
   get owned(): boolean {
     return this.state !== null;
   }
 
-  get $kind(): "value" {
+  get kind(): "value" {
     return "value";
   }
 
-  get $type(): SwiftType {
+  get type(): SwiftType {
     return typeOf(this.metadata);
   }
 
-  get(): SwiftValue {
+  get(name: string): CallResult {
     this.checkLive();
-    return readValue(this.metadata, this.address);
+    return getProperty(this.handle, typeName(this.metadata), name);
   }
 
-  set(value: SwiftValue): void {
+  set(name: string, value: CallArg): void {
     this.checkLive();
-    writeValue(this.metadata, this.address, value);
+    setProperty(this.handle, typeName(this.metadata), name, value);
+  }
+
+  read(): SwiftValue {
+    this.checkLive();
+    return readValue(this.metadata, this.handle);
+  }
+
+  write(value: SwiftValue): void {
+    this.checkLive();
+    writeValue(this.metadata, this.handle, value);
   }
 
   container(): SwiftValue {
     this.checkLive();
-    const decoded = decodeBridgedContainer(this.metadata, this.address);
+    const decoded = decodeBridgedContainer(this.metadata, this.handle);
     if (decoded === null) {
       throw new Error("ValueInstance is not a bridged Array/Set/Dictionary");
     }
@@ -98,7 +112,7 @@ export class ValueInstance {
     if (this.metadata.kind !== MetadataKind.Struct) {
       throw new Error("ValueInstance.field is supported on struct values only");
     }
-    for (const f of enumerateInstanceFields(this.metadata, this.address)) {
+    for (const f of enumerateInstanceFields(this.metadata, this.handle)) {
       if (f.name === name) {
         if (f.type === null) {
           throw new Error(`ValueInstance.field: unresolved type for field ${name}`);
@@ -112,12 +126,12 @@ export class ValueInstance {
   method(name: string, options: ValueMethodResolveOptions = {}): BoundValueMethod | GenericBoundMethod {
     this.checkLive();
     if (options.typeArguments !== undefined) {
-      return bindGenericValueMethod(this.metadata, this.address, name, options);
+      return bindGenericValueMethod(this.metadata, this.handle, name, options);
     }
     if (this.metadata.description.isGeneric) {
-      return bindGenericTypeValueMethod(this.metadata, this.address, name, options);
+      return bindGenericTypeValueMethod(this.metadata, this.handle, name, options);
     }
-    return bindValueMethod(this.metadata, this.address, name, options);
+    return bindValueMethod(this.metadata, this.handle, name, options);
   }
 
   call(name: string, ...args: CallArg[]): CallResult {
@@ -126,13 +140,13 @@ export class ValueInstance {
 
   copy(): ValueInstance {
     this.checkLive();
-    return ValueInstance.fromCopy(this.metadata, this.address);
+    return ValueInstance.fromCopy(this.metadata, this.handle);
   }
 
   // Init uninitialized dest with a +1 copy; lets an opaque value cross a call boundary the JS writers can't.
   copyInto(dest: NativePointer): void {
     this.checkLive();
-    this.metadata.valueWitnesses.initializeWithCopy(dest, this.address);
+    this.metadata.valueWitnesses.initializeWithCopy(dest, this.handle);
   }
 
   dispose(): void {
@@ -144,7 +158,7 @@ export class ValueInstance {
       Script.unbindWeak(this.weakId);
       this.weakId = null;
     }
-    this.metadata.valueWitnesses.destroy(this.address);
+    this.metadata.valueWitnesses.destroy(this.handle);
   }
 
   [Symbol.dispose](): void {

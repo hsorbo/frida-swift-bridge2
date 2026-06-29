@@ -1,7 +1,7 @@
 import { test, expect, describe } from "@frida/injest/agent";
 import { loadFixture } from "./fixtures/load.js";
 
-import { Swift, Metadata, ValueInstance, type SwiftValue, type SwiftObject, type CallResult } from "../src/index.js";
+import { Swift, Metadata, type SwiftValue, type SwiftObject, type CallResult } from "../src/index.js";
 import { makeSwiftNativeFunction } from "../src/runtime/calling-convention.js";
 import { SwiftInterceptor } from "../src/runtime/interceptor.js";
 
@@ -309,9 +309,9 @@ describe("SwiftInterceptor.attach", () => {
     expect(counter.$get("count")).toBe(7);
   });
 
-  // The borrowed ValueInstance aliases the caller's result storage, so it is read inside onLeave; the field
+  // The borrowed value facade aliases the caller's result storage, so it is read inside onLeave; the field
   // probes prove it is the live aggregate, not a deep-copied snapshot.
-  test("hands back a non-POD value return as a live, queryable ValueInstance", () => {
+  test("hands back a non-POD value return as a live, queryable value facade", () => {
     const Int = Swift.metadataFor("Swift.Int")!;
     const Token = Swift.metadataFor("fixture.Token")!;
     const Wrapper = Swift.metadataFor("fixture.Wrapper")!;
@@ -322,10 +322,10 @@ describe("SwiftInterceptor.attach", () => {
     let tokenMatches = false;
     const listener = SwiftInterceptor.attach(addr, {
       onLeave(ret) {
-        isValue = ret instanceof ValueInstance;
-        const wrapper = ret as ValueInstance;
-        a = wrapper.field("a").get();
-        tokenMatches = (wrapper.field("token").get() as NativePointer).equals(tokenBuf.readPointer());
+        const wrapper = ret as SwiftObject;
+        isValue = wrapper.$kind === "value";
+        a = wrapper.$field("a").read();
+        tokenMatches = (wrapper.$field("token").read() as NativePointer).equals(tokenBuf.readPointer());
       },
     });
     makeSwiftNativeFunction(addr, Wrapper, [Token])(tokenBuf);

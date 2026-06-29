@@ -19,7 +19,7 @@ function Int(): Metadata {
 describe("inherited methods (symbol route)", () => {
   test("calls a method inherited from the superclass", () => {
     loadFixture();
-    expect(catType().init().call("legs")).toBe(4); // Cat has no legs symbol; declared on Animal
+    expect(catType().init().$call("legs")).toBe(4); // Cat has no legs symbol; declared on Animal
   });
 
   test("resolveMethod finds the inherited impl declared on the superclass", () => {
@@ -40,7 +40,7 @@ describe("inherited methods (symbol route)", () => {
   test("the facade exposes inherited methods", () => {
     loadFixture();
     const cat = catType().init();
-    expect(cat.$type.methods()).toContain("legs");
+    expect(cat.$type.methods()).toContain("legs()");
     expect(cat.legs()).toBe(4);
   });
 });
@@ -55,8 +55,8 @@ describe("live polymorphic dispatch (metadata vtable)", () => {
   test("a base slot reaches the most-derived override", () => {
     loadFixture();
     const slot = speakSlot();
-    expect(catType().init().vtableMethod(slot, { returnType: Int(), argTypes: [] }).call()).toBe(9); // Cat.speak
-    expect(animalType().init().vtableMethod(slot, { returnType: Int(), argTypes: [] }).call()).toBe(1); // Animal.speak
+    expect(catType().init().$vtableMethod(slot, { returnType: Int(), argTypes: [] }).call()).toBe(9); // Cat.speak
+    expect(animalType().init().$vtableMethod(slot, { returnType: Int(), argTypes: [] }).call()).toBe(1); // Animal.speak
   });
 
   test("the live impl differs from the descriptor's declared impl", () => {
@@ -64,7 +64,7 @@ describe("live polymorphic dispatch (metadata vtable)", () => {
     const declared = resolveMethod("fixture.Animal", "speak", { static: false }).address;
     const overridden = resolveMethod("fixture.Cat", "speak", { static: false }).address;
     const slot = speakSlot();
-    const live = catType().init().vtableMethod(slot, { returnType: Int(), argTypes: [] }).address;
+    const live = catType().init().$vtableMethod(slot, { returnType: Int(), argTypes: [] }).address;
     expect(live.equals(overridden)).toBe(true);
     expect(live.equals(declared)).toBe(false);
   });
@@ -73,7 +73,7 @@ describe("live polymorphic dispatch (metadata vtable)", () => {
     loadFixture();
     const instanceMethods = catType()
       .init()
-      .vtable.filter((e: VTableEntry) => e.kind === MethodDescriptorKind.Method && e.isInstance);
+      .$vtable.filter((e: VTableEntry) => e.kind === MethodDescriptorKind.Method && e.isInstance);
     expect(instanceMethods.length).toBe(2); // speak + legs, both from Animal's descriptor
   });
 });

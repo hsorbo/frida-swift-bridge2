@@ -38,7 +38,7 @@ describe("vtable route", () => {
     const type = dispatcherType();
     const obj = type.init();
     const results = instanceMethods(type)
-      .map((e) => obj.vtableMethod(e.metadataOffset, { returnType: Int(), argTypes: [Int()] }).call(10) as number)
+      .map((e) => obj.$vtableMethod(e.metadataOffset, { returnType: Int(), argTypes: [Int()] }).call(10) as number)
       .sort((a, b) => a - b);
     expect(results).toEqual([11, 30]); // pub(10)=11, hidden(10)=30
   });
@@ -48,7 +48,7 @@ describe("vtable route", () => {
     const type = dispatcherType();
     const obj = type.init();
     const pub = instanceMethods(type).find(
-      (e) => obj.vtableMethod(e.metadataOffset, { returnType: Int(), argTypes: [Int()] }).call(10) === 11
+      (e) => obj.$vtableMethod(e.metadataOffset, { returnType: Int(), argTypes: [Int()] }).call(10) === 11
     )!;
     const viaSymbol = resolveMethod("fixture.Dispatcher", "pub", { static: false });
     expect(pub.declaredImpl.equals(viaSymbol.address)).toBe(true);

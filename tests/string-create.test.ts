@@ -43,15 +43,15 @@ describe("writeValue String support", () => {
     loadFixture();
     const v = Swift.typeOf(Swift.metadataFor("Swift.String")!);
     const value = (v as StructType).new("hello from JS");
-    expect(value.get()).toBe("hello from JS");
-    value.dispose();
+    expect(value.$fields).toBe("hello from JS");
+    value.$dispose();
   });
 
   test("constructs a struct with a String field", () => {
     loadFixture();
     const t = Swift.typeOf(Swift.metadataFor("fixture.PoliteGreeter")!) as StructType;
     const value = t.new({ name: "Ada" });
-    expect(value.get()).toEqual({ name: "Ada" });
-    value.dispose();
+    expect(value.$fields).toEqual({ name: "Ada" });
+    value.$dispose();
   });
 });

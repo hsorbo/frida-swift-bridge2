@@ -219,11 +219,12 @@ function materializeArgs(
 
 // Mirrors method.ts decodeReturn, but borrows: an interceptor only observes the caller's +1, so it
 // neither adopts nor destroys. A non-POD value embedding a managed reference can't be deep-copied
-// out, so it surfaces as a live ValueInstance valid for the callback's duration; everything else stays a
-// snapshot. The borrowed address is the caller's storage, so writing through it edits the return.
+// out, so it surfaces as a live facade over the borrowed storage, valid for the callback's duration;
+// everything else stays a snapshot. The borrowed address is the caller's storage, so writing through
+// it edits the return.
 function decodeReturnValue(metadata: Metadata, address: NativePointer): CallResult {
   if (!metadata.valueWitnesses.isPOD && embedsManagedReference(metadata)) {
-    return ValueInstance.borrow(metadata, address);
+    return createObject(ValueInstance.borrow(metadata, address));
   }
   return readValue(metadata, address);
 }

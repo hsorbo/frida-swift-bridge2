@@ -23,7 +23,7 @@ describe("compound generic-using exprs in generic methods", () => {
   test("T? argument and return pass indirectly (Optional payload is address-only)", () => {
     loadFixture();
     const Int = Swift.metadataFor("Swift.Int")!;
-    const roundOpt = box().method("roundOpt", { typeArguments: [Int] });
+    const roundOpt = box().$method("roundOpt", { typeArguments: [Int] });
     expect(roundOpt.call({ some: 9 })).toEqual({ some: 9 });
     expect(roundOpt.call("none")).toBe("none");
   });
@@ -31,7 +31,7 @@ describe("compound generic-using exprs in generic methods", () => {
   test("T? round-trips a non-POD payload through the indirect path", () => {
     loadFixture();
     const Str = Swift.metadataFor("Swift.String")!;
-    expect(box().method("roundOpt", { typeArguments: [Str] }).call({ some: "hi" })).toEqual({ some: "hi" });
+    expect(box().$method("roundOpt", { typeArguments: [Str] }).call({ some: "hi" })).toEqual({ some: "hi" });
   });
 
   test("[T] is a fixed-layout Array passed/returned directly", () => {
@@ -40,7 +40,7 @@ describe("compound generic-using exprs in generic methods", () => {
     const ArrInt = Swift.metadataFor("Swift.Array", [Int])!;
 
     // [T]-return planning binds and calls through GenericBoundMethod.
-    const hi = box().method("tripled", { typeArguments: [Int] }).call(7);
+    const hi = box().$method("tripled", { typeArguments: [Int] }).call(7);
     expect(hi !== null && typeof hi === "object").toBe(true);
 
     // ABI proof, decode-free: tripled<Int>(7) returns [7,7,7] direct, firstGeneric<Int> reads xs[0].
@@ -58,11 +58,11 @@ describe("compound generic-using exprs in generic methods", () => {
     );
     const seven = Memory.alloc(8);
     seven.writeS64(7);
-    const arrPtr = tripled(box().handle, seven)!;
+    const arrPtr = tripled(box().$handle, seven)!;
     expect(firstGeneric(arrPtr)!.readS64().toNumber()).toBe(7);
 
     // The Array is opaque to the JS writers; as a ValueInstance it byte-copies through a high-level .call() arg.
     const arr = ValueInstance.fromCopy(ArrInt, arrPtr);
-    expect(box().method("sumInts").call(arr)).toBe(21);
+    expect(box().$method("sumInts").call(arr)).toBe(21);
   });
 });
