@@ -1,7 +1,7 @@
 import { Metadata, MetadataKind } from "../abi/metadata.js";
 import { readValue, embedsManagedReference, SwiftValue } from "../abi/instance.js";
-import { Value } from "../abi/value.js";
-import { HeapObject } from "../abi/heap-object.js";
+import { ValueInstance } from "../abi/value.js";
+import { ClassInstance } from "../abi/heap-object.js";
 import { projectErrorExistential } from "../abi/existential.js";
 import { shouldPassIndirectly, floatLayout } from "./calling-convention.js";
 import { symbolicate, parseSwiftSignature, resolveType, resolveTypeExpr } from "./symbolication.js";
@@ -219,11 +219,11 @@ function materializeArgs(
 
 // Mirrors method.ts decodeReturn, but borrows: an interceptor only observes the caller's +1, so it
 // neither adopts nor destroys. A non-POD value embedding a managed reference can't be deep-copied
-// out, so it surfaces as a live Value valid for the callback's duration; everything else stays a
+// out, so it surfaces as a live ValueInstance valid for the callback's duration; everything else stays a
 // snapshot. The borrowed address is the caller's storage, so writing through it edits the return.
 function decodeReturnValue(metadata: Metadata, address: NativePointer): CallResult {
   if (!metadata.valueWitnesses.isPOD && embedsManagedReference(metadata)) {
-    return Value.borrow(metadata, address);
+    return ValueInstance.borrow(metadata, address);
   }
   return readValue(metadata, address);
 }
@@ -265,7 +265,7 @@ function materializeReturn(
     return readValue(returnType, scratch);
   }
   if (returnType.kind === MetadataKind.Class) {
-    return createObject(new HeapObject(context.x0));
+    return createObject(new ClassInstance(context.x0));
   }
   if (shouldPassIndirectly(returnType)) {
     if (indirectReturn === null) {

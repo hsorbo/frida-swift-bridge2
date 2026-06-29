@@ -2,7 +2,7 @@ import { test, expect, describe } from "@frida/injest/agent";
 import { type Skip } from "./swift.js";
 import { loadFixture } from "./fixtures/load.js";
 
-import { Swift, HeapObject } from "../src/index.js";
+import { Swift, ClassInstance } from "../src/index.js";
 import { makeSwiftNativeFunction } from "../src/runtime/calling-convention.js";
 
 function fixtureFn(skip: Skip, swiftName: string): NativePointer {
@@ -22,14 +22,14 @@ function intArg(n: number): NativePointer {
   return cell;
 }
 
-function makeCounter(skip: Skip, n: number): HeapObject {
+function makeCounter(skip: Skip, n: number): ClassInstance {
   const Int = Swift.metadataFor("Swift.Int")!;
   const Counter = Swift.metadataFor("fixture.Counter")!;
   const make = makeSwiftNativeFunction(fixtureFn(skip, "fixture.makeCounter"), Counter, [Int]);
-  return new HeapObject(make(intArg(n))!.readPointer());
+  return new ClassInstance(make(intArg(n))!.readPointer());
 }
 
-describe("HeapObject", () => {
+describe("ClassInstance", () => {
   test("reads and writes a class stored property", ({ skip }) => {
     const counter = makeCounter(skip, 5);
     expect(counter.field("count").get()).toBe(5);

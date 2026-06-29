@@ -20,7 +20,7 @@ interface OwnedState {
   disposed: boolean;
 }
 
-export class Value {
+export class ValueInstance {
   private weakId: WeakRefId | null = null;
 
   private constructor(
@@ -41,24 +41,24 @@ export class Value {
     }
   }
 
-  static borrow(metadata: Metadata, address: NativePointer, keepAlive: unknown = null): Value {
-    return new Value(metadata, address, null, keepAlive);
+  static borrow(metadata: Metadata, address: NativePointer, keepAlive: unknown = null): ValueInstance {
+    return new ValueInstance(metadata, address, null, keepAlive);
   }
 
-  static fromJS(metadata: Metadata, value: SwiftValue): Value {
+  static fromJS(metadata: Metadata, value: SwiftValue): ValueInstance {
     const storage = Memory.alloc(metadata.typeLayout.stride);
     writeValue(metadata, storage, value);
-    return new Value(metadata, storage, { disposed: false }, null);
+    return new ValueInstance(metadata, storage, { disposed: false }, null);
   }
 
-  static fromCopy(metadata: Metadata, src: NativePointer): Value {
+  static fromCopy(metadata: Metadata, src: NativePointer): ValueInstance {
     const storage = Memory.alloc(metadata.typeLayout.stride);
     metadata.valueWitnesses.initializeWithCopy(storage, src);
-    return new Value(metadata, storage, { disposed: false }, null);
+    return new ValueInstance(metadata, storage, { disposed: false }, null);
   }
 
-  static adopt(metadata: Metadata, address: NativePointer): Value {
-    return new Value(metadata, address, { disposed: false }, null);
+  static adopt(metadata: Metadata, address: NativePointer): ValueInstance {
+    return new ValueInstance(metadata, address, { disposed: false }, null);
   }
 
   get owned(): boolean {
@@ -79,25 +79,25 @@ export class Value {
     this.checkLive();
     const decoded = decodeBridgedContainer(this.metadata, this.address);
     if (decoded === null) {
-      throw new Error("Value is not a bridged Array/Set/Dictionary");
+      throw new Error("ValueInstance is not a bridged Array/Set/Dictionary");
     }
     return decoded.value;
   }
 
-  field(name: string): Value {
+  field(name: string): ValueInstance {
     this.checkLive();
     if (this.metadata.kind !== MetadataKind.Struct) {
-      throw new Error("Value.field is supported on struct values only");
+      throw new Error("ValueInstance.field is supported on struct values only");
     }
     for (const f of enumerateInstanceFields(this.metadata, this.address)) {
       if (f.name === name) {
         if (f.type === null) {
-          throw new Error(`Value.field: unresolved type for field ${name}`);
+          throw new Error(`ValueInstance.field: unresolved type for field ${name}`);
         }
-        return Value.borrow(f.type, f.address, this);
+        return ValueInstance.borrow(f.type, f.address, this);
       }
     }
-    throw new Error(`Value.field: no field ${name}`);
+    throw new Error(`ValueInstance.field: no field ${name}`);
   }
 
   method(name: string, options: ValueMethodResolveOptions = {}): BoundValueMethod | GenericBoundMethod {
@@ -115,9 +115,9 @@ export class Value {
     return this.method(name).call(...args);
   }
 
-  copy(): Value {
+  copy(): ValueInstance {
     this.checkLive();
-    return Value.fromCopy(this.metadata, this.address);
+    return ValueInstance.fromCopy(this.metadata, this.address);
   }
 
   // Init uninitialized dest with a +1 copy; lets an opaque value cross a call boundary the JS writers can't.
@@ -144,7 +144,7 @@ export class Value {
 
   private checkLive(): void {
     if (this.state !== null && this.state.disposed) {
-      throw new Error("Value has been disposed");
+      throw new Error("ValueInstance has been disposed");
     }
   }
 }

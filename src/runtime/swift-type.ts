@@ -1,8 +1,8 @@
 import { Metadata, MetadataKind } from "../abi/metadata.js";
 import { ClassMetadata } from "../abi/class-metadata.js";
 import { readVTableChain, VTableEntry } from "../abi/class-descriptor.js";
-import { Value } from "../abi/value.js";
-import { HeapObject } from "../abi/heap-object.js";
+import { ValueInstance } from "../abi/value.js";
+import { ClassInstance } from "../abi/heap-object.js";
 import { createObject, SwiftObject } from "./object-facade.js";
 import { writeValue, SwiftValue } from "../abi/instance.js";
 import { enumerateFields, fieldTypeIn } from "../abi/field-descriptor.js";
@@ -89,14 +89,14 @@ export class ValueType extends SwiftType {
     return bindValueInitializer(this.metadata, options);
   }
 
-  init(...args: CallArg[]): Value {
+  init(...args: CallArg[]): ValueInstance {
     return this.initializer().call(...args);
   }
 }
 
 export class StructType extends ValueType {
-  new(value: SwiftValue): Value {
-    return Value.fromJS(this.metadata, value);
+  new(value: SwiftValue): ValueInstance {
+    return ValueInstance.fromJS(this.metadata, value);
   }
 
   get fields(): TypeMember[] {
@@ -108,8 +108,8 @@ export class StructType extends ValueType {
 }
 
 export class EnumType extends ValueType {
-  case(name: string, payload?: SwiftValue): Value {
-    return Value.fromJS(this.metadata, payload === undefined ? name : { [name]: payload });
+  case(name: string, payload?: SwiftValue): ValueInstance {
+    return ValueInstance.fromJS(this.metadata, payload === undefined ? name : { [name]: payload });
   }
 
   get cases(): TypeMember[] {
@@ -154,7 +154,7 @@ export class ClassType extends SwiftType {
       writeValue(argTypes[i], buffer, value);
       return buffer;
     });
-    return createObject(HeapObject.adopt(call(this.metadata.handle, ...argPtrs)!.readPointer()));
+    return createObject(ClassInstance.adopt(call(this.metadata.handle, ...argPtrs)!.readPointer()));
   }
 
   // +1 raw storage; initialize fields before the wrapper is released (deinit runs over them).
@@ -165,7 +165,7 @@ export class ClassType extends SwiftType {
       cls.instanceSize,
       cls.instanceAlignment - 1
     );
-    return createObject(HeapObject.adopt(object));
+    return createObject(ClassInstance.adopt(object));
   }
 
   method(name: string, options: MethodResolveOptions = {}): BoundMethod {

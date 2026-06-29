@@ -1,9 +1,9 @@
 import { Metadata, MetadataKind, getMetadata } from "../abi/metadata.js";
 import { ContextDescriptorKind } from "../abi/context-descriptor.js";
 import { ClassMetadata } from "../abi/class-metadata.js";
-import { HeapObject } from "../abi/heap-object.js";
+import { ClassInstance } from "../abi/heap-object.js";
 import { createObject, SwiftObject } from "./object-facade.js";
-import { Value } from "../abi/value.js";
+import { ValueInstance } from "../abi/value.js";
 import { readValue, writeValue, embedsManagedReference, SwiftValue } from "../abi/instance.js";
 import { findType } from "../reflection/registry.js";
 import { demangle } from "./demangle.js";
@@ -19,10 +19,10 @@ import { findProtocol, conformsToProtocol } from "../abi/protocol-conformance.js
 
 export type MethodKind = "method" | "init";
 
-export type CallResult = SwiftValue | SwiftObject | Value;
+export type CallResult = SwiftValue | SwiftObject | ValueInstance;
 
-// A high-level argument: a JS-constructible value, or an opaque Value byte-copied in (e.g. an Array).
-export type CallArg = SwiftValue | Value;
+// A high-level argument: a JS-constructible value, or an opaque ValueInstance byte-copied in (e.g. an Array).
+export type CallArg = SwiftValue | ValueInstance;
 
 export interface MethodInfo {
   name: string;
@@ -86,7 +86,7 @@ const invokerCache = new Map<string, SwiftNativeFunction>();
 
 function marshalArg(metadata: Metadata, value: CallArg): NativePointer {
   const buffer = Memory.alloc(metadata.typeLayout.stride);
-  if (value instanceof Value) {
+  if (value instanceof ValueInstance) {
     if (!value.metadata.handle.equals(metadata.handle)) {
       throw new Error(`argument is a ${typeName(value.metadata)} value, expected ${typeName(metadata)}`);
     }
@@ -100,16 +100,16 @@ function marshalArg(metadata: Metadata, value: CallArg): NativePointer {
 }
 
 // Returns are +1: adopt a class; destroy a read non-POD temp; POD owns nothing. A value embedding a
-// managed reference would dangle on that destroy, so hand it back as an owned Value instead.
+// managed reference would dangle on that destroy, so hand it back as an owned ValueInstance instead.
 function decodeReturn(returnType: Metadata | null, ret: NativePointer | null): CallResult {
   if (returnType === null || ret === null) {
     return null;
   }
   if (returnType.kind === MetadataKind.Class) {
-    return createObject(HeapObject.adopt(ret.readPointer()));
+    return createObject(ClassInstance.adopt(ret.readPointer()));
   }
   if (!returnType.valueWitnesses.isPOD && embedsManagedReference(returnType)) {
-    return Value.adopt(returnType, ret);
+    return ValueInstance.adopt(returnType, ret);
   }
   const value = readValue(returnType, ret);
   if (!returnType.valueWitnesses.isPOD) {
@@ -486,7 +486,7 @@ export function bindStaticMethod(
 }
 
 // A value-type initializer is self-less: the @thin metatype self is erased, so it lowers like a
-// static factory returning the type (the +1/owned return is adopted as a Value). Init params are
+// static factory returning the type (the +1/owned return is adopted as a ValueInstance). Init params are
 // +1/consumed — the callee owns the arg temps, so they are not destroyed here. Mirrors ClassType.init.
 export class BoundValueInitializer {
   private readonly fn: SwiftNativeFunction;
@@ -499,7 +499,7 @@ export class BoundValueInitializer {
     return this.resolved.address;
   }
 
-  call(...args: CallArg[]): Value {
+  call(...args: CallArg[]): ValueInstance {
     const { argTypes, returnType, selector } = this.resolved;
     if (returnType === null) {
       throw new Error(`${selector} is not a value initializer`);
@@ -511,7 +511,7 @@ export class BoundValueInitializer {
     if (ret === null) {
       throw new Error(`${selector} returned no value`);
     }
-    return Value.adopt(returnType, ret);
+    return ValueInstance.adopt(returnType, ret);
   }
 }
 
@@ -524,7 +524,7 @@ export function bindValueInitializer(
 
 type SelfRouting = { indirect: true } | { indirect: false; receiver: Metadata };
 
-// Value self is indirect (x20) when mutating/inout or large/non-POD; else it rides as a trailing arg.
+// Value-type self is indirect (x20) when mutating/inout or large/non-POD; else it rides as a trailing arg.
 function valueSelfRouting(receiver: Metadata, mutating: boolean): SelfRouting {
   return mutating || shouldPassIndirectly(receiver) ? { indirect: true } : { indirect: false, receiver };
 }

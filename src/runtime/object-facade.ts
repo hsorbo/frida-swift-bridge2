@@ -1,5 +1,5 @@
-import { HeapObject } from "../abi/heap-object.js";
-import { Value } from "../abi/value.js";
+import { ClassInstance } from "../abi/heap-object.js";
+import { ValueInstance } from "../abi/value.js";
 import { SwiftValue } from "../abi/instance.js";
 import { CallResult, MethodInfo, enumerateMethods, buildKeyMap } from "./method.js";
 import { typeName } from "./type-name.js";
@@ -33,22 +33,22 @@ export interface SwiftObject {
   $call(name: string, ...args: SwiftValue[]): CallResult;
   $get(name: string): CallResult;
   $set(name: string, value: SwiftValue): void;
-  $field(name: string): Value;
+  $field(name: string): ValueInstance;
   $retain(): SwiftObject;
   $release(): void;
   $dispose(): void;
-  equals(other: SwiftObject | HeapObject | NativePointer): boolean;
+  equals(other: SwiftObject | ClassInstance | NativePointer): boolean;
   toString(): string;
   [key: string]: any;
 }
 
-function handleOf(other: SwiftObject | HeapObject | NativePointer): NativePointer {
+function handleOf(other: SwiftObject | ClassInstance | NativePointer): NativePointer {
   return (other instanceof NativePointer ? other : other.handle) as NativePointer;
 }
 
 // The proxy roots its target, so an owned target's +1 releases only when the proxy is GC'd.
-export function createObject(source: NativePointer | HeapObject): SwiftObject {
-  const target = source instanceof HeapObject ? source : new HeapObject(source);
+export function createObject(source: NativePointer | ClassInstance): SwiftObject {
+  const target = source instanceof ClassInstance ? source : new ClassInstance(source);
   const callables = new Map<string, (...args: SwiftValue[]) => CallResult>();
   let keyMap: Map<string, MethodInfo> | null = null;
 
@@ -99,14 +99,14 @@ export function createObject(source: NativePointer | HeapObject): SwiftObject {
         case "$dispose":
           return () => t.dispose();
         case "equals":
-          return (other: SwiftObject | HeapObject | NativePointer) => t.handle.equals(handleOf(other));
+          return (other: SwiftObject | ClassInstance | NativePointer) => t.handle.equals(handleOf(other));
         case "hasOwnProperty":
           return (k: string) => RESERVED.has(k) || Reflect.has(t, k) || methodKeys().has(k);
         case "toString":
         case "valueOf":
           return () => `<${t.metadata.description.fullTypeName ?? "Swift.Object"}: ${t.handle}>`;
       }
-      // A real HeapObject member wins over a same-named no-arg Swift method (reach that via $call).
+      // A real ClassInstance member wins over a same-named no-arg Swift method (reach that via $call).
       if (Reflect.has(t, key)) {
         const member = Reflect.get(t, key);
         return typeof member === "function" ? member.bind(t) : member;

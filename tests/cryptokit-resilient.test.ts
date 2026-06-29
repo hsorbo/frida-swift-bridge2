@@ -4,7 +4,7 @@ import { requireSwift, type Skip } from "./swift.js";
 import {
   Swift,
   StructType,
-  Value,
+  ValueInstance,
   isResilientValueType,
   makeSwiftNativeFunction,
   resolveMethod,
@@ -58,7 +58,7 @@ describe("resilient auto-detection (CryptoKit)", () => {
     sizeBuf.writeU64(256);
 
     const keyType = Swift.typeOf(Swift.metadataFor("CryptoKit.SymmetricKey")!) as StructType;
-    const key = keyType.initializer({ labels: ["size"] }).call(Value.borrow(sizeMd, sizeBuf));
+    const key = keyType.initializer({ labels: ["size"] }).call(ValueInstance.borrow(sizeMd, sizeBuf));
 
     expect(getProperty(key.address, "CryptoKit.SymmetricKey", "bitCount")).toBe(256);
   });

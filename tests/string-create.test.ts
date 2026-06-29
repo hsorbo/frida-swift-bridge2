@@ -39,7 +39,7 @@ describe("createString / writeString", () => {
 });
 
 describe("writeValue String support", () => {
-  test("Value.fromJS builds a String value", ({ skip }) => {
+  test("ValueInstance.fromJS builds a String value", ({ skip }) => {
     loadFixture(skip);
     const v = Swift.typeOf(Swift.metadataFor("Swift.String")!);
     const value = (v as StructType).new("hello from JS");

@@ -1,13 +1,13 @@
 import { test, expect, describe } from "@frida/injest/agent";
 import { loadFixture } from "./fixtures/load.js";
 
-import { Swift, Value } from "../src/index.js";
+import { Swift, ValueInstance } from "../src/index.js";
 
-function value(typeName: string, fields: { [k: string]: number }): Value {
-  return Value.fromJS(Swift.metadataFor(typeName)!, fields);
+function value(typeName: string, fields: { [k: string]: number }): ValueInstance {
+  return ValueInstance.fromJS(Swift.metadataFor(typeName)!, fields);
 }
 
-describe("Value method invocation", () => {
+describe("ValueInstance method invocation", () => {
   test("non-mutating method on a small loadable struct (self as trailing arg)", ({ skip }) => {
     loadFixture(skip);
     expect(value("fixture.Accumulator", { total: 5 }).call("peek", 10)).toBe(15);

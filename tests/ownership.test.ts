@@ -1,7 +1,7 @@
 import { test, expect, describe } from "@frida/injest/agent";
 import { loadFixture } from "./fixtures/load.js";
 
-import { Swift, ClassType, HeapObject, SwiftObject } from "../src/index.js";
+import { Swift, ClassType, ClassInstance, SwiftObject } from "../src/index.js";
 
 function robotType(): ClassType {
   return Swift.typeOf(Swift.metadataFor("fixture.Robot")!) as ClassType;
@@ -9,8 +9,8 @@ function robotType(): ClassType {
 
 // Large (heap) String: __StringStorage pointer at +8, low 60 bits.
 const LARGE_ADDRESS_MASK = ptr("0x0fffffffffffffff");
-function stringStorage(inlineString: NativePointer): HeapObject {
-  return new HeapObject(inlineString.add(8).readPointer().and(LARGE_ADDRESS_MASK));
+function stringStorage(inlineString: NativePointer): ClassInstance {
+  return new ClassInstance(inlineString.add(8).readPointer().and(LARGE_ADDRESS_MASK));
 }
 
 describe("ownership", () => {
@@ -19,7 +19,7 @@ describe("ownership", () => {
     const owned = robotType().init("R2");
     expect(owned.$owned).toBe(true);
     owned.$retain(); // outlive the dispose so view can observe the drop
-    const view = new HeapObject(owned.handle);
+    const view = new ClassInstance(owned.handle);
     const before = view.retainCount;
     owned.$dispose();
     expect(view.retainCount).toBe(before - 1);
@@ -33,7 +33,7 @@ describe("ownership", () => {
     const made = robotType().call("make", "Forged") as SwiftObject;
     expect(made.$owned).toBe(true);
     made.$retain();
-    const view = new HeapObject(made.handle);
+    const view = new ClassInstance(made.handle);
     expect(view.owned).toBe(false);
     const before = view.retainCount;
     view.dispose(); // borrowed → no-op

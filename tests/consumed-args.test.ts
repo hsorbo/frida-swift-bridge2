@@ -2,7 +2,7 @@ import { test, expect, describe } from "@frida/injest/agent";
 import { type Skip } from "./swift.js";
 import { loadFixture } from "./fixtures/load.js";
 
-import { Swift, HeapObject } from "../src/index.js";
+import { Swift, ClassInstance } from "../src/index.js";
 import { makeSwiftNativeFunction } from "../src/runtime/calling-convention.js";
 
 function fixtureAddress(skip: Skip, swiftName: string): NativePointer {
@@ -28,7 +28,7 @@ function ptrArg(p: NativePointer): NativePointer {
   return cell;
 }
 
-function freshWrapper(skip: Skip): { token: HeapObject; wrapperPtr: NativePointer } {
+function freshWrapper(skip: Skip): { token: ClassInstance; wrapperPtr: NativePointer } {
   const Int = Swift.metadataFor("Swift.Int")!;
   const Token = Swift.metadataFor("fixture.Token")!;
   const Wrapper = Swift.metadataFor("fixture.Wrapper")!;
@@ -38,7 +38,7 @@ function freshWrapper(skip: Skip): { token: HeapObject; wrapperPtr: NativePointe
   ]);
   const tokenRef = makeToken(intArg(5))!.readPointer();
   const wrapperPtr = makeWrapper(ptrArg(tokenRef))!;
-  return { token: new HeapObject(tokenRef), wrapperPtr };
+  return { token: new ClassInstance(tokenRef), wrapperPtr };
 }
 
 describe("consumed (+1) indirect arguments", () => {

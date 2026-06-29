@@ -2,21 +2,21 @@ import { test, expect, describe } from "@frida/injest/agent";
 import { type Skip } from "./swift.js";
 import { loadFixture } from "./fixtures/load.js";
 
-import { Swift, Value, Metadata, HeapObject } from "../src/index.js";
+import { Swift, ValueInstance, Metadata, ClassInstance } from "../src/index.js";
 import { makeSwiftNativeFunction } from "../src/runtime/calling-convention.js";
 
-function constrainedBox(typeArg: Metadata, value: { [k: string]: number } | number): Value {
-  return Value.fromJS(Swift.metadataFor("fixture.ConstrainedBox", [typeArg])!, { value });
+function constrainedBox(typeArg: Metadata, value: { [k: string]: number } | number): ValueInstance {
+  return ValueInstance.fromJS(Swift.metadataFor("fixture.ConstrainedBox", [typeArg])!, { value });
 }
 
-function holder(skip: Skip, n: number): HeapObject {
+function holder(skip: Skip, n: number): ClassInstance {
   const mod = loadFixture(skip);
   const Int = Swift.metadataFor("Swift.Int")!;
   const Holder = Swift.metadataFor("fixture.GenericHolder", [Int])!;
   const fn = [...mod.enumerateExports()].find((e) => Swift.demangle(e.name)?.includes("fixture.makeHolder"))!;
   const cell = Memory.alloc(Process.pointerSize);
   cell.writeS64(n);
-  return new HeapObject(makeSwiftNativeFunction(fn.address, Holder, [Int])(cell)!.readPointer());
+  return new ClassInstance(makeSwiftNativeFunction(fn.address, Holder, [Int])(cell)!.readPointer());
 }
 
 describe("methods on a generic value type", () => {

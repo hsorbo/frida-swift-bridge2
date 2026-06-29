@@ -8,7 +8,7 @@ function structType(name: string): StructType {
 }
 
 describe("value-type initializers", () => {
-  test("init on a small loadable struct returns an owned Value", ({ skip }) => {
+  test("init on a small loadable struct returns an owned ValueInstance", ({ skip }) => {
     loadFixture(skip);
     const v = structType("fixture.Point").init(5);
     expect(v.owned).toBe(true);

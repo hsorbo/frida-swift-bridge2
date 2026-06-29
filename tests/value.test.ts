@@ -2,12 +2,12 @@ import { test, expect, describe } from "@frida/injest/agent";
 import { requireSwift } from "./swift.js";
 import { loadFixture } from "./fixtures/load.js";
 
-import { Swift, Value, writeValue } from "../src/index.js";
+import { Swift, ValueInstance, writeValue } from "../src/index.js";
 
-describe("Value", () => {
+describe("ValueInstance", () => {
   test("fromJS round-trips a struct through get", ({ skip }) => {
     loadFixture(skip);
-    const v = Value.fromJS(Swift.metadataFor("fixture.LoadableStruct")!, {
+    const v = ValueInstance.fromJS(Swift.metadataFor("fixture.LoadableStruct")!, {
       a: 1,
       b: 2,
       c: 3,
@@ -20,7 +20,7 @@ describe("Value", () => {
 
   test("set overwrites a primitive in place", ({ skip }) => {
     requireSwift(skip);
-    const v = Value.fromJS(Swift.metadataFor("Swift.Int")!, 1);
+    const v = ValueInstance.fromJS(Swift.metadataFor("Swift.Int")!, 1);
     v.set(7);
     expect(v.get()).toBe(7);
     v.dispose();
@@ -28,7 +28,7 @@ describe("Value", () => {
 
   test("field exposes a borrowed sub-value that mutates the parent", ({ skip }) => {
     loadFixture(skip);
-    const v = Value.fromJS(Swift.metadataFor("fixture.LoadableStruct")!, {
+    const v = ValueInstance.fromJS(Swift.metadataFor("fixture.LoadableStruct")!, {
       a: 1,
       b: 2,
       c: 3,
@@ -45,7 +45,7 @@ describe("Value", () => {
   test("copy is independent of the original", ({ skip }) => {
     loadFixture(skip);
     const Loadable = Swift.metadataFor("fixture.LoadableStruct")!;
-    const v = Value.fromJS(Loadable, { a: 1, b: 2, c: 3, d: 4 });
+    const v = ValueInstance.fromJS(Loadable, { a: 1, b: 2, c: 3, d: 4 });
     const c = v.copy();
     c.field("a").set(100);
     expect(c.get()).toEqual({ a: 100, b: 2, c: 3, d: 4 });
@@ -56,7 +56,7 @@ describe("Value", () => {
 
   test("use after dispose throws; dispose is idempotent", ({ skip }) => {
     requireSwift(skip);
-    const v = Value.fromJS(Swift.metadataFor("Swift.Int")!, 42);
+    const v = ValueInstance.fromJS(Swift.metadataFor("Swift.Int")!, 42);
     v.dispose();
     v.dispose();
     expect(() => v.get()).toThrow();
@@ -67,7 +67,7 @@ describe("Value", () => {
     const Int = Swift.metadataFor("Swift.Int")!;
     const buffer = Memory.alloc(Int.typeLayout.stride);
     writeValue(Int, buffer, 5);
-    const v = Value.borrow(Int, buffer);
+    const v = ValueInstance.borrow(Int, buffer);
     expect(v.owned).toBe(false);
     expect(v.get()).toBe(5);
     v.dispose();

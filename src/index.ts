@@ -92,8 +92,8 @@ export {
   projectOpaqueExistential,
   projectErrorExistential,
 } from "./abi/existential.js";
-export { Value } from "./abi/value.js";
-export { HeapObject } from "./abi/heap-object.js";
+export { ValueInstance } from "./abi/value.js";
+export { ClassInstance } from "./abi/heap-object.js";
 export {
   SwiftType,
   ValueType,

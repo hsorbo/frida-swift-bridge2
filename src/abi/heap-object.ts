@@ -2,7 +2,7 @@ import { Metadata } from "./metadata.js";
 import { ClassMetadata, classMetadataOf, dynamicTypeOf } from "./class-metadata.js";
 import { readVTableChain, VTableEntry } from "./class-descriptor.js";
 import { enumerateClassInstanceFields, readObject, SwiftValue } from "./instance.js";
-import { Value } from "./value.js";
+import { ValueInstance } from "./value.js";
 import { getSwiftCoreApi } from "../runtime/api.js";
 import {
   BoundMethod,
@@ -32,14 +32,14 @@ interface VTableInvokeSignature {
   throws?: boolean;
 }
 
-export class HeapObject {
+export class ClassInstance {
   private state: OwnedState | null = null;
   private weakId: WeakRefId | null = null;
 
   constructor(readonly handle: NativePointer) {}
 
-  static adopt(handle: NativePointer): HeapObject {
-    const object = new HeapObject(handle);
+  static adopt(handle: NativePointer): ClassInstance {
+    const object = new ClassInstance(handle);
     const state: OwnedState = { disposed: false };
     object.state = state;
     const release = getSwiftCoreApi().swift_release;
@@ -98,16 +98,16 @@ export class HeapObject {
     this.dispose();
   }
 
-  field(name: string): Value {
+  field(name: string): ValueInstance {
     for (const f of enumerateClassInstanceFields(this.handle)) {
       if (f.name === name) {
         if (f.type === null) {
-          throw new Error(`HeapObject.field: unresolved type for field ${name}`);
+          throw new Error(`ClassInstance.field: unresolved type for field ${name}`);
         }
-        return Value.borrow(f.type, f.address, this);
+        return ValueInstance.borrow(f.type, f.address, this);
       }
     }
-    throw new Error(`HeapObject.field: no field ${name}`);
+    throw new Error(`ClassInstance.field: no field ${name}`);
   }
 
   read(): { [field: string]: SwiftValue } {
@@ -160,7 +160,7 @@ export class HeapObject {
   private get typeName(): string {
     const name = this.metadata.description.fullTypeName;
     if (name === null) {
-      throw new Error("HeapObject: class has no type name");
+      throw new Error("ClassInstance: class has no type name");
     }
     return name;
   }

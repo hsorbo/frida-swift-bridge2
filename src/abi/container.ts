@@ -4,7 +4,7 @@ import { readValue, SwiftValue } from "./instance.js";
 // Unlike the rest of the bridge, this walks private stdlib storage layout (__ContiguousArrayStorage,
 // __Raw{Set,Dictionary}Storage, the hash-table occupancy bitmap), not the stable ABI: a future Swift
 // could shift an offset and silently mis-decode. Kept off the readValue path and behind an explicit
-// Value.container() call so the ABI-pure core never depends on it. If this drifts, the robust rewrite
+// ValueInstance.container() call so the ABI-pure core never depends on it. If this drifts, the robust rewrite
 // is to decode via the container's own count + subscript through the generic-method machinery, since
 // the calling convention is part of the stable ABI.
 

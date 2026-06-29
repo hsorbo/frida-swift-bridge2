@@ -2,7 +2,7 @@ import { test, expect, describe } from "@frida/injest/agent";
 import { type Skip } from "./swift.js";
 import { loadFixture } from "./fixtures/load.js";
 
-import { Swift, HeapObject, dynamicTypeOf } from "../src/index.js";
+import { Swift, ClassInstance, dynamicTypeOf } from "../src/index.js";
 import { makeSwiftNativeFunction } from "../src/runtime/calling-convention.js";
 
 function fixtureAddress(skip: Skip, swiftName: string): NativePointer {
@@ -26,6 +26,6 @@ describe("dynamic type recovery", () => {
     const dynamic = dynamicTypeOf(ref);
     expect(dynamic.handle.equals(Derived.handle)).toBe(true);
     expect(Swift.typeName(dynamic)).toBe("fixture.Derived");
-    expect(new HeapObject(ref).dynamicType.handle.equals(Derived.handle)).toBe(true);
+    expect(new ClassInstance(ref).dynamicType.handle.equals(Derived.handle)).toBe(true);
   });
 });

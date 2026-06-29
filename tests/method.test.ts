@@ -128,7 +128,7 @@ describe("enumerateProperties", () => {
   });
 });
 
-describe("HeapObject method invocation", () => {
+describe("ClassInstance method invocation", () => {
   test("calls an instance method with a String arg and return", ({ skip }) => {
     loadFixture(skip);
     const obj = robotType().init("R2");
@@ -180,7 +180,7 @@ describe("HeapObject method invocation", () => {
   });
 });
 
-describe("HeapObject computed property", () => {
+describe("ClassInstance computed property", () => {
   test("invokes a getter", ({ skip }) => {
     loadFixture(skip);
     const obj = robotType().init("R2");

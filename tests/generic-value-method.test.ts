@@ -1,10 +1,10 @@
 import { test, expect, describe } from "@frida/injest/agent";
 import { loadFixture } from "./fixtures/load.js";
 
-import { Swift, Value } from "../src/index.js";
+import { Swift, ValueInstance } from "../src/index.js";
 
-function box(typeName: string, fields: { [k: string]: number }): Value {
-  return Value.fromJS(Swift.metadataFor(typeName)!, fields);
+function box(typeName: string, fields: { [k: string]: number }): ValueInstance {
+  return ValueInstance.fromJS(Swift.metadataFor(typeName)!, fields);
 }
 
 describe("generic methods on value receivers", () => {

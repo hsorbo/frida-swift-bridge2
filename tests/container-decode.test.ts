@@ -1,16 +1,16 @@
 import { test, expect, describe } from "@frida/injest/agent";
 import { loadFixture } from "./fixtures/load.js";
 
-import { Swift, Value, StructType } from "../src/index.js";
+import { Swift, ValueInstance, StructType } from "../src/index.js";
 
 function bag(): StructType {
   return Swift.typeOf(Swift.metadataFor("fixture.Bag")!) as StructType;
 }
 
-function decoded(method: string): Value {
+function decoded(method: string): ValueInstance {
   const result = bag().call(method);
-  expect(result instanceof Value).toBe(true);
-  return result as Value;
+  expect(result instanceof ValueInstance).toBe(true);
+  return result as ValueInstance;
 }
 
 describe("bridged container decode", () => {

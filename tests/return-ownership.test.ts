@@ -3,8 +3,8 @@ import { loadFixture } from "./fixtures/load.js";
 
 import {
   Swift,
-  Value,
-  HeapObject,
+  ValueInstance,
+  ClassInstance,
   ClassType,
   StructType,
   embedsManagedReference,
@@ -31,13 +31,13 @@ describe("value return embedding a class ref", () => {
   test("a returned aggregate owns its embedded class ref and releases it on dispose", ({ skip }) => {
     loadFixture(skip);
     const token = (Swift.typeOf(metadataFor("fixture.Token")) as ClassType).init(7);
-    const view = new HeapObject(token.handle);
+    const view = new ClassInstance(token.handle);
     const before = view.retainCount;
 
     const wrapper = (Swift.typeOf(metadataFor("fixture.Wrapper")) as StructType).call("make", token.handle);
-    expect(wrapper instanceof Value).toBe(true);
+    expect(wrapper instanceof ValueInstance).toBe(true);
 
-    const owned = wrapper as Value;
+    const owned = wrapper as ValueInstance;
     expect(owned.owned).toBe(true);
     expect(view.retainCount).toBe(before + 1); // the returned +1 is held, not dangling
 
@@ -51,12 +51,12 @@ describe("value return embedding a class ref", () => {
 });
 
 describe("bridge-object container return", () => {
-  test("a returned Array is adopted as an owned Value, not decoded lossily", ({ skip }) => {
+  test("a returned Array is adopted as an owned ValueInstance, not decoded lossily", ({ skip }) => {
     loadFixture(skip);
     const arr = (Swift.typeOf(metadataFor("fixture.Bag")) as StructType).call("ints");
-    expect(arr instanceof Value).toBe(true);
+    expect(arr instanceof ValueInstance).toBe(true);
 
-    const owned = arr as Value;
+    const owned = arr as ValueInstance;
     expect(owned.owned).toBe(true);
 
     // +1 buffer survived a premature destroy: it sums back through a [Int] param.
