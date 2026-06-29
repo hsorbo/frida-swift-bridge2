@@ -1,4 +1,4 @@
-import { getSwiftCoreApi } from "./runtime/api.js";
+import { getSwiftCoreApi, SwiftCoreApi } from "./runtime/api.js";
 import { demangle } from "./runtime/demangle.js";
 import { findType, swiftModules, swiftTypes } from "./reflection/registry.js";
 import { getMetadata, Metadata } from "./abi/metadata.js";
@@ -10,6 +10,7 @@ import { SwiftType, typeOf, swiftNativeFunction } from "./runtime/swift-type.js"
 import { createObject } from "./runtime/object-facade.js";
 import { Protocol, ProtocolComposition } from "./runtime/protocol.js";
 
+export { SwiftCoreApi, getSwiftCoreApi } from "./runtime/api.js";
 export { isSwiftSymbol, demangle } from "./runtime/demangle.js";
 export {
   RelativeDirectPointer,
@@ -172,6 +173,10 @@ export const Swift = {
     } catch {
       return false;
     }
+  },
+
+  get api(): SwiftCoreApi {
+    return getSwiftCoreApi();
   },
 
   demangle,
