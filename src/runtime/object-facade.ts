@@ -11,6 +11,7 @@ const RESERVED = new Set([
   "valueOf",
   "equals",
   "hasOwnProperty",
+  "$kind",
   "$type",
   "$className",
   "$fields",
@@ -26,6 +27,7 @@ const RESERVED = new Set([
 
 export interface SwiftObject {
   readonly handle: NativePointer;
+  readonly $kind: "object";
   readonly $type: SwiftType;
   readonly $className: string;
   readonly $fields: { [name: string]: SwiftValue };
@@ -73,6 +75,8 @@ export function createObject(source: NativePointer | ClassInstance): SwiftObject
       switch (key) {
         case "handle":
           return t.handle;
+        case "$kind":
+          return "object";
         case "$type":
           return typeOf(t.dynamicType);
         case "$className":

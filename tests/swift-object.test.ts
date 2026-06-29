@@ -100,6 +100,11 @@ describe("Swift.Object intrinsics", () => {
     expect(o.handle.isNull()).toBe(false);
   });
 
+  test("$kind tags the facade as an object instance", ({ skip }) => {
+    loadFixture(skip);
+    expect(robot("R2").$kind).toBe("object");
+  });
+
   test("equals compares identity; has reflects reserved + method keys", ({ skip }) => {
     loadFixture(skip);
     const o = robot("R2");

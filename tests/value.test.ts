@@ -75,6 +75,13 @@ describe("ValueInstance", () => {
     v.dispose();
   });
 
+  test("$kind tags the wrapper as a value instance", ({ skip }) => {
+    requireSwift(skip);
+    const v = ValueInstance.fromJS(Swift.metadataFor("Swift.Int")!, 1);
+    expect(v.$kind).toBe("value");
+    v.dispose();
+  });
+
   test("borrowed value reads foreign memory and never disposes", ({ skip }) => {
     requireSwift(skip);
     const Int = Swift.metadataFor("Swift.Int")!;

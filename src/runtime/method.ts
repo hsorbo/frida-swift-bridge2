@@ -19,7 +19,10 @@ import { findProtocol, conformsToProtocol } from "../abi/protocol-conformance.js
 
 export type MethodKind = "method" | "init";
 
-export type CallResult = SwiftValue | SwiftObject | ValueInstance;
+// A live bridge wrapper, discriminable via $kind, as opposed to a plain-JS SwiftValue.
+export type Instance = SwiftObject | ValueInstance;
+
+export type CallResult = SwiftValue | Instance;
 
 // A high-level argument: a JS-constructible value, or an opaque ValueInstance byte-copied in (e.g. an Array).
 export type CallArg = SwiftValue | ValueInstance;

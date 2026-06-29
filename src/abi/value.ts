@@ -66,6 +66,10 @@ export class ValueInstance {
     return this.state !== null;
   }
 
+  get $kind(): "value" {
+    return "value";
+  }
+
   get $type(): SwiftType {
     return typeOf(this.metadata);
   }
