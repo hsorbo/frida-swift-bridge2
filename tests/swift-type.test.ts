@@ -5,8 +5,8 @@ import { loadFixture } from "./fixtures/load.js";
 import { Swift, StructType, EnumType, ClassType } from "../src/index.js";
 
 describe("type wrappers", () => {
-  test("StructType.new builds a value and lists fields", ({ skip }) => {
-    loadFixture(skip);
+  test("StructType.new builds a value and lists fields", () => {
+    loadFixture();
     const t = Swift.typeOf(Swift.metadataFor("fixture.LoadableStruct")!) as StructType;
     expect(t.name).toBe("fixture.LoadableStruct");
     expect(t.fields.map((f) => f.name)).toEqual(["a", "b", "c", "d"]);
@@ -15,8 +15,8 @@ describe("type wrappers", () => {
     v.dispose();
   });
 
-  test("EnumType.case builds payload and empty cases", ({ skip }) => {
-    loadFixture(skip);
+  test("EnumType.case builds payload and empty cases", () => {
+    loadFixture();
     const t = Swift.typeOf(Swift.metadataFor("fixture.Pick")!) as EnumType;
     expect(t.cases.map((c) => c.name).sort()).toEqual(["empty", "value"]);
     const payload = t.case("value", 7);
@@ -27,16 +27,16 @@ describe("type wrappers", () => {
     empty.dispose();
   });
 
-  test("ClassType.init runs the real initializer", ({ skip }) => {
-    loadFixture(skip);
+  test("ClassType.init runs the real initializer", () => {
+    loadFixture();
     const t = Swift.typeOf(Swift.metadataFor("fixture.Counter")!) as ClassType;
     const obj = t.init(9);
     expect(obj.field("count").get()).toBe(9);
     expect(obj.read()).toEqual({ count: 9 });
   });
 
-  test("ClassType.alloc returns raw storage we can write", ({ skip }) => {
-    loadFixture(skip);
+  test("ClassType.alloc returns raw storage we can write", () => {
+    loadFixture();
     const t = Swift.typeOf(Swift.metadataFor("fixture.Counter")!) as ClassType;
     const obj = t.alloc();
     expect(obj.handle.isNull()).toBe(false);
@@ -45,22 +45,22 @@ describe("type wrappers", () => {
     expect(obj.field("count").get()).toBe(3);
   });
 
-  test("typeOf dispatches by metadata kind", ({ skip }) => {
-    loadFixture(skip);
+  test("typeOf dispatches by metadata kind", () => {
+    loadFixture();
     expect(Swift.typeOf(Swift.metadataFor("Swift.Int")!) instanceof StructType).toBe(true);
     expect(Swift.typeOf(Swift.metadataFor("fixture.Pick")!) instanceof EnumType).toBe(true);
     expect(Swift.typeOf(Swift.metadataFor("fixture.Counter")!) instanceof ClassType).toBe(true);
   });
 
-  test("methods() static option splits instance from static keys", ({ skip }) => {
-    loadFixture(skip);
+  test("methods() static option splits instance from static keys", () => {
+    loadFixture();
     const t = Swift.typeOf(Swift.metadataFor("fixture.Accumulator")!) as StructType;
     expect(t.methods().sort()).toEqual(["add$_", "describe$_", "peek$_"]);
     expect(t.methods({ static: true }).sort()).toEqual(["summing$__", "zero"]);
   });
 
-  test("type methods mirror the keys an instance's type exposes", ({ skip }) => {
-    loadFixture(skip);
+  test("type methods mirror the keys an instance's type exposes", () => {
+    loadFixture();
     const t = Swift.typeOf(Swift.metadataFor("fixture.Cat")!) as ClassType;
     expect(t.methods().sort()).toEqual(t.init().$type.methods().sort());
     expect(t.methods({ static: true })).toEqual([]);

@@ -16,11 +16,11 @@ function allocObject(metadataHandle: NativePointer, size: number, alignMask: num
 }
 
 describe("class instances", () => {
-  test("reads an object's stored property through its isa", ({ skip }) => {
-    requireSwift(skip);
+  test("reads an object's stored property through its isa", () => {
+    requireSwift();
     const descriptor = findType("Swift.__RawSetStorage");
     if (descriptor === null) {
-      skip("Swift.__RawSetStorage not present");
+      throw new Error("Swift.__RawSetStorage not present");
     }
     const metadata = getClassMetadata(descriptor!);
 
@@ -38,11 +38,11 @@ describe("class instances", () => {
     expect(readObject(object)._count).toBe(42);
   });
 
-  test("includes fields inherited from a Swift superclass", ({ skip }) => {
-    requireSwift(skip);
+  test("includes fields inherited from a Swift superclass", () => {
+    requireSwift();
     const descriptor = findType("Swift.__EmptySetSingleton");
     if (descriptor === null) {
-      skip("Swift.__EmptySetSingleton not present");
+      throw new Error("Swift.__EmptySetSingleton not present");
     }
     const metadata = getClassMetadata(descriptor!);
 

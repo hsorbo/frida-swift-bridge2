@@ -6,13 +6,12 @@ import { MetadataKind } from "../src/abi/metadata.js";
 import { ClassMetadata } from "../src/abi/class-metadata.js";
 
 describe("generic class instantiation", () => {
-  test("instantiates a generic class metadata via its access function", ({ skip }) => {
-    requireSwift(skip);
+  test("instantiates a generic class metadata via its access function", () => {
+    requireSwift();
     const int = Swift.metadataFor("Swift.Int")!;
     const storageInt = Swift.metadataFor("Swift._ContiguousArrayStorage", [int]);
     if (storageInt === null) {
-      skip("Swift._ContiguousArrayStorage not present");
-      return;
+      throw new Error("Swift._ContiguousArrayStorage not present");
     }
     expect(storageInt.kind).toBe(MetadataKind.Class);
 

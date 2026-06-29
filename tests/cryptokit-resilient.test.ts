@@ -1,5 +1,5 @@
 import { test, expect, describe } from "@frida/injest/agent";
-import { requireSwift, type Skip } from "./swift.js";
+import { requireSwift } from "./swift.js";
 
 import {
   Swift,
@@ -14,13 +14,13 @@ import {
 // Only Apple frameworks set the layout-string bit, so auto-detection's positive path needs CryptoKit;
 // the indirect-ABI machinery is fixture-tested in resilient-calling.test.ts.
 
-function loadCryptoKit(skip: Skip): void {
-  requireSwift(skip);
+function loadCryptoKit(): void {
+  requireSwift();
   if (Process.findModuleByName("CryptoKit") === null) {
     try {
       Module.load("/System/Library/Frameworks/CryptoKit.framework/CryptoKit");
     } catch (e) {
-      skip(`could not load CryptoKit: ${e}`);
+      throw new Error(`could not load CryptoKit: ${e}`);
     }
   }
 }
@@ -41,8 +41,8 @@ function makeKey(bitCount: number): NativePointer {
 }
 
 describe("resilient auto-detection (CryptoKit)", () => {
-  test("resilient value types are detected and called indirect from plain metadata", ({ skip }) => {
-    loadCryptoKit(skip);
+  test("resilient value types are detected and called indirect from plain metadata", () => {
+    loadCryptoKit();
 
     expect(isResilientValueType(Swift.metadataFor("CryptoKit.SymmetricKeySize")!)).toBe(true);
     expect(isResilientValueType(Swift.metadataFor("Swift.Int")!)).toBe(false);
@@ -50,8 +50,8 @@ describe("resilient auto-detection (CryptoKit)", () => {
     expect(getProperty(makeKey(256), "CryptoKit.SymmetricKey", "bitCount")).toBe(256);
   });
 
-  test("constructs a resilient value type through the type wrapper", ({ skip }) => {
-    loadCryptoKit(skip);
+  test("constructs a resilient value type through the type wrapper", () => {
+    loadCryptoKit();
 
     const sizeMd = Swift.metadataFor("CryptoKit.SymmetricKeySize")!;
     const sizeBuf = Memory.alloc(sizeMd.typeLayout.stride);

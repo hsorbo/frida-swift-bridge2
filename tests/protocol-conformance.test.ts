@@ -12,8 +12,8 @@ import {
 } from "../src/abi/protocol-conformance.js";
 
 describe("protocol conformances", () => {
-  test("enumerates conformances whose protocol resolves", ({ skip }) => {
-    const lib = loadSwiftCore(skip);
+  test("enumerates conformances whose protocol resolves", () => {
+    const lib = loadSwiftCore();
     let count = 0;
     let named = 0;
     for (const conformance of enumerateProtocolConformances(lib)) {
@@ -27,15 +27,15 @@ describe("protocol conformances", () => {
     expect(named).toBeGreaterThan(0);
   });
 
-  test("finds a stdlib protocol descriptor by name", ({ skip }) => {
-    loadSwiftCore(skip);
+  test("finds a stdlib protocol descriptor by name", () => {
+    loadSwiftCore();
     const hashable = findProtocol("Swift.Hashable");
     expect(hashable).not.toBeNull();
     expect(hashable!.kind).toBe(ContextDescriptorKind.Protocol);
   });
 
-  test("returns a witness table when a type conforms", ({ skip }) => {
-    loadSwiftCore(skip);
+  test("returns a witness table when a type conforms", () => {
+    loadSwiftCore();
     const witnessTable = conformsToProtocol(
       Swift.metadataFor("Swift.Int")!,
       findProtocol("Swift.Hashable")!
@@ -43,15 +43,15 @@ describe("protocol conformances", () => {
     expect(witnessTable).not.toBeNull();
   });
 
-  test("returns null when a type does not conform", ({ skip }) => {
-    loadSwiftCore(skip);
+  test("returns null when a type does not conform", () => {
+    loadSwiftCore();
     const sequence = findProtocol("Swift.Sequence");
     expect(sequence).not.toBeNull();
     expect(conformsToProtocol(Swift.metadataFor("Swift.Int")!, sequence!)).toBeNull();
   });
 
-  test("instantiates a constrained generic with a witness-table key argument", ({ skip }) => {
-    loadSwiftCore(skip);
+  test("instantiates a constrained generic with a witness-table key argument", () => {
+    loadSwiftCore();
     const string = Swift.metadataFor("Swift.String")!;
     const int = Swift.metadataFor("Swift.Int")!;
     const keyHashableWitness = conformsToProtocol(string, findProtocol("Swift.Hashable")!)!;

@@ -12,79 +12,79 @@ function cat() {
 }
 
 describe("Swift.Object method sugar", () => {
-  test("calls a method via its escaped selector key", ({ skip }) => {
-    loadFixture(skip);
+  test("calls a method via its escaped selector key", () => {
+    loadFixture();
     const o = robot("R2");
     expect(o.greet$_("Alice")).toBe("Hello Alice, I am R2");
   });
 
-  test("encodes a labelled selector and mutates via a void method", ({ skip }) => {
-    loadFixture(skip);
+  test("encodes a labelled selector and mutates via a void method", () => {
+    loadFixture();
     const o = robot("old");
     expect(o.merged$with_(robot("Bee").handle)).toBe("old+Bee");
     o.rename$to_("new");
     expect(o.greet$_("X")).toBe("Hello X, I am new");
   });
 
-  test("disambiguates arity overloads by underscore count", ({ skip }) => {
-    loadFixture(skip);
+  test("disambiguates arity overloads by underscore count", () => {
+    loadFixture();
     const o = robot("R2");
     expect(o.at$_(5)).toBe(5);
     expect(o.at$__(5, 6)).toBe(11);
   });
 
-  test("disambiguates same-arity overloads by label key", ({ skip }) => {
-    loadFixture(skip);
+  test("disambiguates same-arity overloads by label key", () => {
+    loadFixture();
     const o = robot("R2");
     expect(o.move$to_(5)).toBe(5);
     expect(o.move$by_(5)).toBe(50);
   });
 
-  test("$call mirrors the escaped key", ({ skip }) => {
-    loadFixture(skip);
+  test("$call mirrors the escaped key", () => {
+    loadFixture();
     const o = robot("R2");
     expect(o.$call("greet", "Alice")).toBe(o.greet$_("Alice"));
   });
 });
 
 describe("Swift.Object intrinsics", () => {
-  test("$get / $set drive computed properties", ({ skip }) => {
-    loadFixture(skip);
+  test("$get / $set drive computed properties", () => {
+    loadFixture();
     const o = robot("R2");
     expect(o.$get("badge")).toBe("[R2]");
     o.$set("badge", "D2");
     expect(o.$get("badge")).toBe("[D2]");
   });
 
-  test("$type.methods() lists the escaped, callable keys", ({ skip }) => {
-    loadFixture(skip);
+  test("$type.methods() lists the escaped, callable keys", () => {
+    loadFixture();
     const keys = robot("R2").$type.methods();
     for (const k of ["greet$_", "rename$to_", "merged$with_", "at$_", "at$__"]) {
       expect(keys).toContain(k);
     }
   });
 
-  test("$className reflects the dynamic type", ({ skip }) => {
-    loadFixture(skip);
+  test("$className reflects the dynamic type", () => {
+    loadFixture();
     expect(cat().$className).toBe("fixture.Cat");
     expect(robot("R2").$className).toBe("fixture.Robot");
   });
 
-  test("$type.superClass wraps the parent, null at a root class", ({ skip }) => {
-    loadFixture(skip);
+  test("$type.superClass wraps the parent, null at a root class", () => {
+    loadFixture();
     const sup = cat().$type.superClass;
     expect(sup).not.toBeNull();
     expect(sup!.name).toBe("fixture.Animal");
     expect(robot("R2").$type.superClass).toBeNull();
   });
 
-  test("$type.moduleName points at the defining image", ({ skip }) => {
-    loadFixture(skip);
+  test("$type.moduleName points at the defining image", () => {
+    loadFixture();
     expect(robot("R2").$type.moduleName).toContain("fixture.dylib");
   });
 
-  test("methods({ inherited: false }) excludes inherited methods that methods() includes", ({ skip }) => {
-    loadFixture(skip);
+  test("methods({ inherited: false }) excludes inherited methods that methods() includes", () => {
+    loadFixture();
     const t = cat().$type;
     expect(t.methods()).toContain("speak");
     expect(t.methods()).toContain("legs");
@@ -92,21 +92,21 @@ describe("Swift.Object intrinsics", () => {
     expect(t.methods({ inherited: false })).not.toContain("legs");
   });
 
-  test("$type / handle expose the wrapped object", ({ skip }) => {
-    loadFixture(skip);
+  test("$type / handle expose the wrapped object", () => {
+    loadFixture();
     const o = robot("R2");
     expect(o.$type.name).toBe("fixture.Robot");
     expect(Swift.typeName(o.$type.metadata)).toBe("fixture.Robot");
     expect(o.handle.isNull()).toBe(false);
   });
 
-  test("$kind tags the facade as an object instance", ({ skip }) => {
-    loadFixture(skip);
+  test("$kind tags the facade as an object instance", () => {
+    loadFixture();
     expect(robot("R2").$kind).toBe("object");
   });
 
-  test("equals compares identity; has reflects reserved + method keys", ({ skip }) => {
-    loadFixture(skip);
+  test("equals compares identity; has reflects reserved + method keys", () => {
+    loadFixture();
     const o = robot("R2");
     expect(o.equals(Swift.Object(o.handle))).toBe(true);
     expect(o.equals(robot("R2"))).toBe(false);
@@ -115,8 +115,8 @@ describe("Swift.Object intrinsics", () => {
     expect("nope" in o).toBe(false);
   });
 
-  test("toString renders type and address", ({ skip }) => {
-    loadFixture(skip);
+  test("toString renders type and address", () => {
+    loadFixture();
     const o = robot("R2");
     expect(o.toString()).toBe(`<fixture.Robot: ${o.handle}>`);
   });

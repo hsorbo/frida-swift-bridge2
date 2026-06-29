@@ -1,12 +1,11 @@
 import { test, expect, describe } from "@frida/injest/agent";
-import { type Skip } from "./swift.js";
 import { loadFixture } from "./fixtures/load.js";
 
 import { Swift, ClassInstance } from "../src/index.js";
 import { makeSwiftNativeFunction } from "../src/runtime/calling-convention.js";
 
-function fixtureFn(skip: Skip, swiftName: string): NativePointer {
-  const mod = loadFixture(skip);
+function fixtureFn(swiftName: string): NativePointer {
+  const mod = loadFixture();
   for (const e of mod.enumerateExports()) {
     const demangled = Swift.demangle(e.name);
     if (demangled !== null && demangled.includes(swiftName)) {
@@ -22,24 +21,24 @@ function intArg(n: number): NativePointer {
   return cell;
 }
 
-function makeCounter(skip: Skip, n: number): ClassInstance {
+function makeCounter(n: number): ClassInstance {
   const Int = Swift.metadataFor("Swift.Int")!;
   const Counter = Swift.metadataFor("fixture.Counter")!;
-  const make = makeSwiftNativeFunction(fixtureFn(skip, "fixture.makeCounter"), Counter, [Int]);
+  const make = makeSwiftNativeFunction(fixtureFn("fixture.makeCounter"), Counter, [Int]);
   return new ClassInstance(make(intArg(n))!.readPointer());
 }
 
 describe("ClassInstance", () => {
-  test("reads and writes a class stored property", ({ skip }) => {
-    const counter = makeCounter(skip, 5);
+  test("reads and writes a class stored property", () => {
+    const counter = makeCounter(5);
     expect(counter.field("count").get()).toBe(5);
     counter.field("count").set(15);
     expect(counter.field("count").get()).toBe(15);
     expect(counter.read()).toEqual({ count: 15 });
   });
 
-  test("retain/release adjust the strong reference count", ({ skip }) => {
-    const counter = makeCounter(skip, 1);
+  test("retain/release adjust the strong reference count", () => {
+    const counter = makeCounter(1);
     const before = counter.retainCount;
     counter.retain();
     expect(counter.retainCount).toBe(before + 1);
@@ -47,8 +46,8 @@ describe("ClassInstance", () => {
     expect(counter.retainCount).toBe(before);
   });
 
-  test("reports a solely-held instance as uniquely referenced", ({ skip }) => {
-    const counter = makeCounter(skip, 1);
+  test("reports a solely-held instance as uniquely referenced", () => {
+    const counter = makeCounter(1);
     expect(counter.isUniquelyReferenced).toBe(true);
     counter.retain();
     expect(counter.isUniquelyReferenced).toBe(false);
@@ -56,8 +55,8 @@ describe("ClassInstance", () => {
     expect(counter.isUniquelyReferenced).toBe(true);
   });
 
-  test("exposes the instance's class metadata", ({ skip }) => {
-    const counter = makeCounter(skip, 1);
+  test("exposes the instance's class metadata", () => {
+    const counter = makeCounter(1);
     expect(counter.metadata.isTypeMetadata).toBe(true);
   });
 });

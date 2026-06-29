@@ -28,13 +28,12 @@ function makeCocoaString(text: string): NativePointer | null {
 }
 
 describe("readString (cocoa)", () => {
-  test("decodes a cocoa-backed string through the ObjC runtime", ({ skip }) => {
+  test("decodes a cocoa-backed string through the ObjC runtime", () => {
     // long + non-ASCII so it is a real heap string, not a tagged pointer
     const text = "héllo wörld with ünicode ✓ and enough length";
     const cocoa = makeCocoaString(text);
     if (cocoa === null) {
-      skip("CoreFoundation/NSString unavailable in the test process");
-      return;
+      throw new Error("CoreFoundation/NSString unavailable in the test process");
     }
 
     // The large-cocoa discriminator is bit 62: 0x50 = foreign (slow), 0x40 = fast cocoa.

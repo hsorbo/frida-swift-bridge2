@@ -4,16 +4,16 @@ import { requireSwift } from "./swift.js";
 import { Swift, ValueInstance } from "../src/index.js";
 
 describe("Symbol.dispose", () => {
-  test("[Symbol.dispose]() aliases dispose() and is idempotent", ({ skip }) => {
-    requireSwift(skip);
+  test("[Symbol.dispose]() aliases dispose() and is idempotent", () => {
+    requireSwift();
     const v = ValueInstance.fromJS(Swift.metadataFor("Swift.Int")!, 42);
     v[Symbol.dispose]();
     v[Symbol.dispose]();
     expect(() => v.get()).toThrow();
   });
 
-  test("using disposes an owned value at block scope", ({ skip }) => {
-    requireSwift(skip);
+  test("using disposes an owned value at block scope", () => {
+    requireSwift();
     let captured: ValueInstance;
     {
       using v = ValueInstance.fromJS(Swift.metadataFor("Swift.Int")!, 7);

@@ -1,5 +1,4 @@
 import { test, expect, describe } from "@frida/injest/agent";
-import { type Skip } from "./swift.js";
 import { loadFixture } from "./fixtures/load.js";
 
 import {
@@ -14,8 +13,8 @@ import {
 } from "../src/index.js";
 import { makeSwiftNativeFunction } from "../src/runtime/calling-convention.js";
 
-function fixtureFn(skip: Skip, swiftName: string): NativePointer {
-  const mod = loadFixture(skip);
+function fixtureFn(swiftName: string): NativePointer {
+  const mod = loadFixture();
   for (const e of mod.enumerateExports()) {
     const demangled = Swift.demangle(e.name);
     if (demangled !== null && demangled.includes(swiftName)) {
@@ -25,15 +24,15 @@ function fixtureFn(skip: Skip, swiftName: string): NativePointer {
   throw new Error(`fixture export not found: ${swiftName}`);
 }
 
-function existentialMetadata(skip: Skip, accessor: string): Metadata {
+function existentialMetadata(accessor: string): Metadata {
   const RawPointer = Swift.metadataFor("Swift.UnsafeRawPointer")!;
-  const get = makeSwiftNativeFunction(fixtureFn(skip, accessor), RawPointer, []);
+  const get = makeSwiftNativeFunction(fixtureFn(accessor), RawPointer, []);
   return new Metadata(get()!.readPointer());
 }
 
 describe("Protocol", () => {
-  test("resolves a value-witness protocol and reports its shape", ({ skip }) => {
-    loadFixture(skip);
+  test("resolves a value-witness protocol and reports its shape", () => {
+    loadFixture();
     const greeter = Protocol.find("fixture.Greeter")!;
     expect(greeter).not.toBeNull();
     expect(greeter.name).toBe("Greeter");
@@ -43,18 +42,18 @@ describe("Protocol", () => {
     expect(greeter.isClassOnly).toBe(false);
   });
 
-  test("reports an AnyObject protocol as class-only", ({ skip }) => {
-    loadFixture(skip);
+  test("reports an AnyObject protocol as class-only", () => {
+    loadFixture();
     expect(Protocol.find("fixture.Named")!.isClassOnly).toBe(true);
   });
 
-  test("returns null for an unknown protocol", ({ skip }) => {
-    loadFixture(skip);
+  test("returns null for an unknown protocol", () => {
+    loadFixture();
     expect(Protocol.find("fixture.NoSuchProtocolQX")).toBeNull();
   });
 
-  test("conformanceFor yields a witness table for a conformer and null otherwise", ({ skip }) => {
-    loadFixture(skip);
+  test("conformanceFor yields a witness table for a conformer and null otherwise", () => {
+    loadFixture();
     const scalable = Protocol.find("fixture.Scalable")!;
     const Int = Swift.metadataFor("Swift.Int")!;
     const Bool = Swift.metadataFor("Swift.Bool")!;
@@ -62,15 +61,15 @@ describe("Protocol", () => {
     expect(scalable.conformanceFor(Bool)).toBeNull();
   });
 
-  test("Swift.Protocol exposes the class on the facade", ({ skip }) => {
-    loadFixture(skip);
+  test("Swift.Protocol exposes the class on the facade", () => {
+    loadFixture();
     expect(Swift.Protocol.find("fixture.Greeter")).not.toBeNull();
   });
 });
 
 describe("protocols()", () => {
-  test("a type reports its declared conformances as a name->Protocol map", ({ skip }) => {
-    loadFixture(skip);
+  test("a type reports its declared conformances as a name->Protocol map", () => {
+    loadFixture();
     const person = Swift.typeOf(Swift.metadataFor("fixture.Person")!);
     const protocols = person.protocols();
     expect(Object.keys(protocols).sort()).toEqual(["fixture.Aged", "fixture.Greeter"]);
@@ -78,75 +77,75 @@ describe("protocols()", () => {
     expect(protocols["fixture.Greeter"].fullName).toBe("fixture.Greeter");
   });
 
-  test("includes a retroactive conformance declared in another module", ({ skip }) => {
-    loadFixture(skip);
+  test("includes a retroactive conformance declared in another module", () => {
+    loadFixture();
     const int = Swift.typeOf(Swift.metadataFor("Swift.Int")!);
     expect(Object.keys(int.protocols())).toContain("fixture.Scalable");
   });
 
-  test("is reachable through the object facade's $type", ({ skip }) => {
-    loadFixture(skip);
+  test("is reachable through the object facade's $type", () => {
+    loadFixture();
     const widget = (Swift.typeOf(Swift.metadataFor("fixture.Widget")!) as ClassType).init("w");
     expect(Object.keys(widget.$type.protocols())).toContain("fixture.Named");
   });
 });
 
 describe("ProtocolComposition", () => {
-  test("single-protocol metadata equals the compiler's existential metadata", ({ skip }) => {
+  test("single-protocol metadata equals the compiler's existential metadata", () => {
     const greeter = ProtocolComposition.fromSignature("fixture.Greeter");
     expect(greeter.numProtocols).toBe(1);
     expect(greeter.isClassOnly).toBe(false);
     expect(greeter.metadata.kind).toBe(MetadataKind.Existential);
-    expect(greeter.metadata.handle.equals(existentialMetadata(skip, "fixture.greeterType"))).toBe(
+    expect(greeter.metadata.handle.equals(existentialMetadata("fixture.greeterType"))).toBe(
       true
     );
   });
 
-  test("multi-protocol composition matches `any Greeter & Aged`", ({ skip }) => {
+  test("multi-protocol composition matches `any Greeter & Aged`", () => {
     const ga = ProtocolComposition.fromSignature("fixture.Greeter & fixture.Aged");
     expect(ga.numProtocols).toBe(2);
     expect(ga.isClassOnly).toBe(false);
-    expect(ga.metadata.handle.equals(existentialMetadata(skip, "fixture.greeterAgedType"))).toBe(
+    expect(ga.metadata.handle.equals(existentialMetadata("fixture.greeterAgedType"))).toBe(
       true
     );
   });
 
-  test("a class-only member makes the whole composition class-only", ({ skip }) => {
+  test("a class-only member makes the whole composition class-only", () => {
     const named = ProtocolComposition.fromSignature("fixture.Named");
     expect(named.isClassOnly).toBe(true);
-    expect(named.metadata.handle.equals(existentialMetadata(skip, "fixture.namedType"))).toBe(true);
+    expect(named.metadata.handle.equals(existentialMetadata("fixture.namedType"))).toBe(true);
   });
 
-  test("rejects an unknown protocol in the signature", ({ skip }) => {
-    loadFixture(skip);
+  test("rejects an unknown protocol in the signature", () => {
+    loadFixture();
     expect(() => ProtocolComposition.fromSignature("fixture.NoSuchProtocolQX")).toThrow();
   });
 });
 
 describe("Swift.NativeFunction with protocol types", () => {
-  test("a ProtocolComposition drives an existential return then argument", ({ skip }) => {
+  test("a ProtocolComposition drives an existential return then argument", () => {
     const String_ = Swift.metadataFor("Swift.String")!;
     const Greeter = ProtocolComposition.fromSignature("fixture.Greeter");
-    const make = Swift.NativeFunction(fixtureFn(skip, "fixture.makeGreeterExistential"), Greeter, []);
+    const make = Swift.NativeFunction(fixtureFn("fixture.makeGreeterExistential"), Greeter, []);
     const g = make()!;
     expect(readValue(Greeter.metadata, g)).toEqual({ name: "Ada" });
-    const greet = Swift.NativeFunction(fixtureFn(skip, "fixture.greetExistential"), String_, [Greeter]);
+    const greet = Swift.NativeFunction(fixtureFn("fixture.greetExistential"), String_, [Greeter]);
     expect(readString(greet(g)!)).toBe("Hello, Ada");
   });
 
-  test("a bare Protocol is lowered to its single-protocol existential", ({ skip }) => {
+  test("a bare Protocol is lowered to its single-protocol existential", () => {
     const String_ = Swift.metadataFor("Swift.String")!;
     const greeter = Protocol.find("fixture.Greeter")!;
-    const make = Swift.NativeFunction(fixtureFn(skip, "fixture.makeGreeterExistential"), greeter, []);
-    const greet = Swift.NativeFunction(fixtureFn(skip, "fixture.greetExistential"), String_, [greeter]);
+    const make = Swift.NativeFunction(fixtureFn("fixture.makeGreeterExistential"), greeter, []);
+    const greet = Swift.NativeFunction(fixtureFn("fixture.greetExistential"), String_, [greeter]);
     expect(readString(greet(make()!)!)).toBe("Hello, Ada");
   });
 
-  test("a composition existential round-trips through describeGreeterAged", ({ skip }) => {
+  test("a composition existential round-trips through describeGreeterAged", () => {
     const String_ = Swift.metadataFor("Swift.String")!;
     const ga = ProtocolComposition.fromSignature("fixture.Greeter & fixture.Aged");
-    const make = Swift.NativeFunction(fixtureFn(skip, "fixture.makeGreeterAged"), ga, []);
-    const describe = Swift.NativeFunction(fixtureFn(skip, "fixture.describeGreeterAged"), String_, [ga]);
+    const make = Swift.NativeFunction(fixtureFn("fixture.makeGreeterAged"), ga, []);
+    const describe = Swift.NativeFunction(fixtureFn("fixture.describeGreeterAged"), String_, [ga]);
     expect(readString(describe(make()!)!)).toBe("Hi, Cy (9)");
   });
 });

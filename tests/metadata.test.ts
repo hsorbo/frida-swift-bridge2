@@ -6,8 +6,8 @@ import { findType } from "../src/reflection/registry.js";
 import { getMetadata, MetadataKind } from "../src/abi/metadata.js";
 
 describe("metadata", () => {
-  test("resolves Int layout via the access function", ({ skip }) => {
-    requireSwift(skip);
+  test("resolves Int layout via the access function", () => {
+    requireSwift();
     const int = getMetadata(findType("Swift.Int")!);
     expect(int.kind).toBe(MetadataKind.Struct);
     const layout = int.typeLayout;
@@ -16,29 +16,29 @@ describe("metadata", () => {
     expect(layout.alignment).toBe(8);
   });
 
-  test("reads single-byte layout for Bool", ({ skip }) => {
-    requireSwift(skip);
+  test("reads single-byte layout for Bool", () => {
+    requireSwift();
     const layout = getMetadata(findType("Swift.Bool")!).typeLayout;
     expect(layout.size).toBe(1);
     expect(layout.stride).toBe(1);
     expect(layout.alignment).toBe(1);
   });
 
-  test("metadata pointer is stable / cached", ({ skip }) => {
-    requireSwift(skip);
+  test("metadata pointer is stable / cached", () => {
+    requireSwift();
     const descriptor = findType("Swift.Double")!;
     expect(getMetadata(descriptor).handle.equals(getMetadata(descriptor).handle)).toBeTruthy();
   });
 
-  test("throws for a generic type without arguments", ({ skip }) => {
-    requireSwift(skip);
+  test("throws for a generic type without arguments", () => {
+    requireSwift();
     const array = findType("Swift.Array")!;
     expect(array.isGeneric).toBeTruthy();
     expect(() => getMetadata(array)).toThrow();
   });
 
-  test("Swift.metadataFor returns null for an unknown type", ({ skip }) => {
-    requireSwift(skip);
+  test("Swift.metadataFor returns null for an unknown type", () => {
+    requireSwift();
     expect(Swift.metadataFor("Swift.NoSuchTypeQX")).toBeNull();
     expect(Swift.metadataFor("Swift.Int")!.typeLayout.size).toBe(8);
   });

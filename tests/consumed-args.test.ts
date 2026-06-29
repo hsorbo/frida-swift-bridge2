@@ -1,12 +1,11 @@
 import { test, expect, describe } from "@frida/injest/agent";
-import { type Skip } from "./swift.js";
 import { loadFixture } from "./fixtures/load.js";
 
 import { Swift, ClassInstance } from "../src/index.js";
 import { makeSwiftNativeFunction } from "../src/runtime/calling-convention.js";
 
-function fixtureAddress(skip: Skip, swiftName: string): NativePointer {
-  const mod = loadFixture(skip);
+function fixtureAddress(swiftName: string): NativePointer {
+  const mod = loadFixture();
   for (const e of mod.enumerateExports()) {
     const demangled = Swift.demangle(e.name);
     if (demangled !== null && demangled.includes(swiftName)) {
@@ -28,12 +27,12 @@ function ptrArg(p: NativePointer): NativePointer {
   return cell;
 }
 
-function freshWrapper(skip: Skip): { token: ClassInstance; wrapperPtr: NativePointer } {
+function freshWrapper(): { token: ClassInstance; wrapperPtr: NativePointer } {
   const Int = Swift.metadataFor("Swift.Int")!;
   const Token = Swift.metadataFor("fixture.Token")!;
   const Wrapper = Swift.metadataFor("fixture.Wrapper")!;
-  const makeToken = makeSwiftNativeFunction(fixtureAddress(skip, "fixture.makeToken"), Token, [Int]);
-  const makeWrapper = makeSwiftNativeFunction(fixtureAddress(skip, "fixture.makeWrapper"), Wrapper, [
+  const makeToken = makeSwiftNativeFunction(fixtureAddress("fixture.makeToken"), Token, [Int]);
+  const makeWrapper = makeSwiftNativeFunction(fixtureAddress("fixture.makeWrapper"), Wrapper, [
     Token,
   ]);
   const tokenRef = makeToken(intArg(5))!.readPointer();
@@ -42,13 +41,13 @@ function freshWrapper(skip: Skip): { token: ClassInstance; wrapperPtr: NativePoi
 }
 
 describe("consumed (+1) indirect arguments", () => {
-  test("consumedArgs passes a witness copy so the caller's value survives", ({ skip }) => {
+  test("consumedArgs passes a witness copy so the caller's value survives", () => {
     const Int = Swift.metadataFor("Swift.Int")!;
     const Wrapper = Swift.metadataFor("fixture.Wrapper")!;
-    const { token, wrapperPtr } = freshWrapper(skip);
+    const { token, wrapperPtr } = freshWrapper();
     const before = token.retainCount;
     const consume = makeSwiftNativeFunction(
-      fixtureAddress(skip, "fixture.consumeWrapper"),
+      fixtureAddress("fixture.consumeWrapper"),
       Int,
       [Wrapper],
       { consumedArgs: [0] }
@@ -57,13 +56,13 @@ describe("consumed (+1) indirect arguments", () => {
     expect(token.retainCount).toBe(before);
   });
 
-  test("without consumedArgs the callee consumes the caller's value", ({ skip }) => {
+  test("without consumedArgs the callee consumes the caller's value", () => {
     const Int = Swift.metadataFor("Swift.Int")!;
     const Wrapper = Swift.metadataFor("fixture.Wrapper")!;
-    const { token, wrapperPtr } = freshWrapper(skip);
+    const { token, wrapperPtr } = freshWrapper();
     const before = token.retainCount;
     const consume = makeSwiftNativeFunction(
-      fixtureAddress(skip, "fixture.consumeWrapper"),
+      fixtureAddress("fixture.consumeWrapper"),
       Int,
       [Wrapper]
     );

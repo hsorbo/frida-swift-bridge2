@@ -6,23 +6,23 @@ import { findType } from "../src/reflection/registry.js";
 import { getGenericMetadata, MetadataKind } from "../src/abi/metadata.js";
 
 describe("generic metadata", () => {
-  test("instantiates Array<Int> through the generic accessor", ({ skip }) => {
-    requireSwift(skip);
+  test("instantiates Array<Int> through the generic accessor", () => {
+    requireSwift();
     const int = Swift.metadataFor("Swift.Int")!;
     const arrayInt = Swift.metadataFor("Swift.Array", [int])!;
     expect(arrayInt.kind).toBe(MetadataKind.Struct);
     expect(arrayInt.typeLayout.size).toBe(Process.pointerSize);
   });
 
-  test("instantiates Optional<Int> as a value type", ({ skip }) => {
-    requireSwift(skip);
+  test("instantiates Optional<Int> as a value type", () => {
+    requireSwift();
     const int = Swift.metadataFor("Swift.Int")!;
     const optionalInt = Swift.metadataFor("Swift.Optional", [int])!;
     expect(optionalInt.kind).toBe(MetadataKind.Optional);
   });
 
-  test("distinct type arguments yield distinct, cached metadata", ({ skip }) => {
-    requireSwift(skip);
+  test("distinct type arguments yield distinct, cached metadata", () => {
+    requireSwift();
     const int = Swift.metadataFor("Swift.Int")!;
     const string = Swift.metadataFor("Swift.String")!;
     const arrayInt = Swift.metadataFor("Swift.Array", [int])!;
@@ -32,8 +32,8 @@ describe("generic metadata", () => {
     expect(arrayInt.handle.equals(arrayString.handle)).toBeFalsy();
   });
 
-  test("nests generic instantiations (Array<Array<Int>>)", ({ skip }) => {
-    requireSwift(skip);
+  test("nests generic instantiations (Array<Array<Int>>)", () => {
+    requireSwift();
     const int = Swift.metadataFor("Swift.Int")!;
     const arrayInt = Swift.metadataFor("Swift.Array", [int])!;
     const nested = Swift.metadataFor("Swift.Array", [arrayInt])!;
@@ -41,14 +41,14 @@ describe("generic metadata", () => {
     expect(nested.handle.equals(arrayInt.handle)).toBeFalsy();
   });
 
-  test("rejects a wrong number of type arguments", ({ skip }) => {
-    requireSwift(skip);
+  test("rejects a wrong number of type arguments", () => {
+    requireSwift();
     const array = findType("Swift.Array")!;
     expect(() => getGenericMetadata(array, [])).toThrow();
   });
 
-  test("rejects generics with conformance requirements", ({ skip }) => {
-    requireSwift(skip);
+  test("rejects generics with conformance requirements", () => {
+    requireSwift();
     const int = Swift.metadataFor("Swift.Int")!;
     const string = Swift.metadataFor("Swift.String")!;
     const dictionary = findType("Swift.Dictionary")!;

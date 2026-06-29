@@ -16,8 +16,8 @@ function writeSmallString(p: NativePointer, s: string): void {
 }
 
 describe("readString", () => {
-  test("decodes small (inline) strings", ({ skip }) => {
-    requireSwift(skip);
+  test("decodes small (inline) strings", () => {
+    requireSwift();
     const buf = Memory.alloc(16);
 
     writeSmallString(buf, "");
@@ -30,15 +30,14 @@ describe("readString", () => {
     expect(readString(buf)).toBe("fifteen chars!!");
   });
 
-  test("decodes a real native (large) string via _typeName", ({ skip }) => {
-    requireSwift(skip);
+  test("decodes a real native (large) string via _typeName", () => {
+    requireSwift();
     const lib = Process.getModuleByName("libswiftCore.dylib");
     let typeNameFn: NativePointer;
     try {
       typeNameFn = lib.getExportByName("$ss9_typeName_9qualifiedSSypXp_SbtF");
     } catch (e) {
-      skip("_typeName not exported under the expected mangling");
-      return;
+      throw new Error("_typeName not exported under the expected mangling");
     }
     const fn = new NativeFunction(typeNameFn, ["uint64", "uint64"], ["pointer", "bool"]);
     const dict = Swift.metadataFor("Swift.Dictionary", [
@@ -56,8 +55,8 @@ describe("readString", () => {
     expect(name).toContain("Swift.String");
   });
 
-  test("readValue decodes String fields of a struct", ({ skip }) => {
-    requireSwift(skip);
+  test("readValue decodes String fields of a struct", () => {
+    requireSwift();
     const rangeString = Swift.metadataFor("Swift.Range", [Swift.metadataFor("Swift.String")!])!;
     const buf = Memory.alloc(rangeString.typeLayout.stride);
     writeSmallString(buf, "a");

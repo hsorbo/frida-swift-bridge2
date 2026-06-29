@@ -1,22 +1,22 @@
 import { test, expect, describe } from "@frida/injest/agent";
-import { requireSwift, type Skip } from "./swift.js";
+import { requireSwift } from "./swift.js";
 
 import { findType } from "../src/reflection/registry.js";
 import { ContextDescriptorKind } from "../src/abi/context-descriptor.js";
 import { getClassMetadata, enumerateClassFields } from "../src/abi/class-metadata.js";
 
-function classOrSkip(name: string, skip: Skip) {
-  requireSwift(skip);
+function requireClass(name: string) {
+  requireSwift();
   const descriptor = findType(name);
   if (descriptor === null) {
-    skip(`${name} not present in this stdlib`);
+    throw new Error(`${name} not present in this stdlib`);
   }
   return descriptor!;
 }
 
 describe("class metadata", () => {
-  test("reads instance size, superclass and field offsets", ({ skip }) => {
-    const descriptor = classOrSkip("Swift.__RawSetStorage", skip);
+  test("reads instance size, superclass and field offsets", () => {
+    const descriptor = requireClass("Swift.__RawSetStorage");
     expect(descriptor.kind).toBe(ContextDescriptorKind.Class);
     expect(descriptor.isGeneric).toBeFalsy();
 
@@ -38,8 +38,8 @@ describe("class metadata", () => {
     }
   });
 
-  test("walks the superclass chain to a root", ({ skip }) => {
-    const descriptor = classOrSkip("Swift.__RawSetStorage", skip);
+  test("walks the superclass chain to a root", () => {
+    const descriptor = requireClass("Swift.__RawSetStorage");
     let current = getClassMetadata(descriptor).superclass;
     let depth = 0;
     while (current !== null && depth < 32) {
@@ -49,15 +49,15 @@ describe("class metadata", () => {
     expect(current).toBeNull();
   });
 
-  test("computes the same first-field offset for dictionary storage", ({ skip }) => {
-    const descriptor = classOrSkip("Swift.__RawDictionaryStorage", skip);
+  test("computes the same first-field offset for dictionary storage", () => {
+    const descriptor = requireClass("Swift.__RawDictionaryStorage");
     const fields = [...enumerateClassFields(getClassMetadata(descriptor))];
     expect(fields[0].field.name).toBe("_count");
     expect(fields[0].offset).toBe(16);
   });
 
-  test("isTypeMetadata guards reading an ObjC superclass as Swift", ({ skip }) => {
-    const descriptor = classOrSkip("Swift.__RawSetStorage", skip);
+  test("isTypeMetadata guards reading an ObjC superclass as Swift", () => {
+    const descriptor = requireClass("Swift.__RawSetStorage");
     const metadata = getClassMetadata(descriptor);
     expect(metadata.isTypeMetadata).toBeTruthy();
 

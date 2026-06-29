@@ -36,8 +36,8 @@ function xy(result: NativePointer): [number, number] {
 }
 
 describe("resilient calling convention (local library-evolution fixture)", () => {
-  test("a non-frozen resilient struct is passed @in / returned @out", ({ skip }) => {
-    const mod = loadResilient(skip);
+  test("a non-frozen resilient struct is passed @in / returned @out", () => {
+    const mod = loadResilient();
     const RP = Swift.metadataFor("resilient.ResilientPoint")!;
     const Int = Swift.metadataFor("Swift.Int")!;
     const translate = resilientFn(mod, "resilient.translate(");
@@ -46,8 +46,8 @@ describe("resilient calling convention (local library-evolution fixture)", () =>
     expect(xy(fn(point(1, 2), int(10), int(20))!)).toEqual([11, 22]);
   });
 
-  test("a @frozen struct in a resilient module keeps the direct ABI", ({ skip }) => {
-    const mod = loadResilient(skip);
+  test("a @frozen struct in a resilient module keeps the direct ABI", () => {
+    const mod = loadResilient();
     const FP = Swift.metadataFor("resilient.FrozenPoint")!;
     const Int = Swift.metadataFor("Swift.Int")!;
     const translate = resilientFn(mod, "resilient.translateFrozen(");
@@ -58,8 +58,8 @@ describe("resilient calling convention (local library-evolution fixture)", () =>
 
   // swiftc emits no layout-string bit, so the heuristic can't see local resilient types — they need
   // the explicit AbstractIndirect used above. Pinned so the limitation is explicit, not silent.
-  test("auto-detection does not fire for a locally-built resilient struct", ({ skip }) => {
-    loadResilient(skip);
+  test("auto-detection does not fire for a locally-built resilient struct", () => {
+    loadResilient();
     expect(isResilientValueType(Swift.metadataFor("resilient.ResilientPoint")!)).toBe(false);
     expect(isResilientValueType(Swift.metadataFor("resilient.FrozenPoint")!)).toBe(false);
   });

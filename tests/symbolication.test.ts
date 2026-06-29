@@ -1,5 +1,4 @@
 import { test, expect, describe } from "@frida/injest/agent";
-import { type Skip } from "./swift.js";
 import { loadFixture } from "./fixtures/load.js";
 
 import { Swift } from "../src/index.js";
@@ -13,8 +12,8 @@ import {
 } from "../src/runtime/symbolication.js";
 import { makeSwiftNativeFunction } from "../src/runtime/calling-convention.js";
 
-function fixtureSymbol(skip: Skip, swiftName: string): { address: NativePointer; demangled: string } {
-  const mod = loadFixture(skip);
+function fixtureSymbol(swiftName: string): { address: NativePointer; demangled: string } {
+  const mod = loadFixture();
   for (const e of mod.enumerateExports()) {
     const demangled = Swift.demangle(e.name);
     if (demangled !== null && demangled.includes(swiftName)) {
@@ -114,8 +113,8 @@ describe("parseSwiftSignature", () => {
 });
 
 describe("symbolicate", () => {
-  test("recovers the mangled and demangled name of a function address", ({ skip }) => {
-    const { address } = fixtureSymbol(skip, "fixture.addInts");
+  test("recovers the mangled and demangled name of a function address", () => {
+    const { address } = fixtureSymbol("fixture.addInts");
     const sym = symbolicate(address)!;
     expect(sym.name.includes("addInts")).toBe(true);
     expect(sym.demangled.startsWith("fixture.addInts(")).toBe(true);
@@ -127,8 +126,8 @@ describe("symbolicate", () => {
 });
 
 describe("resolveFunctionSignature", () => {
-  test("resolves arg and return type names to metadata", ({ skip }) => {
-    const { demangled } = fixtureSymbol(skip, "fixture.combine");
+  test("resolves arg and return type names to metadata", () => {
+    const { demangled } = fixtureSymbol("fixture.combine");
     const resolved = resolveFunctionSignature(parseSwiftSignature(demangled) as SwiftFunctionSignature)!;
     expect(resolved.throws).toBe(false);
     expect(Swift.typeName(resolved.argTypes[0])).toBe("Swift.Int");
@@ -136,8 +135,8 @@ describe("resolveFunctionSignature", () => {
     expect(Swift.typeName(resolved.returnType!)).toBe("Swift.Double");
   });
 
-  test("drives makeSwiftNativeFunction straight from a symbol", ({ skip }) => {
-    const { address, demangled } = fixtureSymbol(skip, "fixture.addInts");
+  test("drives makeSwiftNativeFunction straight from a symbol", () => {
+    const { address, demangled } = fixtureSymbol("fixture.addInts");
     const { argTypes, returnType } = resolveFunctionSignature(
       parseSwiftSignature(demangled) as SwiftFunctionSignature
     )!;
@@ -149,8 +148,8 @@ describe("resolveFunctionSignature", () => {
     expect(add(a, b)!.readU64().toNumber()).toBe(42);
   });
 
-  test("resolves a property accessor's member type", ({ skip }) => {
-    const { demangled } = fixtureSymbol(skip, "fixture.Point.doubled.getter");
+  test("resolves a property accessor's member type", () => {
+    const { demangled } = fixtureSymbol("fixture.Point.doubled.getter");
     const sig = parseSwiftSignature(demangled) as SwiftAccessorSignature;
     expect(sig.kind).toBe("getter");
     expect(Swift.typeName(resolveType(sig.typeName)!)).toBe("Swift.Int");

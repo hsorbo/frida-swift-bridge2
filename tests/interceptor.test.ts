@@ -1,13 +1,12 @@
 import { test, expect, describe } from "@frida/injest/agent";
-import { type Skip } from "./swift.js";
 import { loadFixture } from "./fixtures/load.js";
 
 import { Swift, Metadata, ValueInstance, type SwiftValue, type SwiftObject, type CallResult } from "../src/index.js";
 import { makeSwiftNativeFunction } from "../src/runtime/calling-convention.js";
 import { SwiftInterceptor } from "../src/runtime/interceptor.js";
 
-function fixtureAddress(skip: Skip, swiftName: string): NativePointer {
-  const mod = loadFixture(skip);
+function fixtureAddress(swiftName: string): NativePointer {
+  const mod = loadFixture();
   for (const e of mod.enumerateExports()) {
     const demangled = Swift.demangle(e.name);
     if (demangled !== null && demangled.includes(swiftName)) {
@@ -29,16 +28,16 @@ function structValue(metadata: ReturnType<typeof Swift.metadataFor>, fields: num
   return p;
 }
 
-function existentialMetadata(skip: Skip, accessor: string): Metadata {
+function existentialMetadata(accessor: string): Metadata {
   const RawPointer = Swift.metadataFor("Swift.UnsafeRawPointer")!;
-  const get = makeSwiftNativeFunction(fixtureAddress(skip, accessor), RawPointer, []);
+  const get = makeSwiftNativeFunction(fixtureAddress(accessor), RawPointer, []);
   return new Metadata(get()!.readPointer());
 }
 
 describe("SwiftInterceptor.attach", () => {
-  test("decodes scalar arguments and the scalar return", ({ skip }) => {
+  test("decodes scalar arguments and the scalar return", () => {
     const Int = Swift.metadataFor("Swift.Int")!;
-    const addr = fixtureAddress(skip, "fixture.addInts");
+    const addr = fixtureAddress("fixture.addInts");
     let seenArgs: SwiftValue[] | null = null;
     let seenRet: CallResult = null;
     const listener = SwiftInterceptor.attach(addr, {
@@ -55,10 +54,10 @@ describe("SwiftInterceptor.attach", () => {
     expect(seenRet).toBe(42);
   });
 
-  test("decodes a direct (register-exploded) struct argument", ({ skip }) => {
+  test("decodes a direct (register-exploded) struct argument", () => {
     const Int = Swift.metadataFor("Swift.Int")!;
     const Loadable = Swift.metadataFor("fixture.LoadableStruct")!;
-    const addr = fixtureAddress(skip, "fixture.sumLoadable");
+    const addr = fixtureAddress("fixture.sumLoadable");
     let seen: SwiftValue[] | null = null;
     const listener = SwiftInterceptor.attach(addr, {
       onEnter(args) {
@@ -70,10 +69,10 @@ describe("SwiftInterceptor.attach", () => {
     expect(seen).toEqual([{ a: 1, b: 2, c: 3, d: 4 }]);
   });
 
-  test("decodes an indirect struct argument", ({ skip }) => {
+  test("decodes an indirect struct argument", () => {
     const Int = Swift.metadataFor("Swift.Int")!;
     const Big = Swift.metadataFor("fixture.BigStruct")!;
-    const addr = fixtureAddress(skip, "fixture.sumBig");
+    const addr = fixtureAddress("fixture.sumBig");
     let seen: SwiftValue[] | null = null;
     const listener = SwiftInterceptor.attach(addr, {
       onEnter(args) {
@@ -85,9 +84,9 @@ describe("SwiftInterceptor.attach", () => {
     expect(seen).toEqual([{ a: 1, b: 2, c: 3, d: 4, e: 5 }]);
   });
 
-  test("decodes an indirect (x8) struct return", ({ skip }) => {
+  test("decodes an indirect (x8) struct return", () => {
     const Big = Swift.metadataFor("fixture.BigStruct")!;
-    const addr = fixtureAddress(skip, "fixture.makeBigStruct");
+    const addr = fixtureAddress("fixture.makeBigStruct");
     let seen: CallResult = null;
     const listener = SwiftInterceptor.attach(addr, {
       onLeave(ret) {
@@ -99,9 +98,9 @@ describe("SwiftInterceptor.attach", () => {
     expect(seen).toEqual({ a: 1, b: 2, c: 3, d: 4, e: 5 });
   });
 
-  test("decodes a direct (multi-register) struct return", ({ skip }) => {
+  test("decodes a direct (multi-register) struct return", () => {
     const Loadable = Swift.metadataFor("fixture.LoadableStruct")!;
-    const addr = fixtureAddress(skip, "fixture.makeLoadableStruct");
+    const addr = fixtureAddress("fixture.makeLoadableStruct");
     let seen: CallResult = null;
     const listener = SwiftInterceptor.attach(addr, {
       onLeave(ret) {
@@ -113,10 +112,10 @@ describe("SwiftInterceptor.attach", () => {
     expect(seen).toEqual({ a: 1, b: 2, c: 3, d: 4 });
   });
 
-  test("recovers a generic scalar argument and return from the implicit metadata", ({ skip }) => {
+  test("recovers a generic scalar argument and return from the implicit metadata", () => {
     const Int = Swift.metadataFor("Swift.Int")!;
-    const identity = fixtureAddress(skip, "fixture.genericIdentity");
-    const driver = fixtureAddress(skip, "fixture.makeGenericInt");
+    const identity = fixtureAddress("fixture.genericIdentity");
+    const driver = fixtureAddress("fixture.makeGenericInt");
     let seenArgs: SwiftValue[] | null = null;
     let seenRet: CallResult = null;
     const listener = SwiftInterceptor.attach(identity, {
@@ -133,10 +132,10 @@ describe("SwiftInterceptor.attach", () => {
     expect(seenRet).toBe(7);
   });
 
-  test("recovers a generic struct argument from the implicit metadata", ({ skip }) => {
+  test("recovers a generic struct argument from the implicit metadata", () => {
     const Loadable = Swift.metadataFor("fixture.LoadableStruct")!;
-    const identity = fixtureAddress(skip, "fixture.genericIdentity");
-    const driver = fixtureAddress(skip, "fixture.makeGenericStruct");
+    const identity = fixtureAddress("fixture.genericIdentity");
+    const driver = fixtureAddress("fixture.makeGenericStruct");
     let seenArgs: SwiftValue[] | null = null;
     let seenRet: CallResult = null;
     const listener = SwiftInterceptor.attach(identity, {
@@ -153,10 +152,10 @@ describe("SwiftInterceptor.attach", () => {
     expect(seenRet).toEqual({ a: 5, b: 6, c: 7, d: 8 });
   });
 
-  test("recovers two generic params of different concrete types", ({ skip }) => {
+  test("recovers two generic params of different concrete types", () => {
     const Int = Swift.metadataFor("Swift.Int")!;
-    const first = fixtureAddress(skip, "fixture.genericFirst");
-    const driver = fixtureAddress(skip, "fixture.makeGenericPair");
+    const first = fixtureAddress("fixture.genericFirst");
+    const driver = fixtureAddress("fixture.makeGenericPair");
     let seenArgs: SwiftValue[] | null = null;
     let seenRet: CallResult = null;
     const listener = SwiftInterceptor.attach(first, {
@@ -173,10 +172,10 @@ describe("SwiftInterceptor.attach", () => {
     expect(seenRet).toBe(11);
   });
 
-  test("decodes a generic function taking a metatype argument", ({ skip }) => {
+  test("decodes a generic function taking a metatype argument", () => {
     const Int = Swift.metadataFor("Swift.Int")!;
-    const identity = fixtureAddress(skip, "fixture.metatypeIdentity");
-    const driver = fixtureAddress(skip, "fixture.makeMetatypeInt");
+    const identity = fixtureAddress("fixture.metatypeIdentity");
+    const driver = fixtureAddress("fixture.makeMetatypeInt");
     let seenArgs: SwiftValue[] | null = null;
     let seenRet: CallResult = null;
     const listener = SwiftInterceptor.attach(identity, {
@@ -193,9 +192,9 @@ describe("SwiftInterceptor.attach", () => {
     expect(seenRet).toBe(5);
   });
 
-  test("decodes a constrained generic arg, ignoring the trailing witness table", ({ skip }) => {
-    const scaleGeneric = fixtureAddress(skip, "fixture.scaleGeneric");
-    const driver = fixtureAddress(skip, "fixture.makeScaleGeneric");
+  test("decodes a constrained generic arg, ignoring the trailing witness table", () => {
+    const scaleGeneric = fixtureAddress("fixture.scaleGeneric");
+    const driver = fixtureAddress("fixture.makeScaleGeneric");
     const Int = Swift.metadataFor("Swift.Int")!;
     let seenArgs: SwiftValue[] | null = null;
     let seenRet: CallResult = null;
@@ -213,9 +212,9 @@ describe("SwiftInterceptor.attach", () => {
     expect(seenRet).toBe(42);
   });
 
-  test("decodes a Double argument and return from the FP registers", ({ skip }) => {
+  test("decodes a Double argument and return from the FP registers", () => {
     const Double_ = Swift.metadataFor("Swift.Double")!;
-    const addr = fixtureAddress(skip, "fixture.scaleDouble");
+    const addr = fixtureAddress("fixture.scaleDouble");
     let seenArgs: SwiftValue[] | null = null;
     let seenRet: CallResult = null;
     const listener = SwiftInterceptor.attach(addr, {
@@ -234,9 +233,9 @@ describe("SwiftInterceptor.attach", () => {
     expect(seenRet).toBe(42);
   });
 
-  test("surfaces a thrown error on leave instead of decoding a bogus return", ({ skip }) => {
+  test("surfaces a thrown error on leave instead of decoding a bogus return", () => {
     const Int = Swift.metadataFor("Swift.Int")!;
-    const addr = fixtureAddress(skip, "fixture.mightThrow");
+    const addr = fixtureAddress("fixture.mightThrow");
     const seen: { retval: CallResult; error?: SwiftValue }[] = [];
     const listener = SwiftInterceptor.attach(addr, {
       onLeave(retval, error) {
@@ -251,11 +250,11 @@ describe("SwiftInterceptor.attach", () => {
     expect(seen[1]).toEqual({ retval: null, error: "boom" });
   });
 
-  test("decodes a named-protocol existential argument, projecting the dynamic value", ({ skip }) => {
+  test("decodes a named-protocol existential argument, projecting the dynamic value", () => {
     const String_ = Swift.metadataFor("Swift.String")!;
-    const Greeter = existentialMetadata(skip, "fixture.greeterType");
-    const g = makeSwiftNativeFunction(fixtureAddress(skip, "fixture.makeGreeterExistential"), Greeter, [])()!;
-    const addr = fixtureAddress(skip, "fixture.greetExistential");
+    const Greeter = existentialMetadata("fixture.greeterType");
+    const g = makeSwiftNativeFunction(fixtureAddress("fixture.makeGreeterExistential"), Greeter, [])()!;
+    const addr = fixtureAddress("fixture.greetExistential");
     let seenArgs: SwiftValue[] | null = null;
     let seenRet: CallResult = null;
     const listener = SwiftInterceptor.attach(addr, {
@@ -272,11 +271,11 @@ describe("SwiftInterceptor.attach", () => {
     expect(seenRet).toBe("Hello, Ada");
   });
 
-  test("decodes a protocol-composition existential argument, projecting the dynamic value", ({ skip }) => {
+  test("decodes a protocol-composition existential argument, projecting the dynamic value", () => {
     const String_ = Swift.metadataFor("Swift.String")!;
-    const GreeterAged = existentialMetadata(skip, "fixture.greeterAgedType");
-    const v = makeSwiftNativeFunction(fixtureAddress(skip, "fixture.makeGreeterAged"), GreeterAged, [])()!;
-    const addr = fixtureAddress(skip, "fixture.describeGreeterAged");
+    const GreeterAged = existentialMetadata("fixture.greeterAgedType");
+    const v = makeSwiftNativeFunction(fixtureAddress("fixture.makeGreeterAged"), GreeterAged, [])()!;
+    const addr = fixtureAddress("fixture.describeGreeterAged");
     let seenArgs: SwiftValue[] | null = null;
     let seenRet: CallResult = null;
     const listener = SwiftInterceptor.attach(addr, {
@@ -293,10 +292,10 @@ describe("SwiftInterceptor.attach", () => {
     expect(seenRet).toBe("Hi, Cy (9)");
   });
 
-  test("hands back a class return as a live SwiftObject facade", ({ skip }) => {
+  test("hands back a class return as a live SwiftObject facade", () => {
     const Int = Swift.metadataFor("Swift.Int")!;
     const Counter = Swift.metadataFor("fixture.Counter")!;
-    const addr = fixtureAddress(skip, "fixture.makeCounter");
+    const addr = fixtureAddress("fixture.makeCounter");
     let seen: CallResult = null;
     const listener = SwiftInterceptor.attach(addr, {
       onLeave(ret) {
@@ -312,12 +311,12 @@ describe("SwiftInterceptor.attach", () => {
 
   // The borrowed ValueInstance aliases the caller's result storage, so it is read inside onLeave; the field
   // probes prove it is the live aggregate, not a deep-copied snapshot.
-  test("hands back a non-POD value return as a live, queryable ValueInstance", ({ skip }) => {
+  test("hands back a non-POD value return as a live, queryable ValueInstance", () => {
     const Int = Swift.metadataFor("Swift.Int")!;
     const Token = Swift.metadataFor("fixture.Token")!;
     const Wrapper = Swift.metadataFor("fixture.Wrapper")!;
-    const tokenBuf = makeSwiftNativeFunction(fixtureAddress(skip, "fixture.makeToken"), Token, [Int])(intValue(7))!;
-    const addr = fixtureAddress(skip, "fixture.makeWrapper");
+    const tokenBuf = makeSwiftNativeFunction(fixtureAddress("fixture.makeToken"), Token, [Int])(intValue(7))!;
+    const addr = fixtureAddress("fixture.makeWrapper");
     let isValue = false;
     let a: SwiftValue = null;
     let tokenMatches = false;

@@ -8,21 +8,21 @@ import {
 import { ContextDescriptor } from "../src/abi/context-descriptor.js";
 
 describe("mach-o swift sections", () => {
-  test("finds __swift5_types in libswiftCore", ({ skip }) => {
-    const lib = loadSwiftCore(skip);
+  test("finds __swift5_types in libswiftCore", () => {
+    const lib = loadSwiftCore();
     const section = getSwiftSection(lib, "__swift5_types");
     expect(section).toBeDefined();
     expect(section!.size).toBeGreaterThan(0);
   });
 
-  test("returns null for a module without Swift metadata", ({ skip }) => {
-    loadSwiftCore(skip);
+  test("returns null for a module without Swift metadata", () => {
+    loadSwiftCore();
     const noSwift = Process.getModuleByName("libsystem_kernel.dylib");
     expect(getSwiftSection(noSwift, "__swift5_types")).toBeNull();
   });
 
-  test("enumerates type descriptors lazily and reads their names", ({ skip }) => {
-    const lib = loadSwiftCore(skip);
+  test("enumerates type descriptors lazily and reads their names", () => {
+    const lib = loadSwiftCore();
     const section = getSwiftSection(lib, "__swift5_types")!;
     const limit = lib.base.add(lib.size);
 

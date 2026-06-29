@@ -1,12 +1,11 @@
 import { test, expect, describe } from "@frida/injest/agent";
-import { type Skip } from "./swift.js";
 import { loadFixture } from "./fixtures/load.js";
 
 import { Swift, ClassInstance, dynamicTypeOf } from "../src/index.js";
 import { makeSwiftNativeFunction } from "../src/runtime/calling-convention.js";
 
-function fixtureAddress(skip: Skip, swiftName: string): NativePointer {
-  const mod = loadFixture(skip);
+function fixtureAddress(swiftName: string): NativePointer {
+  const mod = loadFixture();
   for (const e of mod.enumerateExports()) {
     const demangled = Swift.demangle(e.name);
     if (demangled !== null && demangled.includes(swiftName)) {
@@ -17,10 +16,10 @@ function fixtureAddress(skip: Skip, swiftName: string): NativePointer {
 }
 
 describe("dynamic type recovery", () => {
-  test("recovers the most-derived type from a base-typed reference", ({ skip }) => {
+  test("recovers the most-derived type from a base-typed reference", () => {
     const Base = Swift.metadataFor("fixture.Base")!;
     const Derived = Swift.metadataFor("fixture.Derived")!;
-    const make = makeSwiftNativeFunction(fixtureAddress(skip, "fixture.makeDerivedAsBase"), Base, []);
+    const make = makeSwiftNativeFunction(fixtureAddress("fixture.makeDerivedAsBase"), Base, []);
     const ref = make()!.readPointer();
 
     const dynamic = dynamicTypeOf(ref);

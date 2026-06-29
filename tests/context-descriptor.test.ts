@@ -20,8 +20,8 @@ function indexByName(lib: Module): Map<string, ContextDescriptor> {
 }
 
 describe("context descriptor", () => {
-  test("reads kind, module and qualified name of a stdlib struct", ({ skip }) => {
-    const lib = loadSwiftCore(skip);
+  test("reads kind, module and qualified name of a stdlib struct", () => {
+    const lib = loadSwiftCore();
     const int = indexByName(lib).get("Int");
     expect(int).toBeDefined();
     expect(int!.kind).toBe(ContextDescriptorKind.Struct);
@@ -31,8 +31,8 @@ describe("context descriptor", () => {
     expect(int!.fullTypeName).toBe("Swift.Int");
   });
 
-  test("discriminates a generic enum", ({ skip }) => {
-    const lib = loadSwiftCore(skip);
+  test("discriminates a generic enum", () => {
+    const lib = loadSwiftCore();
     const optional = indexByName(lib).get("Optional");
     expect(optional).toBeDefined();
     expect(optional!.kind).toBe(ContextDescriptorKind.Enum);
@@ -40,16 +40,16 @@ describe("context descriptor", () => {
     expect(optional!.fullTypeName).toBe("Swift.Optional");
   });
 
-  test("exposes a metadata access function for a non-generic type", ({ skip }) => {
-    const lib = loadSwiftCore(skip);
+  test("exposes a metadata access function for a non-generic type", () => {
+    const lib = loadSwiftCore();
     const int = indexByName(lib).get("Int")!;
     const accessFn = int.accessFunction;
     expect(accessFn).not.toBeNull();
     expect(accessFn!.compare(lib.base) >= 0).toBeTruthy();
   });
 
-  test("sees both struct and enum kinds across libswiftCore", ({ skip }) => {
-    const lib = loadSwiftCore(skip);
+  test("sees both struct and enum kinds across libswiftCore", () => {
+    const lib = loadSwiftCore();
     const kinds = new Set<ContextDescriptorKind>();
     for (const ptr of enumerateTypeContextDescriptors(lib)) {
       kinds.add(new ContextDescriptor(ptr).kind);

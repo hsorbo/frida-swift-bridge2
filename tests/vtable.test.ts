@@ -17,13 +17,13 @@ function instanceMethods(type: ClassType) {
 }
 
 describe("vtable route", () => {
-  test("enumerates instance-method slots, including the non-exported one", ({ skip }) => {
-    loadFixture(skip);
+  test("enumerates instance-method slots, including the non-exported one", () => {
+    loadFixture();
     expect(instanceMethods(dispatcherType()).length).toBe(2);
   });
 
-  test("the non-exported method is invisible to the symbol route", ({ skip }) => {
-    const mod = loadFixture(skip);
+  test("the non-exported method is invisible to the symbol route", () => {
+    const mod = loadFixture();
     const exportsMethod = (name: string): boolean =>
       [...mod.enumerateExports()].some((e) => {
         const d = Swift.demangle(e.name);
@@ -33,8 +33,8 @@ describe("vtable route", () => {
     expect(exportsMethod("hidden")).toBe(false);
   });
 
-  test("invokes each slot by offset, reaching the non-exported impl", ({ skip }) => {
-    loadFixture(skip);
+  test("invokes each slot by offset, reaching the non-exported impl", () => {
+    loadFixture();
     const type = dispatcherType();
     const obj = type.init();
     const results = instanceMethods(type)
@@ -43,8 +43,8 @@ describe("vtable route", () => {
     expect(results).toEqual([11, 30]); // pub(10)=11, hidden(10)=30
   });
 
-  test("the exported slot's impl matches the symbol route", ({ skip }) => {
-    loadFixture(skip);
+  test("the exported slot's impl matches the symbol route", () => {
+    loadFixture();
     const type = dispatcherType();
     const obj = type.init();
     const pub = instanceMethods(type).find(
@@ -54,8 +54,8 @@ describe("vtable route", () => {
     expect(pub.declaredImpl.equals(viaSymbol.address)).toBe(true);
   });
 
-  test("throws for a class whose vtable offset is not fixed", ({ skip }) => {
-    loadFixture(skip);
+  test("throws for a class whose vtable offset is not fixed", () => {
+    loadFixture();
     expect(() => readVTable(Swift.findType("fixture.GenericHolder")!)).toThrow(/generic/);
   });
 });

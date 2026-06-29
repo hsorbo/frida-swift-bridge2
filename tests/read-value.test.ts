@@ -11,22 +11,22 @@ function box(write: (p: NativePointer) => void, size = 8): NativePointer {
 }
 
 describe("readValue", () => {
-  test("decodes integer primitives", ({ skip }) => {
-    requireSwift(skip);
+  test("decodes integer primitives", () => {
+    requireSwift();
     expect(readValue(Swift.metadataFor("Swift.Int")!, box((p) => p.writeS64(-42)))).toBe(-42);
     expect(readValue(Swift.metadataFor("Swift.UInt8")!, box((p) => p.writeU8(200)))).toBe(200);
     expect(readValue(Swift.metadataFor("Swift.Int32")!, box((p) => p.writeS32(-7)))).toBe(-7);
   });
 
-  test("decodes bool and floating point", ({ skip }) => {
-    requireSwift(skip);
+  test("decodes bool and floating point", () => {
+    requireSwift();
     expect(readValue(Swift.metadataFor("Swift.Bool")!, box((p) => p.writeU8(1)))).toBe(true);
     expect(readValue(Swift.metadataFor("Swift.Bool")!, box((p) => p.writeU8(0)))).toBe(false);
     expect(readValue(Swift.metadataFor("Swift.Double")!, box((p) => p.writeDouble(3.5)))).toBe(3.5);
   });
 
-  test("recurses into nested struct fields", ({ skip }) => {
-    requireSwift(skip);
+  test("recurses into nested struct fields", () => {
+    requireSwift();
     const rangeInt = Swift.metadataFor("Swift.Range", [Swift.metadataFor("Swift.Int")!])!;
     const storage = Memory.alloc(rangeInt.typeLayout.stride);
     storage.writeU64(10);
@@ -34,8 +34,8 @@ describe("readValue", () => {
     expect(readValue(rangeInt, storage)).toEqual({ lowerBound: 10, upperBound: 20 });
   });
 
-  test("returns a class-typed field as its reference pointer", ({ skip }) => {
-    requireSwift(skip);
+  test("returns a class-typed field as its reference pointer", () => {
+    requireSwift();
     const klass = Swift.metadataFor("Swift.__RawSetStorage")!;
     const slot = Memory.alloc(Process.pointerSize);
     slot.writePointer(ptr("0x1234"));

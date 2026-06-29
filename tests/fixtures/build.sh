@@ -2,7 +2,7 @@
 # Compiles the Swift test fixtures in this directory into loadable dylibs and
 # writes their absolute paths to paths.ts (gitignored) for the injected agent to
 # Module.load(). Always emits paths.ts so the test bundle resolves; when no Swift
-# toolchain is present it writes empty paths and the loaders skip.
+# toolchain is present it writes empty paths and the loaders fail at Module.load.
 set -e
 
 fixtures="$(cd "$(dirname "$0")" && pwd)"

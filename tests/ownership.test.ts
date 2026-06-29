@@ -14,8 +14,8 @@ function stringStorage(inlineString: NativePointer): ClassInstance {
 }
 
 describe("ownership", () => {
-  test("$dispose drops the strong count once; double dispose is a no-op", ({ skip }) => {
-    loadFixture(skip);
+  test("$dispose drops the strong count once; double dispose is a no-op", () => {
+    loadFixture();
     const owned = robotType().init("R2");
     expect(owned.$owned).toBe(true);
     owned.$retain(); // outlive the dispose so view can observe the drop
@@ -28,8 +28,8 @@ describe("ownership", () => {
     view.release();
   });
 
-  test("a class return is owned; disposing a borrowed wrapper does not release", ({ skip }) => {
-    loadFixture(skip);
+  test("a class return is owned; disposing a borrowed wrapper does not release", () => {
+    loadFixture();
     const made = robotType().call("make", "Forged") as SwiftObject;
     expect(made.$owned).toBe(true);
     made.$retain();
@@ -45,8 +45,8 @@ describe("ownership", () => {
 
   // No GC-release test: bindWeak finalizers fire on a later pass, not synchronously with gc().
 
-  test("a String getter return destroys its +1 temp, leaking no __StringStorage ref", ({ skip }) => {
-    loadFixture(skip);
+  test("a String getter return destroys its +1 temp, leaking no __StringStorage ref", () => {
+    loadFixture();
     const r = robotType().init("a deliberately long, heap-allocated robot name");
     const storage = stringStorage(r.$field("name").address);
     const before = storage.retainCount;
@@ -57,8 +57,8 @@ describe("ownership", () => {
   });
 
   // rename retains the +0/guaranteed arg into the field; a leaked temp would leave rc 2, not 1.
-  test("a regular method's String arg +1 temp is destroyed, not leaked alongside the stored field", ({ skip }) => {
-    loadFixture(skip);
+  test("a regular method's String arg +1 temp is destroyed, not leaked alongside the stored field", () => {
+    loadFixture();
     const r = robotType().init("short");
     r.$call("rename", "a deliberately long, heap-allocated robot name");
     const storage = stringStorage(r.$field("name").address);

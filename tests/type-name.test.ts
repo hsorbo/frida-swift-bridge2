@@ -4,13 +4,13 @@ import { requireSwift } from "./swift.js";
 import { Swift, typeName } from "../src/index.js";
 
 describe("typeName", () => {
-  test("names a concrete stdlib type", ({ skip }) => {
-    requireSwift(skip);
+  test("names a concrete stdlib type", () => {
+    requireSwift();
     expect(typeName(Swift.metadataFor("Swift.Int")!)).toBe("Swift.Int");
   });
 
-  test("names a generic instantiation with its type arguments", ({ skip }) => {
-    requireSwift(skip);
+  test("names a generic instantiation with its type arguments", () => {
+    requireSwift();
     const int = Swift.metadataFor("Swift.Int")!;
     const arrayInt = typeName(Swift.metadataFor("Swift.Array", [int])!);
     expect(arrayInt).toContain("Array");
@@ -24,8 +24,8 @@ describe("typeName", () => {
     expect(dict).toContain("Int");
   });
 
-  test("Swift.typeName exposes it", ({ skip }) => {
-    requireSwift(skip);
+  test("Swift.typeName exposes it", () => {
+    requireSwift();
     expect(Swift.typeName(Swift.metadataFor("Swift.Bool")!)).toBe("Swift.Bool");
   });
 });

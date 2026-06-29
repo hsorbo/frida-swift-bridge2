@@ -1,13 +1,12 @@
 import { test, expect, describe } from "@frida/injest/agent";
-import { type Skip } from "./swift.js";
 import { loadFixture } from "./fixtures/load.js";
 
 import { Swift, type SwiftValue, type CallResult } from "../src/index.js";
 import { makeSwiftNativeFunction } from "../src/runtime/calling-convention.js";
 import { SwiftInterceptor } from "../src/runtime/interceptor.js";
 
-function fixtureAddress(skip: Skip, swiftName: string): NativePointer {
-  const mod = loadFixture(skip);
+function fixtureAddress(swiftName: string): NativePointer {
+  const mod = loadFixture();
   for (const e of mod.enumerateExports()) {
     const demangled = Swift.demangle(e.name);
     if (demangled !== null && demangled.includes(swiftName)) {
@@ -18,10 +17,10 @@ function fixtureAddress(skip: Skip, swiftName: string): NativePointer {
 }
 
 describe("hook decodes generic uses", () => {
-  test("resolves A? arg and return per-invocation from the recovered param", ({ skip }) => {
+  test("resolves A? arg and return per-invocation from the recovered param", () => {
     const Int = Swift.metadataFor("Swift.Int")!;
-    const roundOptional = fixtureAddress(skip, "fixture.roundOptional");
-    const trigger = fixtureAddress(skip, "fixture.triggerRoundOptional");
+    const roundOptional = fixtureAddress("fixture.roundOptional");
+    const trigger = fixtureAddress("fixture.triggerRoundOptional");
     let seenArgs: SwiftValue[] | null = null;
     let seenRet: CallResult = null;
     const listener = SwiftInterceptor.attach(roundOptional, {

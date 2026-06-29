@@ -1,19 +1,19 @@
 import { test, expect, describe } from "@frida/injest/agent";
-import { requireSwift, type Skip } from "./swift.js";
+import { requireSwift } from "./swift.js";
 
 import {
   enumerateSwiftModules,
   enumerateTypes,
 } from "../src/reflection/registry.js";
 
-function requireOnoneSupport(skip: Skip): void {
-  requireSwift(skip);
+function requireOnoneSupport(): void {
+  requireSwift();
   Module.load("/usr/lib/swift/libswiftSwiftOnoneSupport.dylib");
 }
 
 describe("cross-module descriptor walk", () => {
-  test("every type descriptor is aligned and resolves its module name", ({ skip }) => {
-    requireOnoneSupport(skip);
+  test("every type descriptor is aligned and resolves its module name", () => {
+    requireOnoneSupport();
 
     let types = 0;
     let named = 0;
@@ -31,8 +31,8 @@ describe("cross-module descriptor walk", () => {
     expect(named).toBe(types);
   });
 
-  test("resolves indirect type-descriptor records to named types", ({ skip }) => {
-    requireOnoneSupport(skip);
+  test("resolves indirect type-descriptor records to named types", () => {
+    requireOnoneSupport();
 
     const onone = Process.getModuleByName("libswiftSwiftOnoneSupport.dylib");
     let withName = 0;

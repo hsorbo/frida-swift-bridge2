@@ -5,8 +5,8 @@ import { Swift } from "../src/index.js";
 import { isSwiftSymbol, demangle } from "../src/runtime/demangle.js";
 
 describe("demangle", () => {
-  test("Swift is available once libswiftCore loads", ({ skip }) => {
-    requireDarwinArm64(skip);
+  test("Swift is available once libswiftCore loads", () => {
+    requireDarwinArm64();
     expect(Swift.available).toBeTruthy();
   });
 
@@ -17,20 +17,20 @@ describe("demangle", () => {
     expect(isSwiftSymbol("")).toBeFalsy();
   });
 
-  test("demangles a known stdlib symbol", ({ skip }) => {
-    requireDarwinArm64(skip);
+  test("demangles a known stdlib symbol", () => {
+    requireDarwinArm64();
     const result = demangle("$sSiMn");
     expect(result).toBeDefined();
     expect(result).toContain("Int");
   });
 
-  test("returns null for non-Swift names", ({ skip }) => {
-    requireDarwinArm64(skip);
+  test("returns null for non-Swift names", () => {
+    requireDarwinArm64();
     expect(demangle("open")).toBeNull();
   });
 
-  test("is cached / idempotent", ({ skip }) => {
-    requireDarwinArm64(skip);
+  test("is cached / idempotent", () => {
+    requireDarwinArm64();
     expect(demangle("$sSiMn")).toBe(demangle("$sSiMn"));
   });
 });

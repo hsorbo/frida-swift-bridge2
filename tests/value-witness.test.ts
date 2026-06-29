@@ -16,8 +16,8 @@ function writeSmallString(p: NativePointer, s: string): void {
 }
 
 describe("ValueWitnessTable", () => {
-  test("exposes layout + flags for Int (POD, inline)", ({ skip }) => {
-    requireSwift(skip);
+  test("exposes layout + flags for Int (POD, inline)", () => {
+    requireSwift();
     const vwt = Swift.metadataFor("Swift.Int")!.valueWitnesses;
     expect(vwt.size).toBe(8);
     expect(vwt.stride).toBe(8);
@@ -27,8 +27,8 @@ describe("ValueWitnessTable", () => {
     expect(vwt.isBitwiseTakable).toBe(true);
   });
 
-  test("String is non-POD but bitwise-takable and inline", ({ skip }) => {
-    requireSwift(skip);
+  test("String is non-POD but bitwise-takable and inline", () => {
+    requireSwift();
     const vwt = Swift.metadataFor("Swift.String")!.valueWitnesses;
     expect(vwt.size).toBe(16);
     expect(vwt.stride).toBe(16);
@@ -37,8 +37,8 @@ describe("ValueWitnessTable", () => {
     expect(vwt.isInlineStorage).toBe(true); // 16 <= 3 words
   });
 
-  test("initializeWithCopy duplicates a POD value", ({ skip }) => {
-    requireSwift(skip);
+  test("initializeWithCopy duplicates a POD value", () => {
+    requireSwift();
     const vwt = Swift.metadataFor("Swift.Int")!.valueWitnesses;
     const src = Memory.alloc(8);
     src.writeU64(0x12345678);
@@ -49,8 +49,8 @@ describe("ValueWitnessTable", () => {
     vwt.destroy(dest);
   });
 
-  test("buffer round-trip projects an inline String value", ({ skip }) => {
-    requireSwift(skip);
+  test("buffer round-trip projects an inline String value", () => {
+    requireSwift();
     const vwt = Swift.metadataFor("Swift.String")!.valueWitnesses;
     const srcBuf = allocateValueBuffer();
     writeSmallString(srcBuf, "vwt!");
@@ -62,8 +62,8 @@ describe("ValueWitnessTable", () => {
     vwt.destroy(value);
   });
 
-  test("reports out-of-line storage for structs larger than 3 words", ({ skip }) => {
-    loadFixture(skip);
+  test("reports out-of-line storage for structs larger than 3 words", () => {
+    loadFixture();
     const loadable = Swift.metadataFor("fixture.LoadableStruct")!.valueWitnesses;
     const big = Swift.metadataFor("fixture.BigStruct")!.valueWitnesses;
     expect(loadable.size).toBe(32);
@@ -74,8 +74,8 @@ describe("ValueWitnessTable", () => {
     expect(big.isBitwiseTakable).toBe(true);
   });
 
-  test("initializeWithCopy duplicates an out-of-line value", ({ skip }) => {
-    loadFixture(skip);
+  test("initializeWithCopy duplicates an out-of-line value", () => {
+    loadFixture();
     const vwt = Swift.metadataFor("fixture.BigStruct")!.valueWitnesses;
     const src = Memory.alloc(vwt.stride);
     for (let i = 0; i < 5; i++) {

@@ -13,25 +13,25 @@ function takeText(buf: NativePointer): string | null {
 }
 
 describe("createString / writeString", () => {
-  test("round-trips a small (inline) string", ({ skip }) => {
-    loadFixture(skip);
+  test("round-trips a small (inline) string", () => {
+    loadFixture();
     expect(takeText(createString("short"))).toBe("short");
   });
 
-  test("round-trips a large (heap) string", ({ skip }) => {
-    loadFixture(skip);
+  test("round-trips a large (heap) string", () => {
+    loadFixture();
     const text = "this string is definitely longer than fifteen bytes";
     expect(takeText(createString(text))).toBe(text);
   });
 
-  test("round-trips empty and unicode strings", ({ skip }) => {
-    loadFixture(skip);
+  test("round-trips empty and unicode strings", () => {
+    loadFixture();
     expect(takeText(createString(""))).toBe("");
     expect(takeText(createString("café ☕ 日本語"))).toBe("café ☕ 日本語");
   });
 
-  test("writeString moves a value into an existing buffer", ({ skip }) => {
-    loadFixture(skip);
+  test("writeString moves a value into an existing buffer", () => {
+    loadFixture();
     const buf = Memory.alloc(Process.pointerSize * 2);
     writeString(buf, "moved into place");
     expect(takeText(buf)).toBe("moved into place");
@@ -39,16 +39,16 @@ describe("createString / writeString", () => {
 });
 
 describe("writeValue String support", () => {
-  test("ValueInstance.fromJS builds a String value", ({ skip }) => {
-    loadFixture(skip);
+  test("ValueInstance.fromJS builds a String value", () => {
+    loadFixture();
     const v = Swift.typeOf(Swift.metadataFor("Swift.String")!);
     const value = (v as StructType).new("hello from JS");
     expect(value.get()).toBe("hello from JS");
     value.dispose();
   });
 
-  test("constructs a struct with a String field", ({ skip }) => {
-    loadFixture(skip);
+  test("constructs a struct with a String field", () => {
+    loadFixture();
     const t = Swift.typeOf(Swift.metadataFor("fixture.PoliteGreeter")!) as StructType;
     const value = t.new({ name: "Ada" });
     expect(value.get()).toEqual({ name: "Ada" });

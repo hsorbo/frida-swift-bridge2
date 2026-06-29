@@ -6,8 +6,8 @@ import { readValue } from "../src/abi/instance.js";
 import { readEnumCase, enumTag, injectEnumTag, projectBox } from "../src/abi/enum.js";
 
 describe("enum instances", () => {
-  test("tag injection round-trips and maps to the payload-first case order", ({ skip }) => {
-    requireSwift(skip);
+  test("tag injection round-trips and maps to the payload-first case order", () => {
+    requireSwift();
     const optionalInt = Swift.metadataFor("Swift.Optional", [Swift.metadataFor("Swift.Int")!])!;
     const storage = Memory.alloc(optionalInt.typeLayout.stride);
 
@@ -23,8 +23,8 @@ describe("enum instances", () => {
     expect(noneCase.isIndirect).toBeFalsy();
   });
 
-  test("reads a boxed payload via projectBox (the indirect-case mechanism)", ({ skip }) => {
-    requireSwift(skip);
+  test("reads a boxed payload via projectBox (the indirect-case mechanism)", () => {
+    requireSwift();
     const lib = Process.getModuleByName("libswiftCore.dylib");
     const allocBox = new NativeFunction(
       lib.getExportByName("swift_allocBox"),
@@ -43,8 +43,8 @@ describe("enum instances", () => {
     expect(readValue(int, projectBox(object))).toBe(99);
   });
 
-  test("decodes a payload case and reads its associated value", ({ skip }) => {
-    requireSwift(skip);
+  test("decodes a payload case and reads its associated value", () => {
+    requireSwift();
     const optionalInt = Swift.metadataFor("Swift.Optional", [Swift.metadataFor("Swift.Int")!])!;
     const storage = Memory.alloc(optionalInt.typeLayout.stride);
     storage.writeS64(42);
@@ -52,16 +52,16 @@ describe("enum instances", () => {
     expect(readValue(optionalInt, storage)).toEqual({ some: 42 });
   });
 
-  test("decodes a no-payload case to its name", ({ skip }) => {
-    requireSwift(skip);
+  test("decodes a no-payload case to its name", () => {
+    requireSwift();
     const optionalInt = Swift.metadataFor("Swift.Optional", [Swift.metadataFor("Swift.Int")!])!;
     const storage = Memory.alloc(optionalInt.typeLayout.stride);
     injectEnumTag(optionalInt, storage, 1);
     expect(readValue(optionalInt, storage)).toBe("none");
   });
 
-  test("reads an enum field nested in a struct value", ({ skip }) => {
-    requireSwift(skip);
+  test("reads an enum field nested in a struct value", () => {
+    requireSwift();
     const int = Swift.metadataFor("Swift.Int")!;
     const optionalInt = Swift.metadataFor("Swift.Optional", [int])!;
     // hand-build a payload Optional<Int> and confirm it round-trips through readValue

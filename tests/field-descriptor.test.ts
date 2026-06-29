@@ -38,15 +38,15 @@ describe("symbolic mangled name length", () => {
 });
 
 describe("field descriptor", () => {
-  test("enumerates the stored property of a stdlib struct", ({ skip }) => {
-    requireSwift(skip);
+  test("enumerates the stored property of a stdlib struct", () => {
+    requireSwift();
     const fields = [...enumerateFields(findType("Swift.Bool")!)];
     expect(fields.length).toBe(1);
     expect(fields[0].name).toBe("_value");
   });
 
-  test("resolves a plain mangled name through the runtime", ({ skip }) => {
-    requireSwift(skip);
+  test("resolves a plain mangled name through the runtime", () => {
+    requireSwift();
     const name = Memory.allocUtf8String("Si");
     const int = resolveTypeByMangledName({ address: name, length: 2 });
     expect(int).not.toBeNull();
@@ -54,8 +54,8 @@ describe("field descriptor", () => {
     expect(int!.handle.equals(Swift.metadataFor("Swift.Int")!.handle)).toBeTruthy();
   });
 
-  test("resolves a field type carrying a symbolic reference", ({ skip }) => {
-    requireSwift(skip);
+  test("resolves a field type carrying a symbolic reference", () => {
+    requireSwift();
     const string = findType("Swift.String")!;
     const fields = [...enumerateFields(string)];
     expect(fields.length).toBeGreaterThan(0);
