@@ -11,8 +11,8 @@ import {
   getProperty,
 } from "../src/index.js";
 
-// Only Apple frameworks set the layout-string bit, so auto-detection's positive path needs CryptoKit;
-// the indirect-ABI machinery is fixture-tested in resilient-calling.test.ts.
+// markResilient drives auto-detection for a real Apple resilient framework on any OS; the
+// indirect-ABI machinery itself is fixture-tested in resilient-calling.test.ts.
 
 function loadCryptoKit(): void {
   requireSwift();
@@ -23,6 +23,7 @@ function loadCryptoKit(): void {
       throw new Error(`could not load CryptoKit: ${e}`);
     }
   }
+  Swift.markResilient("CryptoKit");
 }
 
 // Resilient init(size:): SymmetricKeySize @in, SymmetricKey @out, auto-lowered from plain metadata.
