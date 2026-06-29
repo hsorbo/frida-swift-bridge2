@@ -5,15 +5,21 @@ import { typeName } from "./type-name.js";
 
 export const MAX_LOADABLE_SIZE = Process.pointerSize * 4;
 
-// Resilience (passed address-only across the module boundary) isn't in metadata; the layout-string
-// bit is the only proxy, set by Apple's library-evolution frameworks. Apple-only — AbstractIndirect
-// overrides.
+const resilientModules = new Set<string>();
+
+export function markResilientModule(name: string): void {
+  resilientModules.add(name);
+}
+
+// Resilience isn't recorded in metadata (@frozen leaves no trace), so it's never inferred from a
+// missing signal: positive sources only — the layout-string bit or a caller-declared module.
 export function isResilientValueType(metadata: Metadata): boolean {
   const kind = metadata.kind;
   if (kind !== MetadataKind.Struct && kind !== MetadataKind.Enum && kind !== MetadataKind.Optional) {
     return false;
   }
-  return metadata.description.hasLayoutString;
+  const description = metadata.description;
+  return description.hasLayoutString || resilientModules.has(description.moduleName ?? "");
 }
 
 // Integer/pointer-class only; floating-point uses the separate v-register budget below.
@@ -86,6 +92,10 @@ export interface GenericRef {
 export interface AbstractIndirect {
   metadata: Metadata;
   addressOnly: true;
+}
+
+export function indirect(metadata: Metadata): AbstractIndirect {
+  return { metadata, addressOnly: true };
 }
 
 export type SwiftArgType = Metadata | GenericRef | AbstractIndirect;

@@ -1,7 +1,7 @@
 import { test, expect, describe } from "@frida/injest/agent";
 import { loadResilient } from "./fixtures/load.js";
 
-import { Swift, Metadata, isResilientValueType, makeSwiftNativeFunction } from "../src/index.js";
+import { Swift, indirect, isResilientValueType, makeSwiftNativeFunction } from "../src/index.js";
 
 // resilient.dylib (-enable-library-evolution) gives a real resilience boundary without a system
 // framework: ResilientPoint crosses it address-only, FrozenPoint stays direct.
@@ -15,8 +15,6 @@ function resilientFn(mod: Module, needle: string): NativePointer {
   }
   throw new Error(`resilient export not found: ${needle}`);
 }
-
-const indirect = (metadata: Metadata) => ({ metadata, addressOnly: true as const });
 
 function point(x: number, y: number): NativePointer {
   const p = Memory.alloc(16);

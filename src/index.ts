@@ -9,6 +9,7 @@ import { SwiftInterceptor } from "./runtime/interceptor.js";
 import { SwiftType, typeOf, swiftNativeFunction } from "./runtime/swift-type.js";
 import { createObject } from "./runtime/object-facade.js";
 import { Protocol, ProtocolComposition } from "./runtime/protocol.js";
+import { indirect, markResilientModule } from "./runtime/calling-convention.js";
 
 export { SwiftCoreApi, getSwiftCoreApi } from "./runtime/api.js";
 export { isSwiftSymbol, demangle } from "./runtime/demangle.js";
@@ -114,6 +115,8 @@ export {
 export {
   shouldPassIndirectly,
   isResilientValueType,
+  markResilientModule,
+  indirect,
   MAX_LOADABLE_SIZE,
   makeSwiftNativeFunction,
   SwiftNativeFunction,
@@ -202,6 +205,8 @@ export const Swift = {
     return typeOf(metadata);
   },
 
+  indirect,
+  markResilient: markResilientModule,
   symbolicate,
   parseSignature: parseSwiftSignature,
   Interceptor: SwiftInterceptor,
