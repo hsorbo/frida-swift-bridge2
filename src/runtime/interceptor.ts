@@ -139,18 +139,71 @@ function returnIsIndirect(ret: TypePlan | null): boolean {
   );
 }
 
-function gpr(context: Arm64CpuContext, n: number): NativePointer {
-  if (n > 7) {
-    throw new Error("stack arguments are not supported");
+const ARCH = Process.arch;
+const X64_GP_ARGS = ["rdi", "rsi", "rdx", "rcx", "r8", "r9"];
+const X64_GP_RESULTS = ["rax", "rdx", "rcx", "r8"];
+
+const FP_HOOK_UNSUPPORTED =
+  "hooking floating-point register arguments/returns is unsupported on x86-64 (no XMM in the CPU context)";
+
+// gum surfaces each x86-64 xmm register as a 16-byte ArrayBuffer; the low lane holds the swiftcc scalar.
+function readXmm(context: CpuContext, n: number, cls: "double" | "float"): number {
+  const buf = (context as unknown as Record<string, ArrayBuffer | undefined>)[`xmm${n}`];
+  if (buf === undefined) {
+    throw new Error(FP_HOOK_UNSUPPORTED);
   }
-  return (context as unknown as Record<string, NativePointer>)[`x${n}`];
+  return cls === "double" ? new Float64Array(buf)[0] : new Float32Array(buf)[0];
 }
 
-function fpr(context: Arm64CpuContext, n: number, cls: "double" | "float"): number {
-  if (n > 7) {
-    throw new Error("stack floating-point arguments are not supported");
+function gpName(context: CpuContext): Record<string, NativePointer> {
+  return context as unknown as Record<string, NativePointer>;
+}
+
+function gpArg(context: CpuContext, n: number): NativePointer {
+  if (ARCH === "arm64") {
+    if (n > 7) throw new Error("stack arguments are not supported");
+    return gpName(context)[`x${n}`];
   }
-  return (context as unknown as Record<string, number>)[`${cls === "double" ? "d" : "s"}${n}`];
+  if (n >= X64_GP_ARGS.length) throw new Error("stack arguments are not supported");
+  return gpName(context)[X64_GP_ARGS[n]];
+}
+
+function gpResult(context: CpuContext, n: number): NativePointer {
+  return gpName(context)[ARCH === "arm64" ? `x${n}` : X64_GP_RESULTS[n]];
+}
+
+function fpArg(context: CpuContext, n: number, cls: "double" | "float"): number {
+  if (n > 7) throw new Error("stack floating-point arguments are not supported");
+  if (ARCH === "arm64") {
+    return (context as unknown as Record<string, number>)[`${cls === "double" ? "d" : "s"}${n}`];
+  }
+  return readXmm(context, n, cls);
+}
+
+function fpResult(context: CpuContext, n: number, cls: "double" | "float"): number {
+  if (ARCH === "arm64") {
+    return (context as unknown as Record<string, number>)[`${cls === "double" ? "d" : "s"}${n}`];
+  }
+  // async completion exposes spilled xmm via `xmmSpill`; a sync hook reads the live CpuContext.
+  const spill = (context as unknown as { xmmSpill?: NativePointer }).xmmSpill;
+  if (spill === undefined) {
+    return readXmm(context, n, cls);
+  }
+  const at = spill.add(n * 8);
+  return cls === "double" ? at.readDouble() : at.readFloat();
+}
+
+// arm64 carries the indirect-result pointer in x8 and the thrown error in x21; x86-64 swiftcc uses rax / r12.
+function indirectResultRegister(context: CpuContext): NativePointer {
+  return ARCH === "arm64" ? gpName(context).x8 : gpName(context).rax;
+}
+
+function errorRegister(context: CpuContext): NativePointer {
+  return ARCH === "arm64" ? gpName(context).x21 : gpName(context).r12;
+}
+
+function asyncContextRegister(context: CpuContext): NativePointer {
+  return ARCH === "arm64" ? gpName(context).x22 : gpName(context).r14;
 }
 
 function words(metadata: Metadata): number {
@@ -164,7 +217,7 @@ interface MaterializedArgs {
 
 // Generic metadata follows the formal args in the GP sequence, so decode after walking them.
 function materializeArgs(
-  context: Arm64CpuContext,
+  context: CpuContext,
   args: TypePlan[],
   genericParams: string[],
   startReg = 0
@@ -175,11 +228,11 @@ function materializeArgs(
 
   for (const plan of args) {
     if (plan.kind === "metatype") {
-      slots.push({ plan, address: gpr(context, ngrn++) }); // address IS the metadata pointer
+      slots.push({ plan, address: gpArg(context, ngrn++) }); // address IS the metadata pointer
       continue;
     }
     if (isIndirectPlan(plan)) {
-      slots.push({ plan, address: gpr(context, ngrn++) });
+      slots.push({ plan, address: gpArg(context, ngrn++) });
       continue;
     }
     const metadata = plan.metadata;
@@ -189,19 +242,19 @@ function materializeArgs(
       const scratch = Memory.alloc(Math.max(fl.count * stride, 8));
       for (let k = 0; k < fl.count; k++) {
         const leaf = scratch.add(k * stride);
-        const value = fpr(context, nsrn++, fl.cls);
+        const value = fpArg(context, nsrn++, fl.cls);
         fl.cls === "double" ? leaf.writeDouble(value) : leaf.writeFloat(value);
       }
       slots.push({ plan, address: scratch });
     } else if (metadata.kind === MetadataKind.Class) {
-      slots.push({ plan, address: Memory.alloc(8).writePointer(gpr(context, ngrn++)) });
+      slots.push({ plan, address: Memory.alloc(8).writePointer(gpArg(context, ngrn++)) });
     } else if (shouldPassIndirectly(metadata)) {
-      slots.push({ plan, address: gpr(context, ngrn++) });
+      slots.push({ plan, address: gpArg(context, ngrn++) });
     } else {
       const count = words(metadata);
       const scratch = Memory.alloc(Math.max(count, 1) * 8);
       for (let w = 0; w < count; w++) {
-        scratch.add(w * 8).writePointer(gpr(context, ngrn++));
+        scratch.add(w * 8).writePointer(gpArg(context, ngrn++));
       }
       slots.push({ plan, address: scratch });
     }
@@ -209,7 +262,7 @@ function materializeArgs(
 
   const generics: Metadata[] = [];
   for (let i = 0; i < genericParams.length; i++) {
-    generics.push(new Metadata(gpr(context, ngrn++)));
+    generics.push(new Metadata(gpArg(context, ngrn++)));
   }
 
   const values = slots.map((s) =>
@@ -233,7 +286,7 @@ function decodeReturnValue(metadata: Metadata, address: NativePointer): CallResu
 }
 
 function materializeReturn(
-  context: Arm64CpuContext,
+  context: CpuContext,
   ret: TypePlan | null,
   indirectReturn: NativePointer | null,
   generics: Metadata[],
@@ -243,7 +296,7 @@ function materializeReturn(
     return null;
   }
   if (ret.kind === "metatype") {
-    return decodeMetatype(context.x0);
+    return decodeMetatype(gpResult(context, 0));
   }
   if (isIndirectPlan(ret)) {
     if (indirectReturn === null) {
@@ -260,16 +313,15 @@ function materializeReturn(
   if (fl !== null) {
     const stride = fl.cls === "double" ? 8 : 4;
     const scratch = Memory.alloc(Math.max(fl.count * stride, 8));
-    const regs = context as unknown as Record<string, number>;
     for (let k = 0; k < fl.count; k++) {
       const leaf = scratch.add(k * stride);
-      const value = regs[`${fl.cls === "double" ? "d" : "s"}${k}`];
+      const value = fpResult(context, k, fl.cls);
       fl.cls === "double" ? leaf.writeDouble(value) : leaf.writeFloat(value);
     }
     return readValue(returnType, scratch);
   }
   if (returnType.kind === MetadataKind.Class) {
-    return createObject(new ClassInstance(context.x0));
+    return createObject(new ClassInstance(gpResult(context, 0)));
   }
   if (shouldPassIndirectly(returnType)) {
     if (indirectReturn === null) {
@@ -278,13 +330,12 @@ function materializeReturn(
     return decodeReturnValue(returnType, indirectReturn);
   }
 
-  // Direct multi-register return: the bytes live only in x0..xN, so a non-POD value is borrowed over
-  // this private reassembly — readable/callable in the callback, but not write-through to the caller.
+  // Direct multi-register return: the bytes live only in the result registers, so a non-POD value is
+  // borrowed over this private reassembly — readable/callable in the callback, not write-through.
   const count = words(returnType);
   const scratch = Memory.alloc(Math.max(count, 1) * 8);
-  const regs = context as unknown as Record<string, NativePointer>;
   for (let w = 0; w < count; w++) {
-    scratch.add(w * 8).writePointer(regs[`x${w}`]);
+    scratch.add(w * 8).writePointer(gpResult(context, w));
   }
   return decodeReturnValue(returnType, scratch);
 }
@@ -310,10 +361,10 @@ function attach(target: NativePointer, callbacks: SwiftInvocationCallbacks): Inv
   const onEnter =
     wantsArgs || captureIndirect
       ? function (this: InvocationContext) {
-          const context = this.context as Arm64CpuContext;
+          const context = this.context;
           const state = this as unknown as SwiftInvocationState;
           if (captureIndirect) {
-            state.indirectReturn = context.x8;
+            state.indirectReturn = indirectResultRegister(context);
           }
           if (wantsArgs) {
             const { values, generics } = materializeArgs(context, args, genericParams);
@@ -328,9 +379,9 @@ function attach(target: NativePointer, callbacks: SwiftInvocationCallbacks): Inv
   const onLeave =
     callbacks.onLeave !== undefined
       ? function (this: InvocationContext) {
-          const context = this.context as Arm64CpuContext;
+          const context = this.context;
           const state = this as unknown as SwiftInvocationState;
-          const swiftErrorRegister = context.x21; // swiftcc returns a thrown error here
+          const swiftErrorRegister = errorRegister(context); // swiftcc returns a thrown error here
           if (throws && !swiftErrorRegister.isNull()) {
             callbacks.onLeave!.call(this, null, decodeThrownError(swiftErrorRegister));
             return;
@@ -389,24 +440,48 @@ const COMPLETION_TRAMPOLINE_SIZE = 0x200;
 let completionTrampoline: NativePointer | null = null;
 let completionBridge: NativeCallback<"pointer", ["pointer", "pointer"]> | null = null;
 
-function spillContext(spillPtr: NativePointer, asyncContext: NativePointer): Arm64CpuContext {
+// x86-64 completion spill layout: [rdi rsi rdx rcx r8 r9][xmm0..xmm7, 8B each][r13].
+const X64_SPILL_XMM = 0x30;
+const X64_SPILL_ERROR = 0x70;
+const X64_SPILL_SIZE = 0x80;
+
+function spillContext(spillPtr: NativePointer, asyncContext: NativePointer): CpuContext {
+  if (ARCH === "arm64") {
+    const ctx: Record<string, NativePointer | number> = {};
+    for (let i = 0; i < 8; i++) {
+      ctx[`x${i}`] = spillPtr.add(i * 8).readPointer();
+    }
+    for (let i = 0; i < 8; i++) {
+      const at = spillPtr.add(0x40 + i * 8);
+      ctx[`d${i}`] = at.readDouble();
+      ctx[`s${i}`] = at.readFloat();
+    }
+    ctx.x20 = spillPtr.add(0x80).readPointer();
+    ctx.x22 = asyncContext;
+    return ctx as unknown as CpuContext;
+  }
+  // The resume delivers results in the argument registers; remap them onto the sync result-register
+  // names so materializeReturn is shared with the sync path.
   const ctx: Record<string, NativePointer | number> = {};
-  for (let i = 0; i < 8; i++) {
-    ctx[`x${i}`] = spillPtr.add(i * 8).readPointer();
-  }
-  for (let i = 0; i < 8; i++) {
-    const at = spillPtr.add(0x40 + i * 8);
-    ctx[`d${i}`] = at.readDouble();
-    ctx[`s${i}`] = at.readFloat();
-  }
-  ctx.x20 = spillPtr.add(0x80).readPointer();
-  ctx.x22 = asyncContext;
-  return ctx as unknown as Arm64CpuContext;
+  ctx.rax = spillPtr.add(0x00).readPointer(); // rdi
+  ctx.rdx = spillPtr.add(0x08).readPointer(); // rsi
+  ctx.rcx = spillPtr.add(0x10).readPointer(); // rdx
+  ctx.r8 = spillPtr.add(0x18).readPointer(); // rcx
+  ctx.r13 = spillPtr.add(X64_SPILL_ERROR).readPointer(); // error
+  ctx.r14 = asyncContext;
+  (ctx as unknown as { xmmSpill: NativePointer }).xmmSpill = spillPtr.add(X64_SPILL_XMM);
+  return ctx as unknown as CpuContext;
 }
 
-function fireCompletion(entry: CompletionEntry, context: Arm64CpuContext, self: InvocationContext): void {
-  if (entry.throws && !context.x20.isNull()) {
-    entry.callbacks.onComplete!.call(self, null, decodeThrownError(context.x20));
+// On the resume, the thrown error rides swiftself (x20 / r13).
+function completionErrorValue(context: CpuContext): NativePointer {
+  return ARCH === "arm64" ? gpName(context).x20 : gpName(context).r13;
+}
+
+function fireCompletion(entry: CompletionEntry, context: CpuContext, self: InvocationContext): void {
+  const error = completionErrorValue(context);
+  if (entry.throws && !error.isNull()) {
+    entry.callbacks.onComplete!.call(self, null, decodeThrownError(error));
     return;
   }
   entry.callbacks.onComplete!.call(
@@ -442,34 +517,77 @@ function getCompletionTrampoline(): NativePointer {
 
   const page = Memory.alloc(Process.pageSize);
   Memory.patchCode(page, COMPLETION_TRAMPOLINE_SIZE, (slot) => {
-    const w = new Arm64Writer(slot, { pc: page });
-    w.putPushRegReg("x29", "x30");
-    w.putSubRegRegImm("sp", "sp", 0x90);
-    for (let i = 0; i < 8; i++) {
-      w.putStrRegRegOffset(`x${i}` as Arm64Register, "sp", i * 8);
+    if (ARCH === "arm64") {
+      writeArm64CompletionTrampoline(slot, page);
+    } else {
+      writeX64CompletionTrampoline(slot, page);
     }
-    for (let i = 0; i < 8; i++) {
-      w.putStrRegRegOffset(`d${i}` as Arm64Register, "sp", 0x40 + i * 8);
-    }
-    w.putStrRegRegOffset("x20", "sp", 0x80);
-    w.putMovRegReg("x0", "x22");
-    w.putAddRegRegImm("x1", "sp", 0);
-    w.putLdrRegAddress("x14", completionBridge!);
-    w.putBlrRegNoAuth("x14");
-    w.putMovRegReg("x9", "x0");
-    for (let i = 0; i < 8; i++) {
-      w.putLdrRegRegOffset(`x${i}` as Arm64Register, "sp", i * 8);
-    }
-    for (let i = 0; i < 8; i++) {
-      w.putLdrRegRegOffset(`d${i}` as Arm64Register, "sp", 0x40 + i * 8);
-    }
-    w.putAddRegRegImm("sp", "sp", 0x90);
-    w.putPopRegReg("x29", "x30");
-    w.putBrRegNoAuth("x9");
-    w.flush();
   });
   completionTrampoline = page;
   return page;
+}
+
+function writeArm64CompletionTrampoline(slot: NativePointer, pc: NativePointer): void {
+  const w = new Arm64Writer(slot, { pc });
+  w.putPushRegReg("x29", "x30");
+  w.putSubRegRegImm("sp", "sp", 0x90);
+  for (let i = 0; i < 8; i++) {
+    w.putStrRegRegOffset(`x${i}` as Arm64Register, "sp", i * 8);
+  }
+  for (let i = 0; i < 8; i++) {
+    w.putStrRegRegOffset(`d${i}` as Arm64Register, "sp", 0x40 + i * 8);
+  }
+  w.putStrRegRegOffset("x20", "sp", 0x80);
+  w.putMovRegReg("x0", "x22");
+  w.putAddRegRegImm("x1", "sp", 0);
+  w.putLdrRegAddress("x14", completionBridge!);
+  w.putBlrRegNoAuth("x14");
+  w.putMovRegReg("x9", "x0");
+  for (let i = 0; i < 8; i++) {
+    w.putLdrRegRegOffset(`x${i}` as Arm64Register, "sp", i * 8);
+  }
+  for (let i = 0; i < 8; i++) {
+    w.putLdrRegRegOffset(`d${i}` as Arm64Register, "sp", 0x40 + i * 8);
+  }
+  w.putAddRegRegImm("sp", "sp", 0x90);
+  w.putPopRegReg("x29", "x30");
+  w.putBrRegNoAuth("x9");
+  w.flush();
+}
+
+const X64_RESULT_ARG_REGS: X86Register[] = ["rdi", "rsi", "rdx", "rcx", "r8", "r9"];
+
+// Hand-encoded movsd to/from [rsp+off]; the rsp base needs a SIB byte (0x24).
+function putXmmStoreToRsp(w: X86Writer, off: number, index: number): void {
+  w.putBytes([0xf2, 0x0f, 0x11, 0x44 | (index << 3), 0x24, off & 0xff]);
+}
+function putXmmLoadFromRsp(w: X86Writer, index: number, off: number): void {
+  w.putBytes([0xf2, 0x0f, 0x10, 0x44 | (index << 3), 0x24, off & 0xff]);
+}
+
+// r13/r14 are callee-saved so the bridge preserves them; caller-saved result regs are spilled/restored.
+function writeX64CompletionTrampoline(slot: NativePointer, pc: NativePointer): void {
+  const w = new X86Writer(slot, { pc });
+  w.putPushReg("rbp"); // 16-align rsp across the call
+  w.putSubRegImm("rsp", X64_SPILL_SIZE);
+  X64_RESULT_ARG_REGS.forEach((r, i) => w.putMovRegOffsetPtrReg("rsp", i * 8, r));
+  for (let k = 0; k < 8; k++) {
+    putXmmStoreToRsp(w, X64_SPILL_XMM + k * 8, k);
+  }
+  w.putMovRegOffsetPtrReg("rsp", X64_SPILL_ERROR, "r13");
+  w.putMovRegReg("rdi", "r14"); // bridge(asyncContext, spillPtr)
+  w.putMovRegReg("rsi", "rsp");
+  w.putMovRegAddress("r11", completionBridge!);
+  w.putCallReg("r11");
+  w.putMovRegReg("r11", "rax"); // r11 = original ResumeParent
+  X64_RESULT_ARG_REGS.forEach((r, i) => w.putMovRegRegOffsetPtr(r, "rsp", i * 8));
+  for (let k = 0; k < 8; k++) {
+    putXmmLoadFromRsp(w, k, X64_SPILL_XMM + k * 8);
+  }
+  w.putAddRegImm("rsp", X64_SPILL_SIZE);
+  w.putPopReg("rbp");
+  w.putJmpReg("r11");
+  w.flush();
 }
 
 function attachAsync(target: NativePointer, callbacks: SwiftAsyncCallbacks): InvocationListener {
@@ -486,9 +604,9 @@ function attachAsync(target: NativePointer, callbacks: SwiftAsyncCallbacks): Inv
   const wantsArgs = callbacks.onEnter !== undefined || returnNeedsGenerics;
   const liveEntries = new Set<CompletionEntry>();
 
-  const armCompletion = (context: Arm64CpuContext, generics: Metadata[]): void => {
+  const armCompletion = (context: CpuContext, generics: Metadata[]): void => {
     const trampoline = getCompletionTrampoline();
-    const taskContext = context.x22;
+    const taskContext = asyncContextRegister(context);
     const ctx = new AsyncContext(taskContext);
     const key = taskContext.toString();
     let slot = pending.get(key);
@@ -502,7 +620,7 @@ function attachAsync(target: NativePointer, callbacks: SwiftAsyncCallbacks): Inv
       ret,
       generics,
       genericParams,
-      outBuffer: indirectReturn ? context.x0 : null,
+      outBuffer: indirectReturn ? gpArg(context, 0) : null,
       throws,
       owner: liveEntries,
       slot,
@@ -514,13 +632,13 @@ function attachAsync(target: NativePointer, callbacks: SwiftAsyncCallbacks): Inv
   const onEnter =
     wantsArgs || wantsCompletion
       ? function (this: InvocationContext) {
-          const context = this.context as Arm64CpuContext;
+          const context = this.context;
           let generics: Metadata[] = [];
           if (wantsArgs) {
             const materialized = materializeArgs(context, args, genericParams, argRegBase);
             generics = materialized.generics;
             if (callbacks.onEnter !== undefined) {
-              callbacks.onEnter.call(this, materialized.values, context.x22);
+              callbacks.onEnter.call(this, materialized.values, asyncContextRegister(context));
             }
           }
           if (wantsCompletion) {

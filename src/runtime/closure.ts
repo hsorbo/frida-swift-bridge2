@@ -1,5 +1,7 @@
 import { getSwiftCoreApi } from "./api.js";
 
+const ARCH = Process.arch;
+
 // HeapObject header: [metadata, refCounts]. swift_allocObject installs strong count 1.
 const HEAP_HEADER_SIZE = Process.pointerSize * 2;
 const HEAP_ALIGN_MASK = Process.pointerSize - 1;
@@ -203,9 +205,17 @@ interface ClosureTrampolineConfig {
   routesError: boolean;
 }
 
-// Swift branches in; stash x8 (the @out result) for the callback, then route its error to x21.
-// x21 is swifterror only when the closure throws — otherwise it's callee-saved and left untouched.
+// Stash the @out result register (x8 / rax) for the callback, then route its error to swifterror
+// (x21 / r12) only when the closure throws. Loadable args/results pass through untouched.
 function writeClosureTrampoline(code: NativePointer, cfg: ClosureTrampolineConfig): void {
+  if (ARCH === "arm64") {
+    writeArm64ClosureTrampoline(code, cfg);
+  } else {
+    writeX64ClosureTrampoline(code, cfg);
+  }
+}
+
+function writeArm64ClosureTrampoline(code: NativePointer, cfg: ClosureTrampolineConfig): void {
   Memory.patchCode(code, 0x80, (slot) => {
     const writer = new Arm64Writer(slot, { pc: code });
 
@@ -225,6 +235,32 @@ function writeClosureTrampoline(code: NativePointer, cfg: ClosureTrampolineConfi
     }
 
     writer.putPopRegReg("x29", "x30");
+    writer.putRet();
+
+    writer.flush();
+  });
+}
+
+function writeX64ClosureTrampoline(code: NativePointer, cfg: ClosureTrampolineConfig): void {
+  Memory.patchCode(code, 0x80, (slot) => {
+    const writer = new X86Writer(slot, { pc: code });
+
+    writer.putSubRegImm("rsp", 8); // 16-align rsp across the call
+
+    if (cfg.resultSlot !== null) {
+      writer.putMovRegAddress("r11", cfg.resultSlot);
+      writer.putMovRegPtrReg("r11", "rax");
+    }
+
+    writer.putMovRegAddress("r11", cfg.target);
+    writer.putCallReg("r11");
+
+    if (cfg.routesError) {
+      writer.putMovRegAddress("r11", cfg.errorSlot);
+      writer.putMovRegRegPtr("r12", "r11"); // r12 = swifterror
+    }
+
+    writer.putAddRegImm("rsp", 8);
     writer.putRet();
 
     writer.flush();

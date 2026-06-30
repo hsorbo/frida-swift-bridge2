@@ -7,8 +7,16 @@ import { LIBSWIFT_CORE_NAME, SWIFT_HOST_SUPPORTED } from "./platform.js";
 const OFFSETOF_PARENT = 0;
 const OFFSETOF_RESUME_PARENT = Process.pointerSize;
 
-const ARG_REGS = ["x0", "x1", "x2", "x3", "x4", "x5", "x6", "x7"] as Arm64Register[];
-const GP_RESULT_REGS = ["x0", "x1", "x2", "x3"] as Arm64Register[];
+const ARCH = Process.arch;
+
+// The continuation is entered as ResumeParent(context, results...), so results ride the argument
+// registers, not the sync-return registers; error rides swiftself (x20 / r13), context is x22 / r14.
+const ARG_REGS_ARM64 = ["x0", "x1", "x2", "x3", "x4", "x5", "x6", "x7"] as Arm64Register[];
+const GP_RESULT_REGS_ARM64 = ["x0", "x1", "x2", "x3"] as Arm64Register[];
+const ARG_REGS_X64 = ["rdi", "rsi", "rdx", "rcx", "r8", "r9"] as X86Register[];
+const GP_RESULT_REGS_X64 = ["rdi", "rsi", "rdx", "rcx"] as X86Register[];
+const NUM_ARG_REGS = ARCH === "arm64" ? ARG_REGS_ARM64.length : ARG_REGS_X64.length;
+const NUM_GP_RESULT_REGS = 4;
 const MAX_FLOAT_REGS = 8;
 
 const COPY_TASK_LOCALS = 1 << 10;
@@ -138,13 +146,13 @@ function synthesizeAsyncCall(afp: AsyncFunctionPointer, args: NativePointer[], o
   const shape: AsyncResultShape = options.result ?? { kind: "gp", words: 1 };
   const floatArgs = options.floatArgs ?? [];
   const gpBase = shape.kind === "indirect" ? 1 : 0;
-  if (gpBase + args.length > ARG_REGS.length) {
+  if (gpBase + args.length > NUM_ARG_REGS) {
     throw new Error("too many register arguments");
   }
   if (floatArgs.length > MAX_FLOAT_REGS) {
     throw new Error("too many floating-point arguments");
   }
-  if (shape.kind === "gp" && (shape.words < 1 || shape.words > GP_RESULT_REGS.length)) {
+  if (shape.kind === "gp" && (shape.words < 1 || shape.words > NUM_GP_RESULT_REGS)) {
     throw new Error("direct GP results wider than 4 words are not supported");
   }
   const swift_task_alloc = concExport("swift_task_alloc");
@@ -154,83 +162,219 @@ function synthesizeAsyncCall(afp: AsyncFunctionPointer, args: NativePointer[], o
   const error = Memory.alloc(Process.pointerSize).writePointer(NULL);
   const done = Memory.alloc(Process.pointerSize);
 
+  const continuationCtx: ContinuationCtx = {
+    shape,
+    throws: options.throws === true,
+    result,
+    error,
+    done,
+    swift_task_dealloc,
+    dispatch_semaphore_signal,
+    signalSemaphore,
+  };
   const continuation = Memory.alloc(Process.pageSize);
   Memory.patchCode(continuation, TRAMPOLINE_SIZE, (slot) => {
-    const w = new Arm64Writer(slot, { pc: continuation });
-    if (shape.kind === "gp") {
-      w.putLdrRegAddress("x14", result);
-      for (let i = 0; i < shape.words; i++) {
-        w.putStrRegRegOffset(GP_RESULT_REGS[i], "x14", i * Process.pointerSize);
-      }
-    } else if (shape.kind === "float") {
-      w.putLdrRegAddress("x14", result);
-      for (let i = 0; i < shape.count; i++) {
-        w.putStrRegRegOffset(fpReg(shape.cls, i), "x14", i * fpStride(shape.cls));
-      }
+    if (ARCH === "arm64") {
+      writeArm64Continuation(slot, continuation, continuationCtx);
+    } else {
+      writeX64Continuation(slot, continuation, continuationCtx);
     }
-    if (options.throws === true) {
-      w.putLdrRegAddress("x14", error);
-      w.putStrRegRegOffset("x20", "x14", 0);
-    }
-    w.putPushRegReg("x29", "x30");
-    w.putLdrRegRegOffset("x8", "x22", OFFSETOF_PARENT);
-    w.putPushRegReg("x8", "x9"); // swift_task_dealloc clobbers x22
-    w.putMovRegReg("x0", "x22");
-    w.putLdrRegAddress("x14", swift_task_dealloc);
-    w.putBlrRegNoAuth("x14");
-    w.putLdrRegRegOffset("x22", "sp", 0);
-    w.putPopRegReg("x8", "x9");
-    w.putPopRegReg("x29", "x30");
-    w.putLdrRegU64("x9", 1);
-    w.putLdrRegAddress("x14", done);
-    w.putStrRegRegOffset("x9", "x14", 0);
-    if (dispatch_semaphore_signal !== null) {
-      w.putPushRegReg("x22", "x30"); // preserve the async context across the call so ResumeParent survives
-      w.putLdrRegAddress("x0", signalSemaphore!);
-      w.putLdrRegAddress("x14", dispatch_semaphore_signal);
-      w.putBlrRegNoAuth("x14");
-      w.putPopRegReg("x22", "x30");
-    }
-    w.putLdrRegRegOffset("x1", "x22", OFFSETOF_RESUME_PARENT);
-    w.putBrRegNoAuth("x1");
-    w.flush();
   });
 
+  const operationCtx: OperationCtx = {
+    afp,
+    args,
+    floatArgs,
+    shape,
+    gpBase,
+    result,
+    receiver: options.receiver,
+    swift_task_alloc,
+    continuation,
+  };
   const operation = Memory.alloc(Process.pageSize);
   Memory.patchCode(operation, TRAMPOLINE_SIZE, (slot) => {
-    const w = new Arm64Writer(slot, { pc: operation });
-    w.putPushRegReg("x29", "x30");
-    w.putPushRegReg("x22", "x8"); // swift_task_alloc clobbers x22
-    w.putLdrRegAddress("x0", ptr(afp.expectedContextSize));
-    w.putLdrRegAddress("x14", swift_task_alloc);
-    w.putBlrRegNoAuth("x14");
-    w.putMovRegReg("x9", "x0");
-    w.putLdrRegRegOffset("x8", "sp", 0);
-    w.putStrRegRegOffset("x8", "x9", OFFSETOF_PARENT);
-    w.putLdrRegAddress("x10", continuation);
-    w.putStrRegRegOffset("x10", "x9", OFFSETOF_RESUME_PARENT);
-    w.putPopRegReg("x22", "x8");
-    w.putPopRegReg("x29", "x30");
-    if (shape.kind === "indirect") {
-      w.putLdrRegAddress("x0", result); // @out rides x0, not x8 as in sync swiftcc
+    if (ARCH === "arm64") {
+      writeArm64Operation(slot, operation, operationCtx);
+    } else {
+      writeX64Operation(slot, operation, operationCtx);
     }
-    args.forEach((a, i) => w.putLdrRegAddress(ARG_REGS[gpBase + i], a));
-    floatArgs.forEach((fa, i) => {
-      w.putLdrRegAddress("x14", fa.bytes);
-      w.putLdrRegRegOffset(fpReg(fa.cls, i), "x14", 0);
-    });
-    if (options.receiver !== undefined) {
-      w.putLdrRegAddress("x20", options.receiver);
-    }
-    w.putMovRegReg("x22", "x9");
-    w.putLdrRegAddress("x14", afp.code);
-    w.putBrRegNoAuth("x14");
-    w.flush();
   });
 
   const option = options.onActor !== undefined ? buildActorTaskOption(options.onActor) : null;
 
   return { operation, continuation, result, error, done, option };
+}
+
+interface ContinuationCtx {
+  shape: AsyncResultShape;
+  throws: boolean;
+  result: NativePointer;
+  error: NativePointer;
+  done: NativePointer;
+  swift_task_dealloc: NativePointer;
+  dispatch_semaphore_signal: NativePointer | null;
+  signalSemaphore: NativePointer | null;
+}
+
+interface OperationCtx {
+  afp: AsyncFunctionPointer;
+  args: NativePointer[];
+  floatArgs: AsyncFloatArg[];
+  shape: AsyncResultShape;
+  gpBase: number;
+  result: NativePointer;
+  receiver: NativePointer | undefined;
+  swift_task_alloc: NativePointer;
+  continuation: NativePointer;
+}
+
+function writeArm64Continuation(slot: NativePointer, pc: NativePointer, c: ContinuationCtx): void {
+  const w = new Arm64Writer(slot, { pc });
+  if (c.shape.kind === "gp") {
+    w.putLdrRegAddress("x14", c.result);
+    for (let i = 0; i < c.shape.words; i++) {
+      w.putStrRegRegOffset(GP_RESULT_REGS_ARM64[i], "x14", i * Process.pointerSize);
+    }
+  } else if (c.shape.kind === "float") {
+    w.putLdrRegAddress("x14", c.result);
+    for (let i = 0; i < c.shape.count; i++) {
+      w.putStrRegRegOffset(fpReg(c.shape.cls, i), "x14", i * fpStride(c.shape.cls));
+    }
+  }
+  if (c.throws) {
+    w.putLdrRegAddress("x14", c.error);
+    w.putStrRegRegOffset("x20", "x14", 0);
+  }
+  w.putPushRegReg("x29", "x30");
+  w.putLdrRegRegOffset("x8", "x22", OFFSETOF_PARENT);
+  w.putPushRegReg("x8", "x9"); // swift_task_dealloc clobbers x22
+  w.putMovRegReg("x0", "x22");
+  w.putLdrRegAddress("x14", c.swift_task_dealloc);
+  w.putBlrRegNoAuth("x14");
+  w.putLdrRegRegOffset("x22", "sp", 0);
+  w.putPopRegReg("x8", "x9");
+  w.putPopRegReg("x29", "x30");
+  w.putLdrRegU64("x9", 1);
+  w.putLdrRegAddress("x14", c.done);
+  w.putStrRegRegOffset("x9", "x14", 0);
+  if (c.dispatch_semaphore_signal !== null) {
+    w.putPushRegReg("x22", "x30"); // preserve the async context across the call so ResumeParent survives
+    w.putLdrRegAddress("x0", c.signalSemaphore!);
+    w.putLdrRegAddress("x14", c.dispatch_semaphore_signal);
+    w.putBlrRegNoAuth("x14");
+    w.putPopRegReg("x22", "x30");
+  }
+  w.putLdrRegRegOffset("x1", "x22", OFFSETOF_RESUME_PARENT);
+  w.putBrRegNoAuth("x1");
+  w.flush();
+}
+
+function writeArm64Operation(slot: NativePointer, pc: NativePointer, o: OperationCtx): void {
+  const w = new Arm64Writer(slot, { pc });
+  w.putPushRegReg("x29", "x30");
+  w.putPushRegReg("x22", "x8"); // swift_task_alloc clobbers x22
+  w.putLdrRegAddress("x0", ptr(o.afp.expectedContextSize));
+  w.putLdrRegAddress("x14", o.swift_task_alloc);
+  w.putBlrRegNoAuth("x14");
+  w.putMovRegReg("x9", "x0");
+  w.putLdrRegRegOffset("x8", "sp", 0);
+  w.putStrRegRegOffset("x8", "x9", OFFSETOF_PARENT);
+  w.putLdrRegAddress("x10", o.continuation);
+  w.putStrRegRegOffset("x10", "x9", OFFSETOF_RESUME_PARENT);
+  w.putPopRegReg("x22", "x8");
+  w.putPopRegReg("x29", "x30");
+  if (o.shape.kind === "indirect") {
+    w.putLdrRegAddress("x0", o.result); // @out rides x0, not x8 as in sync swiftcc
+  }
+  o.args.forEach((a, i) => w.putLdrRegAddress(ARG_REGS_ARM64[o.gpBase + i], a));
+  o.floatArgs.forEach((fa, i) => {
+    w.putLdrRegAddress("x14", fa.bytes);
+    w.putLdrRegRegOffset(fpReg(fa.cls, i), "x14", 0);
+  });
+  if (o.receiver !== undefined) {
+    w.putLdrRegAddress("x20", o.receiver);
+  }
+  w.putMovRegReg("x22", "x9");
+  w.putLdrRegAddress("x14", o.afp.code);
+  w.putBrRegNoAuth("x14");
+  w.flush();
+}
+
+// X86Writer has no SSE moves; hand-encode movsd/movss for an arbitrary base register.
+function putFpLoadFromR11(w: X86Writer, cls: FloatClass, index: number): void {
+  const prefix = cls === "double" ? 0xf2 : 0xf3;
+  w.putBytes([prefix, 0x41, 0x0f, 0x10, 0x03 | (index << 3)]);
+}
+
+function putFpStoreToR10(w: X86Writer, cls: FloatClass, off: number, index: number): void {
+  const prefix = cls === "double" ? 0xf2 : 0xf3;
+  w.putBytes([prefix, 0x41, 0x0f, 0x11, 0x42 | (index << 3), off & 0xff]);
+}
+
+function writeX64Continuation(slot: NativePointer, pc: NativePointer, c: ContinuationCtx): void {
+  const w = new X86Writer(slot, { pc });
+  w.putPushReg("r15"); // callee-saved: carries the parent context across the call, and 16-aligns rsp
+  if (c.shape.kind === "gp") {
+    w.putMovRegAddress("r10", c.result);
+    for (let i = 0; i < c.shape.words; i++) {
+      w.putMovRegOffsetPtrReg("r10", i * Process.pointerSize, GP_RESULT_REGS_X64[i]);
+    }
+  } else if (c.shape.kind === "float") {
+    w.putMovRegAddress("r10", c.result);
+    for (let i = 0; i < c.shape.count; i++) {
+      putFpStoreToR10(w, c.shape.cls, i * fpStride(c.shape.cls), i);
+    }
+  }
+  if (c.throws) {
+    w.putMovRegAddress("r10", c.error);
+    w.putMovRegPtrReg("r10", "r13"); // error rides swiftself (r13), mirroring arm64 x20
+  }
+  w.putMovRegRegOffsetPtr("r15", "r14", OFFSETOF_PARENT);
+  w.putMovRegReg("rdi", "r14");
+  w.putMovRegAddress("r11", c.swift_task_dealloc);
+  w.putCallReg("r11");
+  w.putMovRegReg("r14", "r15");
+  w.putMovRegAddress("r11", c.done);
+  w.putMovRegU64("r10", 1);
+  w.putMovRegPtrReg("r11", "r10");
+  if (c.dispatch_semaphore_signal !== null) {
+    w.putMovRegAddress("rdi", c.signalSemaphore!);
+    w.putMovRegAddress("r11", c.dispatch_semaphore_signal);
+    w.putCallReg("r11");
+  }
+  w.putPopReg("r15");
+  w.putMovRegRegOffsetPtr("r11", "r14", OFFSETOF_RESUME_PARENT);
+  w.putJmpReg("r11");
+  w.flush();
+}
+
+function writeX64Operation(slot: NativePointer, pc: NativePointer, o: OperationCtx): void {
+  const w = new X86Writer(slot, { pc });
+  w.putPushReg("r15"); // callee-saved: holds the task context across swift_task_alloc, and 16-aligns rsp
+  w.putMovRegReg("r15", "r14");
+  w.putMovRegAddress("rdi", ptr(o.afp.expectedContextSize));
+  w.putMovRegAddress("r11", o.swift_task_alloc);
+  w.putCallReg("r11");
+  w.putMovRegOffsetPtrReg("rax", OFFSETOF_PARENT, "r15");
+  w.putMovRegAddress("r10", o.continuation);
+  w.putMovRegOffsetPtrReg("rax", OFFSETOF_RESUME_PARENT, "r10");
+  w.putMovRegReg("r14", "rax");
+  if (o.shape.kind === "indirect") {
+    w.putMovRegAddress(ARG_REGS_X64[0], o.result); // @out rides arg0, not rax as in sync swiftcc
+  }
+  o.args.forEach((a, i) => w.putMovRegAddress(ARG_REGS_X64[o.gpBase + i], a));
+  o.floatArgs.forEach((fa, i) => {
+    w.putMovRegAddress("r11", fa.bytes);
+    putFpLoadFromR11(w, fa.cls, i);
+  });
+  if (o.receiver !== undefined) {
+    w.putMovRegAddress("r13", o.receiver); // swiftself
+  }
+  w.putPopReg("r15");
+  w.putMovRegAddress("r11", o.afp.code);
+  w.putJmpReg("r11");
+  w.flush();
 }
 
 type CreateTask = (

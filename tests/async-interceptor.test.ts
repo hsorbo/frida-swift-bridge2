@@ -191,9 +191,9 @@ describe("async interceptor", () => {
     let asyncContext: NativePointer | undefined;
     const listener = Swift.Interceptor.attachAsync(module.getExportByName(COMPUTE_ASYNC), {
       onComplete() {
-        const cc = this.context as Arm64CpuContext;
-        result = cc.x0;
-        asyncContext = cc.x22;
+        const cc = this.context as unknown as Record<string, NativePointer>;
+        result = Process.arch === "arm64" ? cc.x0 : cc.rax;
+        asyncContext = Process.arch === "arm64" ? cc.x22 : cc.r14;
       },
     });
     try {

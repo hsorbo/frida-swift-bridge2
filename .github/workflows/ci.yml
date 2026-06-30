@@ -34,7 +34,8 @@ jobs:
       fail-fast: false
       matrix:
         swift: ["5.7-jammy", "5.10-noble", "6.0-noble", "6.1-noble", "6.2-noble", "6.3-noble"]
-    runs-on: ubuntu-24.04-arm
+        runner: [ubuntu-24.04-arm, ubuntu-24.04]
+    runs-on: ${{ matrix.runner }}
     container:
       image: swift:${{ matrix.swift }}
     steps:

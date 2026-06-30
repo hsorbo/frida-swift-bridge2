@@ -8,9 +8,11 @@ import { readValue, SwiftValue } from "./instance.js";
 // is to decode via the container's own count + subscript through the generic-method machinery, since
 // the calling convention is part of the stable ABI.
 
-// arm64 SWIFT_ABI_ARM64_SWIFT_SPARE_BITS_MASK: clearing the spare bits of a BridgeObject yields the
-// native storage pointer; the is-objc bit instead marks an unwalkable Cocoa-bridged backing.
-const BRIDGE_OBJECT_NATIVE_MASK = ptr("0x0ffffffffffffff8");
+// SWIFT_ABI_{ARM64,X86_64}_SWIFT_SPARE_BITS_MASK: clearing the spare bits of a BridgeObject yields
+// the native storage pointer; the is-objc bit instead marks an unwalkable Cocoa-bridged backing.
+// IS_OBJC_BIT is the same on both architectures; only the spare-bits mask (hence NATIVE_MASK) differs.
+const BRIDGE_OBJECT_NATIVE_MASK =
+  Process.arch === "arm64" ? ptr("0x0ffffffffffffff8") : ptr("0x00fffffffffffff8");
 const BRIDGE_OBJECT_IS_OBJC_BIT = ptr("0x4000000000000000");
 
 const HEAP_HEADER_SIZE = 0x10;

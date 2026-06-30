@@ -5,6 +5,8 @@ import { typeName } from "./type-name.js";
 
 export const MAX_LOADABLE_SIZE = Process.pointerSize * 4;
 
+const ARCH = Process.arch;
+
 const resilientModules = new Set<string>();
 
 export function markResilientModule(name: string): void {
@@ -119,28 +121,79 @@ function isClosureRef(arg: SwiftArgType): arg is ClosureRef {
   return !(arg instanceof Metadata) && "closure" in arg;
 }
 
+// One physical register's worth of a directly-passed value, read out of the value's bytes.
+type ArgPiece =
+  | { kind: "word"; off: number }
+  | { kind: "double"; off: number }
+  | { kind: "float"; off: number };
+
+function fridaArgType(piece: ArgPiece): NativeFunctionArgumentType {
+  return piece.kind === "word" ? "uint64" : piece.kind;
+}
+
+function readArgPiece(piece: ArgPiece, base: NativePointer): NativeFunctionArgumentValue {
+  const at = base.add(piece.off);
+  switch (piece.kind) {
+    case "word":
+      return at.readU64();
+    case "double":
+      return at.readDouble();
+    case "float":
+      return at.readFloat();
+  }
+}
+
+// swiftcc spreads a homogeneous-float aggregate with each FP leaf in its own register (≤4), on
+// both arm64 (d/s) and x86-64 (xmm) — it is not packed by the SysV eightbyte rule.
+function floatPieces(fl: FloatLayout): ArgPiece[] {
+  const stride = fl.cls === "double" ? 8 : 4;
+  return Array.from({ length: fl.count }, (_, i) => ({ kind: fl.cls, off: i * stride } as ArgPiece));
+}
+
+function wordPieces(count: number): ArgPiece[] {
+  return Array.from({ length: count }, (_, i) => ({ kind: "word", off: i * 8 }));
+}
+
+function directArgPieces(metadata: Metadata): ArgPiece[] {
+  const fl = floatLayout(metadata);
+  if (fl !== null) {
+    return floatPieces(fl);
+  }
+  return wordPieces(Math.ceil(metadata.valueWitnesses.size / 8));
+}
+
 interface LoweredArg {
   indirect: boolean;
-  float: FloatLayout | null;
-  words: number;
+  pieces: ArgPiece[];
 }
 
 function lowerArg(arg: SwiftArgType): LoweredArg {
   if (isClosureRef(arg)) {
-    return { indirect: false, float: null, words: CLOSURE_WORDS };
+    return { indirect: false, pieces: wordPieces(CLOSURE_WORDS) };
   }
   if (isGenericRef(arg) || isAbstractIndirect(arg)) {
-    return { indirect: true, float: null, words: 0 };
+    return { indirect: true, pieces: [] };
   }
   // indirect before HFA: a resilient float aggregate is @in, not spread across v-registers
   if (shouldPassIndirectly(arg)) {
-    return { indirect: true, float: null, words: 0 };
+    return { indirect: true, pieces: [] };
   }
-  const float = floatLayout(arg);
-  if (float !== null) {
-    return { indirect: false, float, words: 0 };
+  return { indirect: false, pieces: directArgPieces(arg) };
+}
+
+// Where each piece of a direct result lands, harvested back into the result buffer by the trampoline.
+type ResultPiece =
+  | { reg: "gp"; off: number } // x0.. / rax,rdx,rcx,r8
+  | { reg: "fp"; cls: FloatClass; off: number }; // arm64 d/s register, x86-64 xmm register
+
+function resultPieces(metadata: Metadata): ResultPiece[] {
+  const fl = floatLayout(metadata);
+  if (fl !== null) {
+    const stride = fl.cls === "double" ? 8 : 4;
+    return Array.from({ length: fl.count }, (_, i) => ({ reg: "fp", cls: fl.cls, off: i * stride }));
   }
-  return { indirect: false, float: null, words: Math.ceil(arg.valueWitnesses.size / 8) };
+  const words = Math.ceil(metadata.valueWitnesses.size / 8);
+  return Array.from({ length: words }, (_, i) => ({ reg: "gp", off: i * 8 }));
 }
 
 export class SwiftThrownError extends Error {
@@ -161,7 +214,7 @@ export interface SwiftNativeFunctionOptions {
 export type SwiftNativeFunction = (...args: NativePointer[]) => NativePointer | null;
 
 // args/result are pointers to value bytes (result freshly allocated; null for void). When
-// hasSelf, the first argument is the self/context pointer (x20). Unhandled: float/SIMD aggregates.
+// hasSelf, the first argument is the self/context pointer (x20 / r13).
 export function makeSwiftNativeFunction(
   address: NativePointer,
   returnType: SwiftArgType | null,
@@ -189,13 +242,9 @@ export function makeSwiftNativeFunction(
   for (const arg of loweredArgs) {
     if (arg.indirect) {
       fridaArgTypes.push("pointer");
-    } else if (arg.float !== null) {
-      for (let i = 0; i < arg.float.count; i++) {
-        fridaArgTypes.push(arg.float.cls);
-      }
     } else {
-      for (let i = 0; i < arg.words; i++) {
-        fridaArgTypes.push("uint64");
+      for (const piece of arg.pieces) {
+        fridaArgTypes.push(fridaArgType(piece));
       }
     }
   }
@@ -205,8 +254,7 @@ export function makeSwiftNativeFunction(
   }
 
   let indirectResult = false;
-  let directWords = 0;
-  let floatResult: FloatLayout | null = null;
+  let directResult: ResultPiece[] = [];
   let resultSize = 0;
   let resultStride = 0;
   if (returnType !== null) {
@@ -222,14 +270,11 @@ export function makeSwiftNativeFunction(
     resultSize = returnMetadata.valueWitnesses.size;
     resultStride = returnMetadata.valueWitnesses.stride;
     if (resultSize > 0) {
-      // indirect (x8) before HFA, as in lowerArg
+      // indirect before HFA, as in lowerArg
       if (forcedIndirect || shouldPassIndirectly(returnMetadata)) {
         indirectResult = true;
       } else {
-        floatResult = floatLayout(returnMetadata);
-        if (floatResult === null) {
-          directWords = Math.ceil(resultSize / 8);
-        }
+        directResult = resultPieces(returnMetadata);
       }
     }
   }
@@ -249,9 +294,8 @@ export function makeSwiftNativeFunction(
     selfBuffer,
     errorBuffer,
     indirectResultBuffer: indirectResult ? scratch : null,
-    directWords,
-    directResultBuffer: directWords > 0 ? scratch : null,
-    floatResult: floatResult !== null ? { ...floatResult, buffer: scratch } : null,
+    resultBuffer: directResult.length > 0 ? scratch : null,
+    resultPieces: directResult,
   });
   const resources = {
     code,
@@ -289,15 +333,9 @@ export function makeSwiftNativeFunction(
         } else {
           physical.push(value);
         }
-      } else if (lowered.float !== null) {
-        const stride = lowered.float.cls === "double" ? 8 : 4;
-        for (let k = 0; k < lowered.float.count; k++) {
-          const leaf = value.add(k * stride);
-          physical.push(lowered.float.cls === "double" ? leaf.readDouble() : leaf.readFloat());
-        }
       } else {
-        for (let w = 0; w < lowered.words; w++) {
-          physical.push(value.add(w * 8).readU64());
+        for (const piece of lowered.pieces) {
+          physical.push(readArgPiece(piece, value));
         }
       }
     }
@@ -332,12 +370,19 @@ interface TrampolineConfig {
   selfBuffer: NativePointer | null;
   errorBuffer: NativePointer | null;
   indirectResultBuffer: NativePointer | null;
-  directWords: number;
-  directResultBuffer: NativePointer | null;
-  floatResult: (FloatLayout & { buffer: NativePointer }) | null;
+  resultBuffer: NativePointer | null;
+  resultPieces: ResultPiece[];
 }
 
 function writeTrampoline(code: NativePointer, cfg: TrampolineConfig): void {
+  if (ARCH === "arm64") {
+    writeArm64Trampoline(code, cfg);
+  } else {
+    writeX86Trampoline(code, cfg);
+  }
+}
+
+function writeArm64Trampoline(code: NativePointer, cfg: TrampolineConfig): void {
   const savesContext = cfg.selfBuffer !== null || cfg.errorBuffer !== null;
 
   Memory.patchCode(code, 0x100, (slot) => {
@@ -363,18 +408,17 @@ function writeTrampoline(code: NativePointer, cfg: TrampolineConfig): void {
     writer.putLdrRegAddress("x14", cfg.target);
     writer.putBlrRegNoAuth("x14");
 
-    if (cfg.directResultBuffer !== null) {
-      writer.putLdrRegAddress("x15", cfg.directResultBuffer);
-      for (let i = 0; i < cfg.directWords; i++) {
-        writer.putStrRegRegOffset(`x${i}` as Arm64Register, "x15", i * 8);
-      }
-    }
-    if (cfg.floatResult !== null) {
-      writer.putLdrRegAddress("x15", cfg.floatResult.buffer);
-      const prefix = cfg.floatResult.cls === "double" ? "d" : "s";
-      const stride = cfg.floatResult.cls === "double" ? 8 : 4;
-      for (let i = 0; i < cfg.floatResult.count; i++) {
-        writer.putStrRegRegOffset(`${prefix}${i}` as Arm64Register, "x15", i * stride);
+    if (cfg.resultBuffer !== null) {
+      writer.putLdrRegAddress("x15", cfg.resultBuffer);
+      let gp = 0;
+      let vfp = 0;
+      for (const piece of cfg.resultPieces) {
+        if (piece.reg === "gp") {
+          writer.putStrRegRegOffset(`x${gp++}` as Arm64Register, "x15", piece.off);
+        } else {
+          const prefix = piece.cls === "double" ? "d" : "s";
+          writer.putStrRegRegOffset(`${prefix}${vfp++}` as Arm64Register, "x15", piece.off);
+        }
       }
     }
     if (cfg.errorBuffer !== null) {
@@ -391,4 +435,61 @@ function writeTrampoline(code: NativePointer, cfg: TrampolineConfig): void {
 
     writer.flush();
   });
+}
+
+const X86_RESULT_GP: X86Register[] = ["rax", "rdx", "rcx", "r8"];
+
+function writeX86Trampoline(code: NativePointer, cfg: TrampolineConfig): void {
+  Memory.patchCode(code, 0x200, (slot) => {
+    const writer = new X86Writer(slot, { pc: code });
+
+    // r12 (error) and r13 (self) are callee-saved; preserve them and keep rsp 16-aligned for the call.
+    writer.putPushReg("r12");
+    writer.putPushReg("r13");
+    writer.putSubRegImm("rsp", 8);
+
+    if (cfg.selfBuffer !== null) {
+      writer.putMovRegAddress("r11", cfg.selfBuffer);
+      writer.putMovRegRegPtr("r13", "r11"); // r13 = swiftcc self/context
+    }
+    if (cfg.errorBuffer !== null) {
+      writer.putBytes([0x45, 0x31, 0xe4]); // xor r12d, r12d — clear the swiftcc error register
+    }
+    if (cfg.indirectResultBuffer !== null) {
+      writer.putMovRegAddress("rax", cfg.indirectResultBuffer); // rax = swiftcc indirect-result pointer
+    }
+
+    writer.putMovRegAddress("r11", cfg.target);
+    writer.putCallReg("r11");
+
+    if (cfg.errorBuffer !== null) {
+      writer.putMovRegAddress("r10", cfg.errorBuffer);
+      writer.putBytes([0x4d, 0x89, 0x22]); // mov [r10], r12 — store the thrown error
+    }
+    if (cfg.resultBuffer !== null) {
+      writer.putMovRegAddress("r10", cfg.resultBuffer);
+      let gp = 0;
+      let sse = 0;
+      for (const piece of cfg.resultPieces) {
+        if (piece.reg === "gp") {
+          writer.putMovRegOffsetPtrReg("r10", piece.off, X86_RESULT_GP[gp++]);
+        } else {
+          putFpStoreToR10(writer, piece.cls, piece.off, sse++);
+        }
+      }
+    }
+
+    writer.putAddRegImm("rsp", 8);
+    writer.putPopReg("r13");
+    writer.putPopReg("r12");
+    writer.putRet();
+
+    writer.flush();
+  });
+}
+
+// movss/movsd [r10+off], xmm<index> — X86Writer exposes no SSE store for an arbitrary base/register.
+function putFpStoreToR10(writer: X86Writer, cls: FloatClass, off: number, index: number): void {
+  const prefix = cls === "double" ? 0xf2 : 0xf3;
+  writer.putBytes([prefix, 0x41, 0x0f, 0x11, 0x42 | (index << 3), off & 0xff]);
 }
