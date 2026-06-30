@@ -2,7 +2,7 @@ import { test, expect, describe } from "@frida/injest/agent";
 import {
   requireSwift,
   ONONE_SUPPORT_MODULE,
-  ONONE_SUPPORT_PATH,
+  loadOnoneSupport,
 } from "./swift.js";
 
 import {
@@ -12,7 +12,7 @@ import {
 
 function requireOnoneSupport(): void {
   requireSwift();
-  Module.load(ONONE_SUPPORT_PATH);
+  loadOnoneSupport();
 }
 
 describe("cross-module descriptor walk", () => {

@@ -25,6 +25,7 @@ import {
   SwiftArgType,
   shouldPassIndirectly,
   floatLayout,
+  indirect,
 } from "./calling-convention.js";
 import { AsyncFunctionPointer, findAsyncFunctionPointer } from "../abi/async-function-pointer.js";
 import { callAsync, AsyncCallOptions, AsyncResultShape, AsyncFloatArg, SerialExecutorRef } from "./async-call.js";
@@ -1599,6 +1600,9 @@ interface ResolvedWitnessAccessor {
   address: NativePointer;
   type: Metadata;
   kind: AccessorKind;
+  // Self ("A") and associated types ("A.<name>") are opaque at the protocol level, so the witness
+  // thunk passes/returns them indirectly even when the concrete type is loadable.
+  abstract: boolean;
 }
 
 function resolveWitnessAccessor(table: WitnessTable, member: string, kind: AccessorKind): ResolvedWitnessAccessor {
@@ -1613,17 +1617,19 @@ function resolveWitnessAccessor(table: WitnessTable, member: string, kind: Acces
   if (type === null) {
     throw new Error(`cannot resolve ${kind} type ${match.signature.typeName} of ${member}`);
   }
-  return { address: table.requirement(match.requirement.witnessIndex), type, kind };
+  const abstract = match.signature.typeName === "A" || match.signature.typeName.startsWith("A.");
+  return { address: table.requirement(match.requirement.witnessIndex), type, kind, abstract };
 }
 
 function invokerForWitnessAccessor(accessor: ResolvedWitnessAccessor): SwiftNativeFunction {
   const key = `witness:${accessor.address}`;
   let fn = invokerCache.get(key);
   if (fn === undefined) {
+    const type: SwiftArgType = accessor.abstract ? indirect(accessor.type) : accessor.type;
     fn =
       accessor.kind === "getter"
-        ? makeSwiftNativeFunction(accessor.address, accessor.type, [], { hasSelf: true })
-        : makeSwiftNativeFunction(accessor.address, null, [accessor.type], { hasSelf: true });
+        ? makeSwiftNativeFunction(accessor.address, type, [], { hasSelf: true })
+        : makeSwiftNativeFunction(accessor.address, null, [type], { hasSelf: true });
     invokerCache.set(key, fn);
   }
   return fn;
@@ -1683,6 +1689,13 @@ const DIRECT_BRANCH_MNEMONICS: Partial<Record<Architecture, ReadonlySet<string>>
   x64: new Set(["call", "jmp"]),
 };
 
+// Register-target branch into a resolved vtable slot. On x64 these share call/jmp with the
+// direct set; the operand kind (imm vs reg) is what disambiguates a fixed branch from an indirect.
+const INDIRECT_BRANCH_MNEMONICS: Partial<Record<Architecture, ReadonlySet<string>>> = {
+  arm64: new Set(["blr"]),
+  x64: new Set(["call", "jmp"]),
+};
+
 const CONTROL_FLOW_GROUPS = new Set(["jump", "call", "ret"]);
 
 type BranchClassification =
@@ -1695,13 +1708,14 @@ type LoadState =
   | { phase: "haveMetadata"; reg: string }
   | { phase: "haveSlot"; reg: string; offset: number };
 
-const SELF_REG = "x20"; // arm64 swiftself register
+const SELF_REG: Partial<Record<Architecture, string>> = { arm64: "x20", x64: "r13" }; // swiftself
+const LOAD_MNEMONIC: Partial<Record<Architecture, string>> = { arm64: "ldr", x64: "mov" };
 
-function asArm64MemLoad(insn: Instruction): { dest: string; base: string; disp: number } | null {
-  if (Process.arch !== "arm64" || insn.mnemonic !== "ldr") {
+function asMemLoad(insn: Instruction): { dest: string; base: string; disp: number } | null {
+  if (insn.mnemonic !== LOAD_MNEMONIC[Process.arch]) {
     return null;
   }
-  const [dest, src] = (insn as Arm64Instruction).operands;
+  const [dest, src] = (insn as Arm64Instruction | X86Instruction).operands;
   if (dest?.type !== "reg" || src?.type !== "mem" || src.value.base === undefined) {
     return null;
   }
@@ -1712,7 +1726,9 @@ function asArm64MemLoad(insn: Instruction): { dest: string; base: string; disp: 
 // into an indirect one; anything else resets the chain rather than guessing.
 function classifyBranch(address: NativePointer, maxInstructions = 8): BranchClassification {
   const directMnemonics = DIRECT_BRANCH_MNEMONICS[Process.arch];
-  if (directMnemonics === undefined) {
+  const indirectMnemonics = INDIRECT_BRANCH_MNEMONICS[Process.arch];
+  const selfReg = SELF_REG[Process.arch];
+  if (directMnemonics === undefined || indirectMnemonics === undefined || selfReg === undefined) {
     return { kind: "unknown" };
   }
   let cursor = address;
@@ -1720,27 +1736,27 @@ function classifyBranch(address: NativePointer, maxInstructions = 8): BranchClas
   for (let i = 0; i < maxInstructions; i++) {
     const insn = Instruction.parse(cursor);
     if (insn.groups.some((g) => CONTROL_FLOW_GROUPS.has(g))) {
-      if (directMnemonics.has(insn.mnemonic)) {
-        const operand = (insn as Arm64Instruction | X86Instruction).operands[0];
-        return operand !== undefined && operand.type === "imm"
-          ? { kind: "direct", target: ptr(operand.value.toString()) }
-          : { kind: "unknown" };
+      const operand = (insn as Arm64Instruction | X86Instruction).operands[0];
+      if (directMnemonics.has(insn.mnemonic) && operand?.type === "imm") {
+        return { kind: "direct", target: ptr(operand.value.toString()) };
       }
-      if (state.phase === "haveSlot" && insn.mnemonic === "blr") {
-        const target = (insn as Arm64Instruction).operands[0];
-        if (target?.type === "reg" && target.value === state.reg) {
-          return { kind: "vtable", metadataOffset: state.offset / Process.pointerSize };
-        }
+      if (
+        state.phase === "haveSlot" &&
+        indirectMnemonics.has(insn.mnemonic) &&
+        operand?.type === "reg" &&
+        operand.value === state.reg
+      ) {
+        return { kind: "vtable", metadataOffset: state.offset / Process.pointerSize };
       }
       return { kind: "unknown" };
     }
-    const load = asArm64MemLoad(insn);
-    const isSelfRedirect = load !== null && load.base === SELF_REG && load.dest === SELF_REG && load.disp === 0;
+    const load = asMemLoad(insn);
+    const isSelfRedirect = load !== null && load.base === selfReg && load.dest === selfReg && load.disp === 0;
     if (isSelfRedirect) {
       cursor = insn.next;
       continue;
     }
-    if (state.phase === "seekingMetadata" && load !== null && load.base === SELF_REG && load.disp === 0) {
+    if (state.phase === "seekingMetadata" && load !== null && load.base === selfReg && load.disp === 0) {
       state = { phase: "haveMetadata", reg: load.dest };
     } else if (
       state.phase === "haveMetadata" &&

@@ -4,6 +4,7 @@ import { fixtureExport } from "./fixtures/load.js";
 import { Swift, readValue, type SwiftValue, type CallResult } from "../src/index.js";
 import { makeSwiftNativeFunction } from "../src/runtime/calling-convention.js";
 import { SwiftInterceptor } from "../src/runtime/interceptor.js";
+import { requireFpRegisterHooks } from "./swift.js";
 
 function doubles(metadata: ReturnType<typeof Swift.metadataFor>, values: number[]): NativePointer {
   const p = Memory.alloc(metadata!.typeLayout.stride);
@@ -49,7 +50,8 @@ describe("homogeneous float aggregates (HFA)", () => {
     expect(sum(floats(FloatPair, [1.25, 3.75]))!.readFloat()).toBe(5);
   });
 
-  test("hook decodes an HFA argument and return", () => {
+  test("hook decodes an HFA argument and return", (ctx) => {
+    requireFpRegisterHooks(ctx);
     const Double_ = Swift.metadataFor("Swift.Double")!;
     const DoublePair = Swift.metadataFor("fixture.DoublePair")!;
     const addr = fixtureExport("fixture.sumDoublePair");
