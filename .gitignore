@@ -2,4 +2,6 @@ dist/
 node_modules/
 docs/
 tests/fixtures/*.dylib
+tests/fixtures/*.so
 tests/fixtures/paths.ts
+linux/
