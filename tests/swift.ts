@@ -22,6 +22,12 @@ export function requireDarwin(ctx: { skip: (reason?: string) => never }): void {
   }
 }
 
+export function requireLinux(ctx: { skip: (reason?: string) => never }): void {
+  if (Process.platform !== "linux") {
+    ctx.skip("Linux-only");
+  }
+}
+
 export function requireSwiftHost(): void {
   const ok =
     Process.arch === "arm64" &&
