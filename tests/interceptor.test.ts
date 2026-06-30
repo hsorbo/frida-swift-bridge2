@@ -4,6 +4,7 @@ import { fixtureExport, existentialMetadata } from "./fixtures/load.js";
 import { Swift, type SwiftValue, type SwiftObject, type CallResult } from "../src/index.js";
 import { makeSwiftNativeFunction } from "../src/runtime/calling-convention.js";
 import { SwiftInterceptor } from "../src/runtime/interceptor.js";
+import { requireFpRegisterHooks } from "./swift.js";
 
 function intValue(v: number): NativePointer {
   const p = Memory.alloc(8);
@@ -195,7 +196,8 @@ describe("SwiftInterceptor.attach", () => {
     expect(seenRet).toBe(42);
   });
 
-  test("decodes a Double argument and return from the FP registers", () => {
+  test("decodes a Double argument and return from the FP registers", (ctx) => {
+    requireFpRegisterHooks(ctx);
     const Double_ = Swift.metadataFor("Swift.Double")!;
     const addr = fixtureExport("fixture.scaleDouble");
     let seenArgs: SwiftValue[] | null = null;
