@@ -1,5 +1,5 @@
 import { test, expect, describe } from "@frida/injest/agent";
-import { requireSwift } from "./swift.js";
+import { requireSwift, SWIFTCORE_MODULE } from "./swift.js";
 
 import { findType } from "../src/reflection/registry.js";
 import { getClassMetadata, enumerateClassFields } from "../src/abi/class-metadata.js";
@@ -8,7 +8,7 @@ import { enumerateClassInstanceFields, readObject } from "../src/abi/instance.js
 // Allocate a real heap instance of `metadata`'s class (isa set by the runtime).
 function allocObject(metadataHandle: NativePointer, size: number, alignMask: number): NativePointer {
   const fn = new NativeFunction(
-    Process.getModuleByName("libswiftCore.dylib").getExportByName("swift_allocObject"),
+    Process.getModuleByName(SWIFTCORE_MODULE).getExportByName("swift_allocObject"),
     "pointer",
     ["pointer", "size_t", "size_t"]
   );

@@ -1,5 +1,6 @@
 import { test, expect, describe } from "@frida/injest/agent";
-import { loadFixture } from "./fixtures/load.js";
+import { loadFixture, loadFixtureSyms } from "./fixtures/load.js";
+import { requireLinux } from "./swift.js";
 
 import { Swift, StructType } from "../src/index.js";
 
@@ -7,38 +8,56 @@ function structType(name: string): StructType {
   return Swift.typeOf(Swift.metadataFor(name)!) as StructType;
 }
 
-describe("value-type initializers", () => {
+// Value-type init resolution depends on the symbol table (method.ts:282): a
+// struct's memberwise init is omitted from the export trie, so the bridge
+// recovers it from .symtab. fixturesyms is the unstripped twin of fixture, so
+// here the symbols are present and init resolves + marshals correctly.
+describe("value-type initializers (with symtab)", () => {
   test("init on a small loadable struct returns an owned ValueInstance", () => {
-    loadFixture();
-    const v = structType("fixture.Point").init(5);
+    loadFixtureSyms();
+    const v = structType("fixturesyms.Point").init(5);
     expect(v.$owned).toBe(true);
     expect(v.$fields).toEqual({ x: 5 });
     v.$dispose();
   });
 
   test("init marshals a String arg and adopts a non-POD return", () => {
-    loadFixture();
-    const v = structType("fixture.Person").init("Ada", 36);
+    loadFixtureSyms();
+    const v = structType("fixturesyms.Person").init("Ada", 36);
     expect(v.$fields).toEqual({ name: "Ada", age: 36 });
     v.$dispose();
   });
 
   test("init adopts a large struct returned indirectly", () => {
-    loadFixture();
-    const v = structType("fixture.BigStruct").init(1, 2, 3, 4, 5);
+    loadFixtureSyms();
+    const v = structType("fixturesyms.BigStruct").init(1, 2, 3, 4, 5);
     expect(v.$fields).toEqual({ a: 1, b: 2, c: 3, d: 4, e: 5 });
     v.$dispose();
   });
 
   test("a bound initializer is reusable across calls", () => {
-    loadFixture();
-    const make = structType("fixture.Point").initializer();
+    loadFixtureSyms();
+    const make = structType("fixturesyms.Point").initializer();
     expect(make.call(1).$fields).toEqual({ x: 1 });
     expect(make.call(2).$fields).toEqual({ x: 2 });
   });
 
   test("throws on an argument-count mismatch", () => {
+    loadFixtureSyms();
+    expect(() => structType("fixturesyms.Person").init("Ada")).toThrow();
+  });
+});
+
+// The same memberwise inits are unresolvable once the binary is stripped: on ELF
+// they are local symbols, deleted with .symtab. Type metadata is still found
+// (section discovery is symbol-independent), so the type resolves but its init
+// does not. Linux-only: on Mach-O these inits are external and survive stripping.
+describe("value-type initializers (without symtab)", () => {
+  test("a stripped binary cannot resolve a struct's memberwise init", (ctx) => {
+    requireLinux(ctx);
     loadFixture();
-    expect(() => structType("fixture.Person").init("Ada")).toThrow();
+    for (const name of ["fixture.Point", "fixture.Person", "fixture.BigStruct"]) {
+      expect(() => structType(name).initializer()).toThrow(/no method init/);
+    }
   });
 });

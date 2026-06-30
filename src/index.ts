@@ -20,7 +20,7 @@ export {
 export {
   getSwiftSection,
   enumerateTypeContextDescriptors,
-} from "./macho/sections.js";
+} from "./image/sections.js";
 export {
   ContextDescriptor,
   ContextDescriptorKind,

@@ -2,7 +2,7 @@ import { ContextDescriptor } from "../abi/context-descriptor.js";
 import {
   getSwiftSection,
   enumerateTypeContextDescriptors,
-} from "../macho/sections.js";
+} from "../image/sections.js";
 
 export function* enumerateSwiftModules(): Generator<Module> {
   for (const module of Process.enumerateModules()) {

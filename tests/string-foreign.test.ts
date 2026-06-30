@@ -1,4 +1,5 @@
 import { test, expect, describe } from "@frida/injest/agent";
+import { requireDarwin } from "./swift.js";
 
 import { readString } from "../src/abi/string.js";
 
@@ -28,7 +29,8 @@ function makeCocoaString(text: string): NativePointer | null {
 }
 
 describe("readString (cocoa)", () => {
-  test("decodes a cocoa-backed string through the ObjC runtime", () => {
+  test("decodes a cocoa-backed string through the ObjC runtime", (ctx) => {
+    requireDarwin(ctx);
     // long + non-ASCII so it is a real heap string, not a tagged pointer
     const text = "héllo wörld with ünicode ✓ and enough length";
     const cocoa = makeCocoaString(text);

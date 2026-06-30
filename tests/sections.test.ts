@@ -1,10 +1,10 @@
 import { test, expect, describe } from "@frida/injest/agent";
-import { loadSwiftCore } from "./swift.js";
+import { loadSwiftCore, NON_SWIFT_MODULE } from "./swift.js";
 
 import {
   getSwiftSection,
   enumerateTypeContextDescriptors,
-} from "../src/macho/sections.js";
+} from "../src/image/sections.js";
 import { ContextDescriptor } from "../src/abi/context-descriptor.js";
 
 describe("mach-o swift sections", () => {
@@ -17,7 +17,7 @@ describe("mach-o swift sections", () => {
 
   test("returns null for a module without Swift metadata", () => {
     loadSwiftCore();
-    const noSwift = Process.getModuleByName("libsystem_kernel.dylib");
+    const noSwift = Process.getModuleByName(NON_SWIFT_MODULE);
     expect(getSwiftSection(noSwift, "__swift5_types")).toBeNull();
   });
 

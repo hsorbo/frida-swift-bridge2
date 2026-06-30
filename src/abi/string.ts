@@ -1,4 +1,5 @@
 import { objcUTF8String } from "../runtime/objc.js";
+import { LIBSWIFT_CORE_NAME } from "../runtime/platform.js";
 import { findType } from "../reflection/registry.js";
 import { getMetadata } from "./metadata.js";
 import { makeSwiftNativeFunction, SwiftNativeFunction } from "../runtime/calling-convention.js";
@@ -44,9 +45,9 @@ function stringInitializer(): { fn: SwiftNativeFunction; metatype: NativePointer
   if (cStringInit !== null) {
     return cStringInit;
   }
-  const core = Process.findModuleByName("libswiftCore.dylib");
+  const core = Process.findModuleByName(LIBSWIFT_CORE_NAME);
   if (core === null) {
-    throw new Error("libswiftCore.dylib is not loaded");
+    throw new Error(`${LIBSWIFT_CORE_NAME} is not loaded`);
   }
   const address = core.findExportByName(CSTRING_INIT) ?? core.findExportByName(`_${CSTRING_INIT}`);
   if (address === null) {

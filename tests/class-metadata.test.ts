@@ -1,5 +1,5 @@
 import { test, expect, describe } from "@frida/injest/agent";
-import { requireSwift } from "./swift.js";
+import { requireSwift, requireDarwin } from "./swift.js";
 
 import { findType } from "../src/reflection/registry.js";
 import { ContextDescriptorKind } from "../src/abi/context-descriptor.js";
@@ -56,7 +56,8 @@ describe("class metadata", () => {
     expect(fields[0].offset).toBe(16);
   });
 
-  test("isTypeMetadata guards reading an ObjC superclass as Swift", () => {
+  test("isTypeMetadata guards reading an ObjC superclass as Swift", (ctx) => {
+    requireDarwin(ctx);
     const descriptor = requireClass("Swift.__RawSetStorage");
     const metadata = getClassMetadata(descriptor);
     expect(metadata.isTypeMetadata).toBeTruthy();

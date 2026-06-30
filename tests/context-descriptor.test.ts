@@ -1,7 +1,7 @@
 import { test, expect, describe } from "@frida/injest/agent";
 import { loadSwiftCore } from "./swift.js";
 
-import { enumerateTypeContextDescriptors } from "../src/macho/sections.js";
+import { enumerateTypeContextDescriptors } from "../src/image/sections.js";
 import {
   ContextDescriptor,
   ContextDescriptorKind,

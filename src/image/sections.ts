@@ -1,4 +1,4 @@
-import { getMachOApi } from "../runtime/api.js";
+import { getMachOApi, getEnumerateMetadataSections } from "../runtime/api.js";
 import { RelativeDirectPointer } from "../basic/relative-pointer.js";
 
 const SWIFT_SEGMENT = "__TEXT";
@@ -12,7 +12,51 @@ export interface SwiftSection {
   size: number;
 }
 
+// Offset of each MetadataSectionRange within the runtime's MetadataSections
+// struct: version, baseAddress, unused0, unused1 (4 words), then 16-byte ranges.
+const BASE_ADDRESS_OFFSET = Process.pointerSize;
+const RANGE_OFFSETS: Record<string, number> = {
+  __swift5_protos: 4 * Process.pointerSize,
+  __swift5_proto: 6 * Process.pointerSize,
+  __swift5_types: 8 * Process.pointerSize,
+};
+
+function metadataSectionsFor(module: Module): NativePointer | null {
+  let found: NativePointer | null = null;
+  const body = new NativeCallback(
+    (sections: NativePointer, _context: NativePointer): number => {
+      if (sections.add(BASE_ADDRESS_OFFSET).readPointer().equals(module.base)) {
+        found = sections;
+        return 0;
+      }
+      return 1;
+    },
+    "bool",
+    ["pointer", "pointer"]
+  );
+  getEnumerateMetadataSections()(body, NULL);
+  return found;
+}
+
+function getRegisteredSwiftSection(module: Module, name: string): SwiftSection | null {
+  const offset = RANGE_OFFSETS[name];
+  if (offset === undefined) {
+    return null;
+  }
+  const sections = metadataSectionsFor(module);
+  if (sections === null) {
+    return null;
+  }
+  const range = sections.add(offset);
+  const size = range.add(Process.pointerSize).readU64().toNumber();
+  return size === 0 ? null : { address: range.readPointer(), size };
+}
+
 export function getSwiftSection(module: Module, name: string): SwiftSection | null {
+  if (Process.platform !== "darwin") {
+    return getRegisteredSwiftSection(module, name);
+  }
+
   const segNamePtr = Memory.allocUtf8String(SWIFT_SEGMENT);
   const sectNamePtr = Memory.allocUtf8String(name);
   const sizeOut = Memory.alloc(Process.pointerSize);

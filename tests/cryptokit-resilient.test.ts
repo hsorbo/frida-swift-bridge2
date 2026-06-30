@@ -1,5 +1,5 @@
 import { test, expect, describe } from "@frida/injest/agent";
-import { requireSwift } from "./swift.js";
+import { requireSwift, requireDarwin } from "./swift.js";
 
 import {
   Swift,
@@ -41,7 +41,8 @@ function makeKey(bitCount: number): NativePointer {
 }
 
 describe("resilient auto-detection (CryptoKit)", () => {
-  test("resilient value types are detected and called indirect from plain metadata", () => {
+  test("resilient value types are detected and called indirect from plain metadata", (ctx) => {
+    requireDarwin(ctx);
     loadCryptoKit();
 
     expect(isResilientValueType(Swift.metadataFor("CryptoKit.SymmetricKeySize")!)).toBe(true);
@@ -51,7 +52,8 @@ describe("resilient auto-detection (CryptoKit)", () => {
     expect(ValueInstance.borrow(keyMd, makeKey(256)).get("bitCount")).toBe(256);
   });
 
-  test("constructs a resilient value type through the type wrapper", () => {
+  test("constructs a resilient value type through the type wrapper", (ctx) => {
+    requireDarwin(ctx);
     loadCryptoKit();
 
     const sizeMd = Swift.metadataFor("CryptoKit.SymmetricKeySize")!;

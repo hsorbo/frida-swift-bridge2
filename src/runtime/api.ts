@@ -1,16 +1,12 @@
-function ensureDarwinArm64(): void {
-  if (Process.arch !== "arm64" || Process.platform !== "darwin") {
-    throw new Error("Only arm64 Darwin is currently supported");
-  }
-}
+import { ensureSwiftHost, LIBSWIFT_CORE_NAME } from "./platform.js";
 
-const LIBSWIFT_CORE_CANDIDATES = [
-  "libswiftCore.dylib",
-  "/usr/lib/swift/libswiftCore.dylib",
-];
+const LIBSWIFT_CORE_CANDIDATES =
+  Process.platform === "darwin"
+    ? ["libswiftCore.dylib", "/usr/lib/swift/libswiftCore.dylib"]
+    : ["libswiftCore.so", "/usr/lib/swift/linux/libswiftCore.so"];
 
 function loadLibswiftCore(): Module {
-  const existing = Process.findModuleByName("libswiftCore.dylib");
+  const existing = Process.findModuleByName(LIBSWIFT_CORE_NAME);
   if (existing !== null) {
     return existing;
   }
@@ -23,7 +19,7 @@ function loadLibswiftCore(): Module {
       lastError = e as Error;
     }
   }
-  throw lastError ?? new Error("libswiftCore.dylib not found");
+  throw lastError ?? new Error(`${LIBSWIFT_CORE_NAME} not found`);
 }
 
 export interface SwiftCoreApi {
@@ -68,7 +64,7 @@ export interface SwiftCoreApi {
 let cachedSwiftCore: SwiftCoreApi | null = null;
 
 export function getSwiftCoreApi(): SwiftCoreApi {
-  ensureDarwinArm64();
+  ensureSwiftHost();
   if (cachedSwiftCore !== null) {
     return cachedSwiftCore;
   }
@@ -154,6 +150,27 @@ export function getSwiftCoreApi(): SwiftCoreApi {
   return cachedSwiftCore;
 }
 
+type EnumerateMetadataSections = NativeFunction<
+  void,
+  [NativePointerValue, NativePointerValue]
+>;
+
+let cachedEnumerateSections: EnumerateMetadataSections | null = null;
+
+export function getEnumerateMetadataSections(): EnumerateMetadataSections {
+  ensureSwiftHost();
+  if (cachedEnumerateSections !== null) {
+    return cachedEnumerateSections;
+  }
+  const lib = loadLibswiftCore();
+  cachedEnumerateSections = new NativeFunction(
+    lib.getExportByName("swift_enumerateAllMetadataSections"),
+    "void",
+    ["pointer", "pointer"]
+  );
+  return cachedEnumerateSections;
+}
+
 export interface MachOApi {
   getsectiondata: NativeFunction<
     NativePointer,
@@ -164,7 +181,7 @@ export interface MachOApi {
 let cachedMachO: MachOApi | null = null;
 
 export function getMachOApi(): MachOApi {
-  ensureDarwinArm64();
+  ensureSwiftHost();
   if (cachedMachO !== null) {
     return cachedMachO;
   }

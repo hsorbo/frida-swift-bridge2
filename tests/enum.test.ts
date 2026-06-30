@@ -1,5 +1,5 @@
 import { test, expect, describe } from "@frida/injest/agent";
-import { requireSwift } from "./swift.js";
+import { requireSwift, SWIFTCORE_MODULE } from "./swift.js";
 
 import { Swift } from "../src/index.js";
 import { readValue } from "../src/abi/instance.js";
@@ -25,7 +25,7 @@ describe("enum instances", () => {
 
   test("reads a boxed payload via projectBox (the indirect-case mechanism)", () => {
     requireSwift();
-    const lib = Process.getModuleByName("libswiftCore.dylib");
+    const lib = Process.getModuleByName(SWIFTCORE_MODULE);
     const allocBox = new NativeFunction(
       lib.getExportByName("swift_allocBox"),
       ["pointer", "pointer"],
