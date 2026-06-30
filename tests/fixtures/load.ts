@@ -1,8 +1,9 @@
 import { requireSwift } from "../swift.js";
 import { FIXTURE_DYLIB, RESILIENT_DYLIB } from "./paths.js";
 
-export const FIXTURE_MODULE = "fixture.dylib";
-export const RESILIENT_MODULE = "resilient.dylib";
+const EXT = Process.platform === "darwin" ? "dylib" : "so";
+export const FIXTURE_MODULE = `fixture.${EXT}`;
+export const RESILIENT_MODULE = `resilient.${EXT}`;
 
 function loadModule(path: string, name: string): Module {
   requireSwift();

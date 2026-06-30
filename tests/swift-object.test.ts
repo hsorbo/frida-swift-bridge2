@@ -1,5 +1,5 @@
 import { test, expect, describe } from "@frida/injest/agent";
-import { loadFixture } from "./fixtures/load.js";
+import { loadFixture, FIXTURE_MODULE } from "./fixtures/load.js";
 
 import { Swift, ClassType } from "../src/index.js";
 
@@ -80,7 +80,7 @@ describe("Swift.Object intrinsics", () => {
 
   test("$type.moduleName points at the defining image", () => {
     loadFixture();
-    expect(robot("R2").$type.moduleName).toContain("fixture.dylib");
+    expect(robot("R2").$type.moduleName).toContain(FIXTURE_MODULE);
   });
 
   test("methods({ inherited: false }) excludes inherited methods that methods() includes", () => {

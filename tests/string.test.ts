@@ -1,5 +1,5 @@
 import { test, expect, describe } from "@frida/injest/agent";
-import { requireSwift } from "./swift.js";
+import { requireSwift, SWIFTCORE_MODULE } from "./swift.js";
 
 import { Swift } from "../src/index.js";
 import { readString } from "../src/abi/string.js";
@@ -32,7 +32,7 @@ describe("readString", () => {
 
   test("decodes a real native (large) string via _typeName", () => {
     requireSwift();
-    const lib = Process.getModuleByName("libswiftCore.dylib");
+    const lib = Process.getModuleByName(SWIFTCORE_MODULE);
     let typeNameFn: NativePointer;
     try {
       typeNameFn = lib.getExportByName("$ss9_typeName_9qualifiedSSypXp_SbtF");

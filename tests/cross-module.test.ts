@@ -1,5 +1,9 @@
 import { test, expect, describe } from "@frida/injest/agent";
-import { requireSwift } from "./swift.js";
+import {
+  requireSwift,
+  ONONE_SUPPORT_MODULE,
+  ONONE_SUPPORT_PATH,
+} from "./swift.js";
 
 import {
   enumerateSwiftModules,
@@ -8,7 +12,7 @@ import {
 
 function requireOnoneSupport(): void {
   requireSwift();
-  Module.load("/usr/lib/swift/libswiftSwiftOnoneSupport.dylib");
+  Module.load(ONONE_SUPPORT_PATH);
 }
 
 describe("cross-module descriptor walk", () => {
@@ -27,14 +31,14 @@ describe("cross-module descriptor walk", () => {
       }
     }
 
-    expect(types).toBeGreaterThan(1000);
+    expect(types).toBeGreaterThan(Process.platform === "darwin" ? 1000 : 500);
     expect(named).toBe(types);
   });
 
   test("resolves indirect type-descriptor records to named types", () => {
     requireOnoneSupport();
 
-    const onone = Process.getModuleByName("libswiftSwiftOnoneSupport.dylib");
+    const onone = Process.getModuleByName(ONONE_SUPPORT_MODULE);
     let withName = 0;
     for (const descriptor of enumerateTypes(onone)) {
       if (descriptor.name !== null && descriptor.name.length > 0) {

@@ -1,6 +1,6 @@
 import { test, expect, describe } from "@frida/injest/agent";
-import { requireSwift } from "./swift.js";
-import { loadResilient } from "./fixtures/load.js";
+import { requireSwift, SWIFTCORE_MODULE } from "./swift.js";
+import { loadResilient, RESILIENT_MODULE } from "./fixtures/load.js";
 
 import { Swift } from "../src/index.js";
 import {
@@ -14,19 +14,19 @@ describe("registry", () => {
   test("discovers libswiftCore as a Swift-bearing module", () => {
     requireSwift();
     const names = new Set([...enumerateSwiftModules()].map((m) => m.name));
-    expect(names.has("libswiftCore.dylib")).toBeTruthy();
+    expect(names.has(SWIFTCORE_MODULE)).toBeTruthy();
   });
 
   test("discovers a module loaded at runtime", () => {
     loadResilient();
     const names = new Set([...enumerateSwiftModules()].map((m) => m.name));
-    expect(names.has("resilient.dylib")).toBeTruthy();
+    expect(names.has(RESILIENT_MODULE)).toBeTruthy();
     expect(findType("resilient.ResilientPoint")).not.toBeNull();
   });
 
   test("enumerated types are all type-kind descriptors", () => {
     requireSwift();
-    const lib = Process.getModuleByName("libswiftCore.dylib");
+    const lib = Process.getModuleByName(SWIFTCORE_MODULE);
     let count = 0;
     for (const descriptor of enumerateTypes(lib)) {
       expect(descriptor.isType).toBeTruthy();
@@ -70,12 +70,12 @@ describe("registry", () => {
   test("Swift.modules() yields Swift-bearing modules", () => {
     requireSwift();
     const names = new Set([...Swift.modules()].map((m) => m.name));
-    expect(names.has("libswiftCore.dylib")).toBeTruthy();
+    expect(names.has(SWIFTCORE_MODULE)).toBeTruthy();
   });
 
   test("Swift.types(module) yields type-kind descriptors", () => {
     requireSwift();
-    const lib = Process.getModuleByName("libswiftCore.dylib");
+    const lib = Process.getModuleByName(SWIFTCORE_MODULE);
     let count = 0;
     for (const descriptor of Swift.types(lib)) {
       expect(descriptor.isType).toBeTruthy();
@@ -89,14 +89,14 @@ describe("registry", () => {
     [...Swift.modules()];
     loadResilient();
     const names = new Set([...Swift.modules()].map((m) => m.name));
-    expect(names.has("resilient.dylib")).toBeTruthy();
+    expect(names.has(RESILIENT_MODULE)).toBeTruthy();
     const types = new Set([...Swift.types()].map((d) => d.fullTypeName));
     expect(types.has("resilient.ResilientPoint")).toBeTruthy();
   });
 
   test("Swift.types(module) is memoized to a stable parse", () => {
     requireSwift();
-    const lib = Process.getModuleByName("libswiftCore.dylib");
+    const lib = Process.getModuleByName(SWIFTCORE_MODULE);
     const find = (name: string) =>
       [...Swift.types(lib)].find((d) => d.fullTypeName === name) ?? null;
     const first = find("Swift.Int");

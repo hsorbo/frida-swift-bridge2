@@ -4,7 +4,7 @@ import {
   RelativeDirectPointer,
   RelativeIndirectablePointer,
 } from "../basic/relative-pointer.js";
-import { getSwiftSection } from "../macho/sections.js";
+import { getSwiftSection } from "../image/sections.js";
 import { enumerateSwiftModules } from "../reflection/registry.js";
 import { getSwiftCoreApi } from "../runtime/api.js";
 

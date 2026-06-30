@@ -38,6 +38,9 @@ case "$(uname -s)" in
     swiftc -emit-library -module-name fixture "$fixtures/fixture.swift" -o "$fixture_out"
     swiftc -emit-library -enable-library-evolution -module-name resilient "$fixtures/resilient.swift" -o "$resilient_out"
 
+    # Strip .symtab so section discovery cannot rely on __start_/__stop_ symbols.
+    strip "$fixture_out" "$resilient_out"
+
     emit_paths "$fixture_out" "$resilient_out"
     ;;
   *)

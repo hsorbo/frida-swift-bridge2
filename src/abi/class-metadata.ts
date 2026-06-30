@@ -3,11 +3,16 @@ import { Metadata, MetadataKind, getMetadata } from "./metadata.js";
 import { Field, enumerateFields } from "./field-descriptor.js";
 import { getSwiftCoreApi } from "../runtime/api.js";
 
+// Darwin class metadata carries ObjC-interop fields (cacheData[2] + data)
+// between `superclass` and `flags`; non-ObjC platforms omit them, shifting
+// every later field down by three words.
+const OBJC_INTEROP_PREFIX = Process.platform === "darwin" ? 0x18 : 0;
+
 const OFFSETOF_SUPERCLASS = 0x8;
-const OFFSETOF_DATA = 0x20;
-const OFFSETOF_INSTANCE_SIZE = 0x30;
-const OFFSETOF_INSTANCE_ALIGN_MASK = 0x34;
-const OFFSETOF_DESCRIPTION = 0x40;
+const OFFSETOF_DATA = 0x20; // Darwin only (isSwift bit)
+const OFFSETOF_INSTANCE_SIZE = 0x18 + OBJC_INTEROP_PREFIX;
+const OFFSETOF_INSTANCE_ALIGN_MASK = 0x1c + OBJC_INTEROP_PREFIX;
+const OFFSETOF_DESCRIPTION = 0x28 + OBJC_INTEROP_PREFIX;
 
 const SWIFT_CLASS_IS_SWIFT_MASK = 2; // Darwin (ObjC interop)
 const CLASS_HAS_RESILIENT_SUPERCLASS = 1 << 13; // bit 13 of kind-specific flags
@@ -18,6 +23,9 @@ export class ClassMetadata {
   constructor(readonly handle: NativePointer) {}
 
   get isTypeMetadata(): boolean {
+    if (Process.platform !== "darwin") {
+      return true; // no ObjC/foreign classes: any Class-kind metadata is Swift-native
+    }
     return (this.handle.add(OFFSETOF_DATA).readU8() & SWIFT_CLASS_IS_SWIFT_MASK) !== 0;
   }
 
