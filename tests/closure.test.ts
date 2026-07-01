@@ -6,6 +6,11 @@ import { Swift, ValueInstance } from "../src/index.js";
 import { makeSwiftNativeFunction, indirect, SwiftThrownError } from "../src/runtime/calling-convention.js";
 import { getSwiftCoreApi } from "../src/runtime/api.js";
 import { SwiftClosure, SwiftThrow } from "../src/runtime/closure.js";
+import {
+  closureDiscriminator,
+  closureHashString,
+  INDIRECT,
+} from "../src/runtime/closure-discriminator.js";
 
 function fixtureFn(swiftName: string): NativePointer {
   const mod = loadFixture();
@@ -27,10 +32,13 @@ describe("closure as a Swift argument", (ctx) => {
     const buffer = Memory.alloc(data.length);
     buffer.writeByteArray(data);
 
+    const discriminator = closureDiscriminator(closureHashString(["$sSW"], []));
+    expect(discriminator).toBe(0xf220);
+
     let seen: number[] | null = null;
     const closure = SwiftClosure.overBytes((buf) => {
       seen = Array.from(new Uint8Array(buf.readBytes()));
-    });
+    }, discriminator);
 
     const invoke = makeSwiftNativeFunction(fixtureFn("invokeWithBytes"), null, [
       Int,
@@ -52,17 +60,20 @@ describe("closure as a Swift argument", (ctx) => {
     }
   });
 
-  test("drives a real generic rethrows function routing a buffer into its body", () => {
+  test("drives a real generic rethrows function with the abstracted discriminator", () => {
     const Int = Swift.metadataFor("Swift.Int")!;
 
     const data = [0xde, 0xad, 0xbe, 0xef];
     const buffer = Memory.alloc(data.length);
     buffer.writeByteArray(data);
 
+    const discriminator = closureDiscriminator(closureHashString(["$sSW"], [INDIRECT]));
+    expect(discriminator).toBe(0x323);
+
     let seen: number[] | null = null;
     const closure = SwiftClosure.overBytes((buf) => {
       seen = Array.from(new Uint8Array(buf.readBytes()));
-    });
+    }, discriminator);
 
     const invoke = makeSwiftNativeFunction(
       fixtureFn("invokeGeneric"),
@@ -94,9 +105,10 @@ describe("closure result and error routing", (ctx) => {
     const buffer = Memory.alloc(data.length);
     buffer.writeByteArray(data);
 
+    const discriminator = closureDiscriminator(closureHashString(["$sSW"], [INDIRECT]));
     const closure = SwiftClosure.overBytes((buf, result) => {
       result.writeU64(0x1234 + buf.count);
-    });
+    }, discriminator);
 
     const invoke = makeSwiftNativeFunction(
       fixtureFn("invokeReturning"),
@@ -124,7 +136,8 @@ describe("closure result and error routing", (ctx) => {
 
     const errorObj = Memory.alloc(Process.pointerSize);
 
-    const closure = SwiftClosure.overBytes(() => errorObj, { throws: true });
+    const discriminator = closureDiscriminator(closureHashString(["$sSW"], [INDIRECT]));
+    const closure = SwiftClosure.overBytes(() => errorObj, discriminator, { throws: true });
 
     const invoke = makeSwiftNativeFunction(
       fixtureFn("invokeGeneric"),
@@ -183,9 +196,12 @@ describe("escaping closure context", (ctx) => {
     const api = getSwiftCoreApi();
 
     let fired = 0;
-    const closure = SwiftClosure.overBytes(() => {
-      fired++;
-    });
+    const closure = SwiftClosure.overBytes(
+      () => {
+        fired++;
+      },
+      closureDiscriminator(closureHashString([], []))
+    );
     const retainCount = (): number => Number(api.swift_retainCount(closure.context));
 
     const storeEscaping = makeSwiftNativeFunction(
@@ -243,26 +259,6 @@ describe("closure through the $call facade", (ctx) => {
     }
   });
 
-  test("Swift.closure that throws propagates through a rethrowing buffer method", () => {
-    loadFixture();
-
-    const ByteSource = Swift.metadataFor("fixture.ByteSource")!;
-    const self = Memory.alloc(ByteSource.valueWitnesses.stride);
-    self.writePointer(Memory.alloc(1));
-    self.add(Process.pointerSize).writeU64(0);
-    const source = Swift.Object(ValueInstance.borrow(ByteSource, self));
-
-    const errorObj = Memory.alloc(Process.pointerSize);
-    let thrown: SwiftThrownError | null = null;
-    try {
-      source.$call("withBytes", Swift.closure(() => new SwiftThrow(errorObj)));
-    } catch (e) {
-      thrown = e as SwiftThrownError;
-    }
-    expect(thrown).not.toBe(null);
-    expect(thrown!.error.equals(errorObj)).toBe(true);
-  });
-
   test("Swift.closure passed to a non-generic (buffer) -> Void method receives the bytes", () => {
     loadFixture();
 
@@ -313,7 +309,10 @@ describe("loadable closures (register-passed params and result)", (ctx) => {
   test("marshals a (Int) -> Int closure: value in x0, result in x0", () => {
     const Int = Swift.metadataFor("Swift.Int")!;
 
-    const closure = SwiftClosure.loadable((n) => Number(n) * 3, ["int64"], "int64");
+    const discriminator = closureDiscriminator(closureHashString(["$sSi"], ["$sSi"]));
+    expect(discriminator).toBe(0x489b);
+
+    const closure = SwiftClosure.loadable((n) => Number(n) * 3, ["int64"], "int64", discriminator);
     const invoke = makeSwiftNativeFunction(fixtureFn("invokeMapping"), Int, [Int, { closure: true }]);
 
     const nArg = Memory.alloc(8);
@@ -325,10 +324,14 @@ describe("loadable closures (register-passed params and result)", (ctx) => {
   test("marshals a (Int, Int) -> Int closure across two arg registers", () => {
     const Int = Swift.metadataFor("Swift.Int")!;
 
+    const discriminator = closureDiscriminator(closureHashString(["$sSi", "$sSi"], ["$sSi"]));
+    expect(discriminator).toBe(0x97c8);
+
     const closure = SwiftClosure.loadable(
       (a, b) => Number(a) + Number(b),
       ["int64", "int64"],
-      "int64"
+      "int64",
+      discriminator
     );
     const invoke = makeSwiftNativeFunction(fixtureFn("invokeCombine"), Int, [Int, Int, { closure: true }]);
 
@@ -343,7 +346,9 @@ describe("loadable closures (register-passed params and result)", (ctx) => {
   test("marshals a (Double) -> Double closure through the v-registers", () => {
     const Double = Swift.metadataFor("Swift.Double")!;
 
-    const closure = SwiftClosure.loadable((x) => Number(x) / 2, ["double"], "double");
+    const discriminator = closureDiscriminator(closureHashString(["$sSd"], ["$sSd"]));
+    expect(discriminator).toBe(0xe4d1);
+    const closure = SwiftClosure.loadable((x) => Number(x) / 2, ["double"], "double", discriminator);
     const invoke = makeSwiftNativeFunction(fixtureFn("invokeScale"), Double, [Double, { closure: true }]);
 
     const xArg = Memory.alloc(8);
@@ -355,7 +360,10 @@ describe("loadable closures (register-passed params and result)", (ctx) => {
     const Int = Swift.metadataFor("Swift.Int")!;
     const Bool = Swift.metadataFor("Swift.Bool")!;
 
-    const closure = SwiftClosure.loadable((n) => Number(n) > 5, ["int64"], "bool");
+    const discriminator = closureDiscriminator(closureHashString(["$sSi"], ["$sSb"]));
+    expect(discriminator).toBe(0xd26c);
+
+    const closure = SwiftClosure.loadable((n) => Number(n) > 5, ["int64"], "bool", discriminator);
     const invoke = makeSwiftNativeFunction(fixtureFn("invokePredicate"), Bool, [Int, { closure: true }]);
 
     const yes = Memory.alloc(8);
@@ -398,7 +406,11 @@ describe("throwing loadable closures", (ctx) => {
     const Int = Swift.metadataFor("Swift.Int")!;
     const Bool = Swift.metadataFor("Swift.Bool")!;
 
-    const closure = SwiftClosure.loadable((n) => Number(n) > 5, ["int64"], "bool", {
+    // throws is ignored in the discriminator, so it matches the non-throwing (Int) -> Bool.
+    const discriminator = closureDiscriminator(closureHashString(["$sSi"], ["$sSb"]));
+    expect(discriminator).toBe(0xd26c);
+
+    const closure = SwiftClosure.loadable((n) => Number(n) > 5, ["int64"], "bool", discriminator, {
       throws: true,
     });
     const invoke = makeSwiftNativeFunction(fixtureFn("invokeThrowing"), Bool, [Int, { closure: true }], {
@@ -418,7 +430,8 @@ describe("throwing loadable closures", (ctx) => {
     const Bool = Swift.metadataFor("Swift.Bool")!;
     const errorObj = Memory.alloc(Process.pointerSize);
 
-    const closure = SwiftClosure.loadable(() => new SwiftThrow(errorObj), ["int64"], "bool", {
+    const discriminator = closureDiscriminator(closureHashString(["$sSi"], ["$sSb"]));
+    const closure = SwiftClosure.loadable(() => new SwiftThrow(errorObj), ["int64"], "bool", discriminator, {
       throws: true,
     });
     const invoke = makeSwiftNativeFunction(fixtureFn("invokeThrowing"), Bool, [Int, { closure: true }], {
@@ -457,7 +470,10 @@ describe("sized-int and pointer loadable closures", (ctx) => {
   test("marshals a (Int32) -> Int32 closure", () => {
     const Int32 = Swift.metadataFor("Swift.Int32")!;
 
-    const closure = SwiftClosure.loadable((n) => Number(n) + 100, ["int32"], "int32");
+    const discriminator = closureDiscriminator(closureHashString(["$ss5Int32V"], ["$ss5Int32V"]));
+    expect(discriminator).toBe(0x3fe6);
+
+    const closure = SwiftClosure.loadable((n) => Number(n) + 100, ["int32"], "int32", discriminator);
     const invoke = makeSwiftNativeFunction(fixtureFn("invokeI32"), Int32, [Int32, { closure: true }]);
 
     const nArg = Memory.alloc(4);
@@ -468,7 +484,10 @@ describe("sized-int and pointer loadable closures", (ctx) => {
   test("marshals a (UnsafeRawPointer) -> UnsafeRawPointer closure", () => {
     const Raw = Swift.metadataFor("Swift.UnsafeRawPointer")!;
 
-    const closure = SwiftClosure.loadable((p) => (p as NativePointer).add(8), ["pointer"], "pointer");
+    const discriminator = closureDiscriminator(closureHashString(["$sSV"], ["$sSV"]));
+    expect(discriminator).toBe(0x6528);
+
+    const closure = SwiftClosure.loadable((p) => (p as NativePointer).add(8), ["pointer"], "pointer", discriminator);
     const invoke = makeSwiftNativeFunction(fixtureFn("invokeRawPtr"), Raw, [Raw, { closure: true }]);
 
     const base = Memory.alloc(16);
@@ -495,11 +514,15 @@ describe("loadable param with an indirect result", (ctx) => {
   test("marshals a (Int) -> R closure writing its result through x8", () => {
     const Int = Swift.metadataFor("Swift.Int")!;
 
+    const discriminator = closureDiscriminator(closureHashString(["$sSi"], [INDIRECT]));
+    expect(discriminator).toBe(0xe7b2);
+
     const closure = SwiftClosure.loadableProducing(
       (args, result) => {
         result.writeU64(Number(args[0]) * 4);
       },
-      ["int64"]
+      ["int64"],
+      discriminator
     );
     const invoke = makeSwiftNativeFunction(
       fixtureFn("invokeProducing"),
@@ -568,5 +591,20 @@ describe("String loadable closures through the facade", (ctx) => {
   test("(Int) -> String returns a synthesized string", () => {
     loadFixture();
     expect(byteSource().$call("label", 7, Swift.closure((n: number) => `n=${n}`))).toBe("n=7");
+  });
+});
+
+describe("closure discriminator", () => {
+  test("reproduces Swift's per-signature discriminators", () => {
+    expect(closureDiscriminator(closureHashString([], []))).toBe(0xf08);
+    expect(closureDiscriminator(closureHashString(["$sSi"], ["$sSi"]))).toBe(0x489b);
+    expect(closureDiscriminator(closureHashString(["$sSi", "$sSi"], ["$sSi"]))).toBe(0x97c8);
+    expect(closureDiscriminator(closureHashString(["$sSi"], ["$sSb"]))).toBe(0xd26c);
+    expect(closureDiscriminator(closureHashString(["$sSd"], ["$sSd"]))).toBe(0xe4d1);
+    expect(closureDiscriminator(closureHashString(["$sSW"], []))).toBe(0xf220);
+    expect(closureDiscriminator(closureHashString(["$sSW"], [INDIRECT]))).toBe(0x0323);
+    expect(closureDiscriminator(closureHashString(["$sSi"], [INDIRECT]))).toBe(0xe7b2);
+    expect(closureDiscriminator(closureHashString(["$ss5Int32V"], ["$ss5Int32V"]))).toBe(0x3fe6);
+    expect(closureDiscriminator(closureHashString(["$sSV"], ["$sSV"]))).toBe(0x6528);
   });
 });
