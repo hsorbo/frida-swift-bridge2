@@ -5,7 +5,11 @@ const OFFSETOF_EXPECTED_CONTEXT_SIZE = 0x4;
 
 // A `…Tu` symbol addresses this record, not code (ABI/Executor.h).
 export class AsyncFunctionPointer {
-  constructor(readonly handle: NativePointer) {}
+  readonly handle: NativePointer;
+
+  constructor(handle: NativePointer) {
+    this.handle = handle.strip();
+  }
 
   get code(): NativePointer {
     return RelativeDirectPointer.resolve(this.handle.add(OFFSETOF_FUNCTION))!;

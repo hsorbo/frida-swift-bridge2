@@ -3,11 +3,14 @@ import { AsyncTask } from "../abi/async-task.js";
 import { projectErrorExistential } from "../abi/existential.js";
 import { readValue, SwiftValue } from "../abi/instance.js";
 import { LIBSWIFT_CORE_NAME, SWIFT_HOST_SUPPORTED } from "./platform.js";
+import { ARM64E_ABI, signCode } from "../basic/pac.js";
 
 const OFFSETOF_PARENT = 0;
 const OFFSETOF_RESUME_PARENT = Process.pointerSize;
 
 const ARCH = Process.arch;
+
+const ASYNC_CONTEXT_RESUME = 0xd707;
 
 // The continuation is entered as ResumeParent(context, results...), so results ride the argument
 // registers, not the sync-return registers; error rides swiftself (x20 / r13), context is x22 / r14.
@@ -155,9 +158,9 @@ function synthesizeAsyncCall(afp: AsyncFunctionPointer, args: NativePointer[], o
   if (shape.kind === "gp" && (shape.words < 1 || shape.words > NUM_GP_RESULT_REGS)) {
     throw new Error("direct GP results wider than 4 words are not supported");
   }
-  const swift_task_alloc = concExport("swift_task_alloc");
-  const swift_task_dealloc = concExport("swift_task_dealloc");
-  const dispatch_semaphore_signal = signalSemaphore !== null ? moduleExport(DISPATCH_MODULE, "dispatch_semaphore_signal") : null;
+  const swift_task_alloc = concExport("swift_task_alloc").strip();
+  const swift_task_dealloc = concExport("swift_task_dealloc").strip();
+  const dispatch_semaphore_signal = signalSemaphore !== null ? moduleExport(DISPATCH_MODULE, "dispatch_semaphore_signal").strip() : null;
   const result = Memory.alloc(resultBufferSize(shape));
   const error = Memory.alloc(Process.pointerSize).writePointer(NULL);
   const done = Memory.alloc(Process.pointerSize);
@@ -266,6 +269,7 @@ function writeArm64Continuation(slot: NativePointer, pc: NativePointer, c: Conti
     w.putPopRegReg("x22", "x30");
   }
   w.putLdrRegRegOffset("x1", "x22", OFFSETOF_RESUME_PARENT);
+  if (ARM64E_ABI) w.putXpaciReg("x1");
   w.putBrRegNoAuth("x1");
   w.flush();
 }
@@ -281,6 +285,11 @@ function writeArm64Operation(slot: NativePointer, pc: NativePointer, o: Operatio
   w.putLdrRegRegOffset("x8", "sp", 0);
   w.putStrRegRegOffset("x8", "x9", OFFSETOF_PARENT);
   w.putLdrRegAddress("x10", o.continuation);
+  if (ARM64E_ABI) {
+    w.putAddRegRegImm("x11", "x9", OFFSETOF_RESUME_PARENT);
+    w.putMovkRegImm("x11", ASYNC_CONTEXT_RESUME, 48);
+    w.putPaciaRegReg("x10", "x11");
+  }
   w.putStrRegRegOffset("x10", "x9", OFFSETOF_RESUME_PARENT);
   w.putPopRegReg("x22", "x8");
   w.putPopRegReg("x29", "x30");
@@ -445,7 +454,7 @@ function startCall(afp: AsyncFunctionPointer, args: NativePointer[], options: As
   if (retained.length > RETAINED_CALLS) {
     retained.shift();
   }
-  const task = api.create(ENQUEUE_JOB | COPY_TASK_LOCALS, call.option ?? NULL, NULL, call.operation, NULL, OPERATION_CONTEXT_SIZE)[0];
+  const task = api.create(ENQUEUE_JOB | COPY_TASK_LOCALS, call.option ?? NULL, NULL, signCode(call.operation), NULL, OPERATION_CONTEXT_SIZE)[0];
   if (task.isNull()) {
     throw new Error("swift_task_create_common failed");
   }

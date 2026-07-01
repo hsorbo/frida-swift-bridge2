@@ -1,6 +1,7 @@
 import { Metadata } from "./metadata.js";
 import { Field, enumerateFields, fieldTypeIn } from "./field-descriptor.js";
 import { getSwiftCoreApi } from "../runtime/api.js";
+import { signCode } from "../basic/pac.js";
 
 const VWT_OFFSETOF_GET_ENUM_TAG = 0x58;
 const VWT_OFFSETOF_DESTRUCTIVE_PROJECT_ENUM_DATA = 0x60;
@@ -47,7 +48,7 @@ export function projectBox(box: NativePointer): NativePointer {
 
 export function enumTag(metadata: Metadata, address: NativePointer): number {
   const fn = new NativeFunction(
-    metadata.valueWitnessTable.add(VWT_OFFSETOF_GET_ENUM_TAG).readPointer(),
+    signCode(metadata.valueWitnessTable.add(VWT_OFFSETOF_GET_ENUM_TAG).readPointer()),
     "uint",
     ["pointer", "pointer"]
   );
@@ -75,7 +76,7 @@ export function readEnumCase(metadata: Metadata, address: NativePointer): EnumCa
 
 export function projectEnumData(metadata: Metadata, address: NativePointer): void {
   const fn = new NativeFunction(
-    metadata.valueWitnessTable.add(VWT_OFFSETOF_DESTRUCTIVE_PROJECT_ENUM_DATA).readPointer(),
+    signCode(metadata.valueWitnessTable.add(VWT_OFFSETOF_DESTRUCTIVE_PROJECT_ENUM_DATA).readPointer()),
     "void",
     ["pointer", "pointer"]
   );
@@ -84,7 +85,7 @@ export function projectEnumData(metadata: Metadata, address: NativePointer): voi
 
 export function injectEnumTag(metadata: Metadata, address: NativePointer, tag: number): void {
   const fn = new NativeFunction(
-    metadata.valueWitnessTable.add(VWT_OFFSETOF_DESTRUCTIVE_INJECT_ENUM_TAG).readPointer(),
+    signCode(metadata.valueWitnessTable.add(VWT_OFFSETOF_DESTRUCTIVE_INJECT_ENUM_TAG).readPointer()),
     "void",
     ["pointer", "uint", "pointer"]
   );

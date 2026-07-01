@@ -222,6 +222,11 @@ export {
   UnsafeRawBufferPointer,
   closure,
 } from "./runtime/closure.js";
+export {
+  closureDiscriminator,
+  closureHashString,
+  INDIRECT,
+} from "./runtime/closure-discriminator.js";
 export { readString } from "./abi/string.js";
 export { typeName } from "./runtime/type-name.js";
 export {

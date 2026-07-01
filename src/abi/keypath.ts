@@ -1,6 +1,7 @@
 import { Metadata, MetadataKind } from "./metadata.js";
 import { ClassMetadata, classMetadataOf, enumerateClassFields } from "./class-metadata.js";
 import { enumerateFields } from "./field-descriptor.js";
+import { signCode } from "../basic/pac.js";
 
 const BUFFER_SIZE_MASK = 0x00ffffff;
 const BUFFER_TRIVIAL_FLAG = 0x80000000;
@@ -185,7 +186,7 @@ function decodeComputedArguments(argumentHeader: NativePointer, external: boolea
 }
 
 export function hashKeyPathArguments(args: KeyPathComputedArguments): Int64 {
-  const hash = new NativeFunction(args.witnesses.hash, "int64", ["pointer", "int64"]) as unknown as (
+  const hash = new NativeFunction(signCode(args.witnesses.hash), "int64", ["pointer", "int64"]) as unknown as (
     data: NativePointer,
     size: number
   ) => Int64;
@@ -196,7 +197,7 @@ export function keyPathArgumentsEqual(a: KeyPathComputedArguments, b: KeyPathCom
   if (a.size !== b.size) {
     return false;
   }
-  const equals = new NativeFunction(a.witnesses.equals, "bool", ["pointer", "pointer", "int64"]) as unknown as (
+  const equals = new NativeFunction(signCode(a.witnesses.equals), "bool", ["pointer", "pointer", "int64"]) as unknown as (
     x: NativePointer,
     y: NativePointer,
     size: number
