@@ -52,6 +52,7 @@ export interface ResolvedFunctionSignature {
 const exportsByModule = new Map<string, Map<string, string>>();
 
 export function symbolicate(address: NativePointer): SwiftSymbol | null {
+  address = address.strip();
   const module = Process.findModuleByAddress(address);
   if (module === null) {
     return null;
@@ -62,7 +63,7 @@ export function symbolicate(address: NativePointer): SwiftSymbol | null {
     names = new Map<string, string>();
     for (const e of module.enumerateExports()) {
       if (e.type === "function") {
-        names.set(e.address.toString(), e.name);
+        names.set(e.address.strip().toString(), e.name);
       }
     }
     exportsByModule.set(module.path, names);

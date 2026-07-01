@@ -2,6 +2,7 @@ import { Metadata, MetadataKind } from "../abi/metadata.js";
 import { enumerateFields, fieldTypeIn } from "../abi/field-descriptor.js";
 import { existentialRepresentation } from "../abi/existential.js";
 import { typeName } from "./type-name.js";
+import { signCode } from "../basic/pac.js";
 
 export const MAX_LOADABLE_SIZE = Process.pointerSize * 4;
 
@@ -290,7 +291,7 @@ export function makeSwiftNativeFunction(
   const errorBuffer = throws ? Memory.alloc(Process.pointerSize) : null;
   writeTrampoline(code, {
     save,
-    target: address,
+    target: address.strip(),
     selfBuffer,
     errorBuffer,
     indirectResultBuffer: indirectResult ? scratch : null,
@@ -303,7 +304,7 @@ export function makeSwiftNativeFunction(
     scratch,
     selfBuffer,
     errorBuffer,
-    invoke: new NativeFunction(code, "void", fridaArgTypes) as unknown as (
+    invoke: new NativeFunction(signCode(code), "void", fridaArgTypes) as unknown as (
       ...args: NativeFunctionArgumentValue[]
     ) => void,
   };

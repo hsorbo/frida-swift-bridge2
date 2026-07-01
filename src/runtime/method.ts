@@ -30,6 +30,7 @@ import {
 import { AsyncFunctionPointer, findAsyncFunctionPointer } from "../abi/async-function-pointer.js";
 import { callAsync, AsyncCallOptions, AsyncResultShape, AsyncFloatArg, SerialExecutorRef } from "./async-call.js";
 import { SwiftClosure, ClosureSpec, ClosureBody, LoadableClosureBody, SwiftThrow } from "./closure.js";
+import { closureDiscriminator, closureHashString, INDIRECT } from "./closure-discriminator.js";
 import { typeName } from "./type-name.js";
 import { readString, createString } from "../abi/string.js";
 import {
@@ -407,7 +408,8 @@ export function resolveMethod(
       );
     }
 
-    const { address, isStatic, signature, mangled } = candidates[0];
+    const { isStatic, signature, mangled } = candidates[0];
+    const address = candidates[0].address.strip();
     const argTypes = signature.argTypeNames.map((name) => {
       const metadata = resolveTypeExpr(name, () => null);
       if (metadata === null) {
@@ -424,7 +426,7 @@ export function resolveMethod(
     }
     let asyncFunctionPointer: AsyncFunctionPointer | undefined;
     if (signature.async) {
-      const module = Process.findModuleByAddress(address);
+      const module = Process.findModuleByAddress(address.strip());
       const afp = module === null ? null : findAsyncFunctionPointer(module, mangled);
       if (afp === null) {
         throw new Error(`cannot resolve async function pointer for ${signature.selector}`);
@@ -754,7 +756,7 @@ export function bindValueMethod(
 // buffer: (UnsafeRawBufferPointer) -> @out, via an asm trampoline. loadable: register params and
 // result. loadableIndirect: register params, @out result (e.g. (Int) -> R).
 type ClosureShape =
-  | { mode: "buffer"; throws: boolean }
+  | { mode: "buffer" }
   | { mode: "loadable"; params: LoadableScalar[]; result: LoadableScalar | null; throws: boolean }
   | { mode: "loadableIndirect"; params: LoadableScalar[]; resultMetadata: Metadata; throws: boolean };
 
@@ -762,11 +764,13 @@ type ArgPlan =
   | { kind: "generic"; index: number; metadata: Metadata }
   | { kind: "concrete"; metadata: Metadata }
   | { kind: "abstractIndirect"; metadata: Metadata }
-  | { kind: "closure"; shape: ClosureShape };
+  | { kind: "closure"; discriminator: number; shape: ClosureShape };
 
 const RAW_BUFFER_PARAM = "Swift.UnsafeRawBufferPointer";
+const RAW_BUFFER_TOKEN = "$sSW"; // $s mangling of UnsafeRawBufferPointer
 
 interface LoadableScalar {
+  token: string; // $s mangling feeding the pointer-auth discriminator
   nativeType: NativeCallbackArgumentType;
   decode?: (raw: NativeCallbackArgumentValue) => unknown; // set only by non-scalar wire shapes (String)
   encode?: (value: unknown) => NativeCallbackReturnValue;
@@ -788,28 +792,32 @@ function encodeString(value: unknown): NativePointer[] {
   return [s.readPointer(), s.add(Process.pointerSize).readPointer()];
 }
 
-// Scalar types passable through a loadable closure, with the native type Frida marshals them as.
+// $s manglings feeding the discriminator (verified against the fixture's blraa); Frida type marshals.
 const LOADABLE_SCALARS: Record<string, LoadableScalar> = {
-  "Swift.Int": { nativeType: "int64" },
-  "Swift.UInt": { nativeType: "uint64" },
-  "Swift.Bool": { nativeType: "bool" },
-  "Swift.Double": { nativeType: "double" },
-  "Swift.Float": { nativeType: "float" },
-  "Swift.Int8": { nativeType: "int8" },
-  "Swift.Int16": { nativeType: "int16" },
-  "Swift.Int32": { nativeType: "int32" },
-  "Swift.Int64": { nativeType: "int64" },
-  "Swift.UInt8": { nativeType: "uint8" },
-  "Swift.UInt16": { nativeType: "uint16" },
-  "Swift.UInt32": { nativeType: "uint32" },
-  "Swift.UInt64": { nativeType: "uint64" },
-  "Swift.UnsafeRawPointer": { nativeType: "pointer" },
-  "Swift.UnsafeMutableRawPointer": { nativeType: "pointer" },
-  "Swift.String": { nativeType: STRING_WORDS, decode: decodeString, encode: encodeString },
+  "Swift.Int": { token: "$sSi", nativeType: "int64" },
+  "Swift.UInt": { token: "$sSu", nativeType: "uint64" },
+  "Swift.Bool": { token: "$sSb", nativeType: "bool" },
+  "Swift.Double": { token: "$sSd", nativeType: "double" },
+  "Swift.Float": { token: "$sSf", nativeType: "float" },
+  "Swift.Int8": { token: "$ss4Int8V", nativeType: "int8" },
+  "Swift.Int16": { token: "$ss5Int16V", nativeType: "int16" },
+  "Swift.Int32": { token: "$ss5Int32V", nativeType: "int32" },
+  "Swift.Int64": { token: "$ss5Int64V", nativeType: "int64" },
+  "Swift.UInt8": { token: "$ss5UInt8V", nativeType: "uint8" },
+  "Swift.UInt16": { token: "$ss6UInt16V", nativeType: "uint16" },
+  "Swift.UInt32": { token: "$ss6UInt32V", nativeType: "uint32" },
+  "Swift.UInt64": { token: "$ss6UInt64V", nativeType: "uint64" },
+  "Swift.UnsafeRawPointer": { token: "$sSV", nativeType: "pointer" },
+  "Swift.UnsafeMutableRawPointer": { token: "$sSv", nativeType: "pointer" },
+  "Swift.String": { token: "$sSS", nativeType: STRING_WORDS, decode: decodeString, encode: encodeString },
 };
 
-function closurePlan(shape: ClosureShape): ArgPlan {
-  return { kind: "closure", shape };
+function closurePlan(paramTokens: string[], resultTokens: string[], shape: ClosureShape): ArgPlan {
+  return {
+    kind: "closure",
+    discriminator: closureDiscriminator(closureHashString(paramTokens, resultTokens)),
+    shape,
+  };
 }
 
 function planClosureType(spelling: FunctionTypeSpelling, genericParams: string[], typeArguments: Metadata[]): ArgPlan {
@@ -818,18 +826,21 @@ function planClosureType(spelling: FunctionTypeSpelling, genericParams: string[]
   const resultIsVoid = result === "()" || result === "Swift.Void";
   const takesBuffer = spelling.params.length === 1 && spelling.params[0].trim() === RAW_BUFFER_PARAM;
   if ((spelling.params.length === 0 || takesBuffer) && (resultIsVoid || resultIsGeneric)) {
-    return closurePlan({ mode: "buffer", throws: spelling.throws });
+    const paramTokens = takesBuffer ? [RAW_BUFFER_TOKEN] : [];
+    const resultTokens = resultIsGeneric ? [INDIRECT] : [];
+    return closurePlan(paramTokens, resultTokens, { mode: "buffer" });
   }
 
   const params = spelling.params.map((p) => LOADABLE_SCALARS[p.trim()] ?? null);
   if (params.every((p) => p !== null)) {
     const scalars = params as LoadableScalar[];
+    const paramTokens = scalars.map((p) => p.token);
     if (resultIsGeneric) {
       const resultMetadata = typeArguments[genericParams.indexOf(result)];
       if (resultMetadata === undefined) {
         throw new Error(`missing type argument for closure result ${result}`);
       }
-      return closurePlan({
+      return closurePlan(paramTokens, [INDIRECT], {
         mode: "loadableIndirect",
         params: scalars,
         resultMetadata,
@@ -838,7 +849,7 @@ function planClosureType(spelling: FunctionTypeSpelling, genericParams: string[]
     }
     const resultScalar = resultIsVoid ? null : LOADABLE_SCALARS[result] ?? null;
     if (resultIsVoid || resultScalar !== null) {
-      return closurePlan({
+      return closurePlan(paramTokens, resultScalar === null ? [] : [resultScalar.token], {
         mode: "loadable",
         params: scalars,
         result: resultScalar,
@@ -1124,7 +1135,7 @@ function decodeArgs(raw: NativeCallbackArgumentValue[], params: LoadableScalar[]
   return raw.map((value, i) => (params[i].decode ? params[i].decode!(value) : value));
 }
 
-function marshalClosure(plan: { shape: ClosureShape }, arg: CallArg): SwiftClosure {
+function marshalClosure(plan: { discriminator: number; shape: ClosureShape }, arg: CallArg): SwiftClosure {
   if (!(arg instanceof ClosureSpec)) {
     throw new Error("expected a Swift.closure() argument for a function-typed parameter");
   }
@@ -1136,7 +1147,7 @@ function marshalClosure(plan: { shape: ClosureShape }, arg: CallArg): SwiftClosu
       const r = userBody(...decodeArgs(raw as NativeCallbackArgumentValue[], shape.params));
       return r instanceof SwiftThrow || encode === undefined ? r : (encode(r) as never);
     };
-    return SwiftClosure.loadable(body, loadableNativeTypes(shape.params), shape.result?.nativeType ?? "void", {
+    return SwiftClosure.loadable(body, loadableNativeTypes(shape.params), shape.result?.nativeType ?? "void", plan.discriminator, {
       throws: shape.throws,
     });
   }
@@ -1152,15 +1163,11 @@ function marshalClosure(plan: { shape: ClosureShape }, arg: CallArg): SwiftClosu
         writeValue(resultMetadata, result, r);
       },
       loadableNativeTypes(shape.params),
+      plan.discriminator,
       { throws: shape.throws }
     );
   }
-  const userBody = arg.body;
-  const body: ClosureBody = (buffer, result) => {
-    const r = userBody(buffer, result);
-    return r instanceof SwiftThrow ? r.error : (r as NativePointer | void);
-  };
-  return SwiftClosure.overBytes(body, { throws: shape.throws });
+  return SwiftClosure.overBytes(arg.body as ClosureBody, plan.discriminator);
 }
 
 function inferClosureTypeArguments(signature: SwiftFunctionSignature): Metadata[] {
@@ -1216,7 +1223,7 @@ function planGenericMethod(typeNameArg: string, methodName: string, options: Met
   const witnessTables = options.witnessTables ?? autoWitnessTables(signature, resolvedTypeArguments);
   let asyncFunctionPointer: AsyncFunctionPointer | undefined;
   if (signature.async) {
-    const module = Process.findModuleByAddress(address);
+    const module = Process.findModuleByAddress(address.strip());
     asyncFunctionPointer = module === null ? undefined : findAsyncFunctionPointer(module, mangled) ?? undefined;
     if (asyncFunctionPointer === undefined) {
       throw new Error(`cannot resolve async function pointer for ${signature.selector}`);
@@ -1300,7 +1307,7 @@ function planGenericTypeMethod(receiver: Metadata, methodName: string, options: 
     signature.returnTypeName === null ? null : planTypeMemberArg(signature.returnTypeName, typeParams, typeArguments);
   let asyncFunctionPointer: AsyncFunctionPointer | undefined;
   if (signature.async) {
-    const module = Process.findModuleByAddress(address);
+    const module = Process.findModuleByAddress(address.strip());
     asyncFunctionPointer = module === null ? undefined : findAsyncFunctionPointer(module, mangled) ?? undefined;
     if (asyncFunctionPointer === undefined) {
       throw new Error(`cannot resolve async function pointer for ${signature.selector}`);
@@ -1408,7 +1415,8 @@ const symbolsByModule = new Map<string, Map<string, string>>();
 
 // Witness thunks are usually private linkage, invisible to symbolicate()'s exports-only lookup.
 function symbolicateLocal(address: NativePointer): string | null {
-  const module = Process.findModuleByAddress(address);
+  address = address.strip();
+  const module = Process.findModuleByAddress(address.strip());
   if (module === null) {
     return null;
   }
@@ -1416,7 +1424,7 @@ function symbolicateLocal(address: NativePointer): string | null {
   if (names === undefined) {
     names = new Map<string, string>();
     for (const s of module.enumerateSymbols()) {
-      names.set(s.address.toString(), s.name);
+      names.set(s.address.strip().toString(), s.name);
     }
     symbolsByModule.set(module.path, names);
   }
@@ -1692,9 +1700,13 @@ const DIRECT_BRANCH_MNEMONICS: Partial<Record<Architecture, ReadonlySet<string>>
 // Register-target branch into a resolved vtable slot. On x64 these share call/jmp with the
 // direct set; the operand kind (imm vs reg) is what disambiguates a fixed branch from an indirect.
 const INDIRECT_BRANCH_MNEMONICS: Partial<Record<Architecture, ReadonlySet<string>>> = {
-  arm64: new Set(["blr"]),
+  arm64: new Set(["blr", "blraa", "blrab", "br", "braa", "brab"]),
   x64: new Set(["call", "jmp"]),
 };
+
+function isArm64AuthInPlace(mnemonic: string): boolean {
+  return mnemonic.startsWith("aut") || mnemonic.startsWith("xpac");
+}
 
 const CONTROL_FLOW_GROUPS = new Set(["jump", "call", "ret"]);
 
@@ -1724,7 +1736,7 @@ function asMemLoad(insn: Instruction): { dest: string; base: string; disp: numbe
 
 // A witness thunk is a prologue, then a fixed branch, or a self→metadata→vtable-slot load chain
 // into an indirect one; anything else resets the chain rather than guessing.
-function classifyBranch(address: NativePointer, maxInstructions = 8): BranchClassification {
+function classifyBranch(address: NativePointer, maxInstructions = 16): BranchClassification {
   const directMnemonics = DIRECT_BRANCH_MNEMONICS[Process.arch];
   const indirectMnemonics = INDIRECT_BRANCH_MNEMONICS[Process.arch];
   const selfReg = SELF_REG[Process.arch];
@@ -1762,11 +1774,18 @@ function classifyBranch(address: NativePointer, maxInstructions = 8): BranchClas
       state.phase === "haveMetadata" &&
       load !== null &&
       load.base === state.reg &&
-      load.dest === state.reg &&
       load.disp !== 0 &&
       load.disp % Process.pointerSize === 0
     ) {
+      // arm64e loads the slot into a fresh register (`ldr x8, [x16, #off]!`); arm64/x64 reuse the
+      // metadata register. Track whichever holds the slot.
       state = { phase: "haveSlot", reg: load.dest, offset: load.disp };
+    } else if (
+      state.phase !== "seekingMetadata" &&
+      (isArm64AuthInPlace(insn.mnemonic) || (insn as Arm64Instruction | X86Instruction).operands[0]?.value !== state.reg)
+    ) {
+      // A scratch instruction that doesn't overwrite the tracked register (the arm64e auth sequence)
+      // — keep the chain rather than resetting.
     } else {
       state = { phase: "seekingMetadata" };
     }
@@ -1782,7 +1801,7 @@ function resolveVTableTarget(table: WitnessTable, metadataOffset: number): Nativ
   try {
     const classMetadata = new ClassMetadata(table.conformingType.handle);
     const hasVTableSlot = readVTableChain(classMetadata).some((e) => e.metadataOffset === metadataOffset);
-    return hasVTableSlot ? classMetadata.handle.add(metadataOffset * Process.pointerSize).readPointer() : null;
+    return hasVTableSlot ? classMetadata.handle.add(metadataOffset * Process.pointerSize).readPointer().strip() : null;
   } catch {
     return null;
   }
