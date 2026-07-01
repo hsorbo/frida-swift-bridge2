@@ -541,7 +541,7 @@ function writeArm64CompletionTrampoline(slot: NativePointer, pc: NativePointer):
   w.putMovRegReg("x0", "x22");
   w.putAddRegRegImm("x1", "sp", 0);
   w.putLdrRegAddress("x14", completionBridge!);
-  w.putBlrRegNoAuth("x14");
+  w.putBlrReg("x14");
   w.putMovRegReg("x9", "x0");
   for (let i = 0; i < 8; i++) {
     w.putLdrRegRegOffset(`x${i}` as Arm64Register, "sp", i * 8);

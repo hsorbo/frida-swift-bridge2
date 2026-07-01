@@ -1,5 +1,6 @@
 import { ContextDescriptor, ContextDescriptorKind } from "./context-descriptor.js";
 import { ValueWitnessTable } from "./value-witness.js";
+import { signCode } from "../basic/pac.js";
 
 export enum MetadataKind {
   Class = 0x0,
@@ -47,7 +48,7 @@ export class Metadata {
   }
 
   get valueWitnessTable(): NativePointer {
-    return this.handle.sub(Process.pointerSize).readPointer();
+    return this.handle.sub(Process.pointerSize).readPointer().strip();
   }
 
   get valueWitnesses(): ValueWitnessTable {
@@ -97,7 +98,7 @@ export function getMetadata(descriptor: ContextDescriptor): Metadata {
     return cached;
   }
 
-  const access = new NativeFunction(accessFunction, "pointer", ["size_t"]);
+  const access = new NativeFunction(signCode(accessFunction), "pointer", ["size_t"]);
   const metadata = new Metadata(access(METADATA_REQUEST_COMPLETE) as NativePointer);
   cache.set(key, metadata);
   return metadata;
@@ -177,7 +178,8 @@ function genericHeader(descriptor: ContextDescriptor): NativePointer {
   return descriptor.handle.add(genericHeaderOffset(descriptor));
 }
 
-function invokeAccessor(fn: NativePointer, args: NativePointer[]): NativePointer {
+function invokeAccessor(bareFn: NativePointer, args: NativePointer[]): NativePointer {
+  const fn = signCode(bareFn);
   const request = METADATA_REQUEST_COMPLETE;
   switch (args.length) {
     case 1:

@@ -1,4 +1,5 @@
 import { getSwiftCoreApi } from "../runtime/api.js";
+import { signCode } from "../basic/pac.js";
 
 const OFFSETOF_INITIALIZE_BUFFER_WITH_COPY_OF_BUFFER = 0x00;
 const OFFSETOF_DESTROY = 0x08;
@@ -93,7 +94,7 @@ export class ValueWitnessTable {
 
   getEnumTagSinglePayload(enumAddress: NativePointer, emptyCases: number): number {
     const fn = new NativeFunction(
-      this.table.add(OFFSETOF_GET_ENUM_TAG_SINGLE_PAYLOAD).readPointer(),
+      signCode(this.table.add(OFFSETOF_GET_ENUM_TAG_SINGLE_PAYLOAD).readPointer()),
       "uint",
       ["pointer", "uint", "pointer"]
     );
@@ -102,7 +103,7 @@ export class ValueWitnessTable {
 
   storeEnumTagSinglePayload(enumAddress: NativePointer, whichCase: number, emptyCases: number): void {
     const fn = new NativeFunction(
-      this.table.add(OFFSETOF_STORE_ENUM_TAG_SINGLE_PAYLOAD).readPointer(),
+      signCode(this.table.add(OFFSETOF_STORE_ENUM_TAG_SINGLE_PAYLOAD).readPointer()),
       "void",
       ["pointer", "uint", "uint", "pointer"]
     );
@@ -110,7 +111,7 @@ export class ValueWitnessTable {
   }
 
   destroy(value: NativePointer): void {
-    const fn = new NativeFunction(this.table.add(OFFSETOF_DESTROY).readPointer(), "void", [
+    const fn = new NativeFunction(signCode(this.table.add(OFFSETOF_DESTROY).readPointer()), "void", [
       "pointer",
       "pointer",
     ]);
@@ -130,7 +131,7 @@ export class ValueWitnessTable {
   }
 
   private call3(offset: number, dest: NativePointer, src: NativePointer): NativePointer {
-    const fn = new NativeFunction(this.table.add(offset).readPointer(), "pointer", [
+    const fn = new NativeFunction(signCode(this.table.add(offset).readPointer()), "pointer", [
       "pointer",
       "pointer",
       "pointer",

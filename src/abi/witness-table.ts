@@ -18,11 +18,11 @@ export class WitnessTable {
   constructor(readonly handle: NativePointer, readonly conformingType: Metadata) {}
 
   get conformanceDescriptor(): NativePointer {
-    return this.handle.readPointer();
+    return this.handle.readPointer().strip();
   }
 
   requirement(witnessIndex: number): NativePointer {
-    return this.handle.add(witnessIndex * Process.pointerSize).readPointer();
+    return this.handle.add(witnessIndex * Process.pointerSize).readPointer().strip();
   }
 
   method(self: NativePointer, name: string): BoundMethod | BoundAsyncMethod {
