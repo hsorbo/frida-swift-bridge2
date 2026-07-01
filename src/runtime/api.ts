@@ -46,6 +46,10 @@ export interface SwiftCoreApi {
     [NativePointerValue, number | UInt64, number | UInt64]
   >;
   swift_allocBox: NativeFunction<[NativePointer, NativePointer], [NativePointerValue]>;
+  swift_deallocObject: NativeFunction<
+    void,
+    [NativePointerValue, number | UInt64, number | UInt64]
+  >;
   swift_retain: NativeFunction<NativePointer, [NativePointerValue]>;
   swift_release: NativeFunction<void, [NativePointerValue]>;
   swift_retainCount: NativeFunction<UInt64, [NativePointerValue]>;
@@ -114,6 +118,11 @@ export function getSwiftCoreApi(): SwiftCoreApi {
       lib.getExportByName("swift_allocBox"),
       ["pointer", "pointer"],
       ["pointer"]
+    ),
+    swift_deallocObject: new NativeFunction(
+      lib.getExportByName("swift_deallocObject"),
+      "void",
+      ["pointer", "size_t", "size_t"]
     ),
     swift_retain: new NativeFunction(lib.getExportByName("swift_retain"), "pointer", [
       "pointer",

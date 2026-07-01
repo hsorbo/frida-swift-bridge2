@@ -5,6 +5,7 @@ import { ContextDescriptor } from "../abi/context-descriptor.js";
 import { getMetadata, Metadata } from "../abi/metadata.js";
 import { buildGenericMetadata } from "../abi/generic-instantiation.js";
 import { getExistentialTypeMetadata } from "../abi/existential.js";
+import { resolveTypeByMangledName } from "../abi/field-descriptor.js";
 
 export interface SwiftSymbol {
   address: NativePointer;
@@ -143,7 +144,7 @@ function parseFunction(s: string): SwiftFunctionSignature | null {
     name,
     genericParams,
     simpleGenerics,
-    throws: /\bthrows\b/.test(tail.slice(0, arrow)),
+    throws: /\b(?:re)?throws\b/.test(tail.slice(0, arrow)),
     argTypeNames,
     argLabels,
     returnTypeName: returnTypeName === "()" ? null : returnTypeName,
@@ -259,6 +260,50 @@ function resolveProtocolExistential(name: string): Metadata | null {
   return getExistentialTypeMetadata(protocols);
 }
 
+let voidMetadataCache: Metadata | null = null;
+
+// The empty tuple ("yt"); not a nominal type, so findType can't reach it.
+export function voidMetadata(): Metadata {
+  if (voidMetadataCache === null) {
+    const mangled = Memory.allocUtf8String("yt");
+    const metadata = resolveTypeByMangledName({ address: mangled, length: 2 });
+    if (metadata === null) {
+      throw new Error("cannot resolve Swift.Void metadata");
+    }
+    voidMetadataCache = metadata;
+  }
+  return voidMetadataCache;
+}
+
+export interface FunctionTypeSpelling {
+  params: string[];
+  result: string;
+  throws: boolean;
+}
+
+// Recognizes a closure/function type spelling like "(Swift.Int) throws -> A"; null otherwise.
+export function parseFunctionTypeSpelling(name: string): FunctionTypeSpelling | null {
+  const t = name.trim();
+  if (!t.startsWith("(")) {
+    return null;
+  }
+  const close = matchingBracket(t, 0);
+  if (close === -1) {
+    return null;
+  }
+  const tail = t.slice(close + 1);
+  const arrow = topLevelIndexOf(tail, "->");
+  if (arrow === -1) {
+    return null;
+  }
+  const inner = t.slice(1, close).trim();
+  return {
+    params: inner === "" ? [] : splitTopLevel(inner, ","),
+    result: tail.slice(arrow + 2).trim(),
+    throws: /\b(?:re)?throws\b/.test(tail.slice(0, arrow)),
+  };
+}
+
 function instantiate(base: string, args: (Metadata | null)[]): Metadata | null {
   const descriptor = findType(base);
   if (descriptor === null || args.some((a) => a === null)) {
@@ -314,9 +359,11 @@ export function resolveTypeExpr(
 const OPEN: Record<string, string> = { "(": ")", "<": ">", "[": "]" };
 const CLOSE = new Set([")", ">", "]"]);
 
-function depthDelta(ch: string): number {
+// The `>` in a `->` arrow closes nothing — skipping it keeps function-typed params (closures) intact.
+function depthDelta(s: string, i: number): number {
+  const ch = s[i];
   if (ch in OPEN) return 1;
-  if (CLOSE.has(ch)) return -1;
+  if (CLOSE.has(ch)) return ch === ">" && s[i - 1] === "-" ? 0 : -1;
   return 0;
 }
 
@@ -326,7 +373,7 @@ function topLevelIndexOf(s: string, needle: string): number {
     if (depth === 0 && s.startsWith(needle, i)) {
       return i;
     }
-    depth += depthDelta(s[i]);
+    depth += depthDelta(s, i);
   }
   return -1;
 }
@@ -338,7 +385,7 @@ function lastTopLevelDot(s: string): number {
     if (depth === 0 && s[i] === ".") {
       last = i;
     }
-    depth += depthDelta(s[i]);
+    depth += depthDelta(s, i);
   }
   return last;
 }
@@ -346,7 +393,7 @@ function lastTopLevelDot(s: string): number {
 function matchingBracket(s: string, open: number): number {
   let depth = 0;
   for (let i = open; i < s.length; i++) {
-    depth += depthDelta(s[i]);
+    depth += depthDelta(s, i);
     if (depth === 0) {
       return i;
     }
@@ -368,7 +415,7 @@ function splitTopLevel(s: string, sep: string): string[] {
       start = i + 1;
       continue;
     }
-    depth += depthDelta(s[i]);
+    depth += depthDelta(s, i);
   }
   parts.push(s.slice(start));
   return parts.map((p) => p.trim());

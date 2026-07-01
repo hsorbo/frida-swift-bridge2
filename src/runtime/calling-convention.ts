@@ -98,7 +98,14 @@ export function indirect(metadata: Metadata): AbstractIndirect {
   return { metadata, addressOnly: true };
 }
 
-export type SwiftArgType = Metadata | GenericRef | AbstractIndirect;
+// thick closure: two direct words [fnPointer, context] passed in normal arg registers, not x20
+export interface ClosureRef {
+  closure: true;
+}
+
+const CLOSURE_WORDS = 2;
+
+export type SwiftArgType = Metadata | GenericRef | AbstractIndirect | ClosureRef;
 
 function isGenericRef(arg: SwiftArgType): arg is GenericRef {
   return !(arg instanceof Metadata) && "genericParam" in arg;
@@ -108,6 +115,10 @@ function isAbstractIndirect(arg: SwiftArgType): arg is AbstractIndirect {
   return !(arg instanceof Metadata) && "addressOnly" in arg;
 }
 
+function isClosureRef(arg: SwiftArgType): arg is ClosureRef {
+  return !(arg instanceof Metadata) && "closure" in arg;
+}
+
 interface LoweredArg {
   indirect: boolean;
   float: FloatLayout | null;
@@ -115,6 +126,9 @@ interface LoweredArg {
 }
 
 function lowerArg(arg: SwiftArgType): LoweredArg {
+  if (isClosureRef(arg)) {
+    return { indirect: false, float: null, words: CLOSURE_WORDS };
+  }
   if (isGenericRef(arg) || isAbstractIndirect(arg)) {
     return { indirect: true, float: null, words: 0 };
   }
@@ -196,6 +210,9 @@ export function makeSwiftNativeFunction(
   let resultSize = 0;
   let resultStride = 0;
   if (returnType !== null) {
+    if (isClosureRef(returnType)) {
+      throw new Error("closure return types are not supported");
+    }
     const forcedIndirect = isGenericRef(returnType) || isAbstractIndirect(returnType);
     const returnMetadata = isGenericRef(returnType)
       ? typeArgumentFor(returnType)

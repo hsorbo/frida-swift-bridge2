@@ -4,12 +4,13 @@ import { findType, swiftModules, swiftTypes } from "./reflection/registry.js";
 import { getMetadata, Metadata } from "./abi/metadata.js";
 import { buildGenericMetadata } from "./abi/generic-instantiation.js";
 import { typeName } from "./runtime/type-name.js";
-import { symbolicate, parseSwiftSignature } from "./runtime/symbolication.js";
+import { symbolicate, parseSwiftSignature, voidMetadata } from "./runtime/symbolication.js";
 import { SwiftInterceptor } from "./runtime/interceptor.js";
 import { SwiftType, typeOf, swiftNativeFunction } from "./runtime/swift-type.js";
 import { createObject } from "./runtime/object-facade.js";
 import { Protocol, ProtocolComposition } from "./runtime/protocol.js";
 import { indirect, markResilientModule } from "./runtime/calling-convention.js";
+import { closure } from "./runtime/closure.js";
 
 export { SwiftCoreApi, getSwiftCoreApi } from "./runtime/api.js";
 export { isSwiftSymbol, demangle } from "./runtime/demangle.js";
@@ -123,8 +124,17 @@ export {
   SwiftNativeFunctionOptions,
   SwiftArgType,
   GenericRef,
+  ClosureRef,
   SwiftThrownError,
 } from "./runtime/calling-convention.js";
+export {
+  SwiftClosure,
+  ClosureSpec,
+  ClosureBody,
+  SwiftThrow,
+  UnsafeRawBufferPointer,
+  closure,
+} from "./runtime/closure.js";
 export { readString } from "./abi/string.js";
 export { typeName } from "./runtime/type-name.js";
 export {
@@ -186,6 +196,9 @@ export const Swift = {
   types: swiftTypes,
 
   metadataFor(name: string, typeArguments: Metadata[] = []): Metadata | null {
+    if (name === "Swift.Void" || name === "()") {
+      return voidMetadata();
+    }
     const descriptor = findType(name);
     if (descriptor === null) {
       return null;
@@ -204,6 +217,7 @@ export const Swift = {
   },
 
   indirect,
+  closure,
   markResilient: markResilientModule,
   symbolicate,
   parseSignature: parseSwiftSignature,

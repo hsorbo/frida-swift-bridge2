@@ -15,6 +15,7 @@ import {
 } from "./method.js";
 import { typeName } from "./type-name.js";
 import { SwiftType, typeOf } from "./swift-type.js";
+import { ClosureSpec } from "./closure.js";
 
 const RESERVED = new Set([
   "toString",
@@ -100,8 +101,13 @@ export function createObject(source: NativePointer | ClassInstance | ValueInstan
     isValue ? value.set(name, v) : object.set(name, v);
   const method = (name: string, options: ValueMethodResolveOptions = {}) =>
     isValue ? value.method(name, options) : object.method(name, options);
-  const invoke = (name: string, args: CallArg[]): CallResult =>
-    method(name, { arity: args.length }).call(...args);
+  const invoke = (name: string, args: CallArg[]): CallResult => {
+    const options: MethodResolveOptions = { arity: args.length };
+    if (args.some((a) => a instanceof ClosureSpec)) {
+      options.typeArguments = []; // generic path; planGenericMethod infers the closure-result R
+    }
+    return method(name, options).call(...args);
+  };
 
   let index: MemberIndex | null = null;
   const members = (): MemberIndex => {
