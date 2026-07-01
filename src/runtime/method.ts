@@ -24,6 +24,7 @@ import {
   shouldPassIndirectly,
 } from "./calling-convention.js";
 import { SwiftClosure, ClosureSpec, ClosureBody, LoadableClosureBody, SwiftThrow } from "./closure.js";
+import { closureDiscriminator, closureHashString, INDIRECT } from "./closure-discriminator.js";
 import { typeName } from "./type-name.js";
 import { readString, createString } from "../abi/string.js";
 import { findProtocol, conformsToProtocol } from "../abi/protocol-conformance.js";
@@ -598,7 +599,7 @@ export function bindValueMethod(
 // buffer: (UnsafeRawBufferPointer) -> @out, via an asm trampoline. loadable: register params and
 // result. loadableIndirect: register params, @out result (e.g. (Int) -> R).
 type ClosureShape =
-  | { mode: "buffer"; throws: boolean }
+  | { mode: "buffer" }
   | { mode: "loadable"; params: LoadableScalar[]; result: LoadableScalar | null; throws: boolean }
   | { mode: "loadableIndirect"; params: LoadableScalar[]; resultMetadata: Metadata; throws: boolean };
 
@@ -606,11 +607,13 @@ type ArgPlan =
   | { kind: "generic"; index: number; metadata: Metadata }
   | { kind: "concrete"; metadata: Metadata }
   | { kind: "abstractIndirect"; metadata: Metadata }
-  | { kind: "closure"; shape: ClosureShape };
+  | { kind: "closure"; discriminator: number; shape: ClosureShape };
 
 const RAW_BUFFER_PARAM = "Swift.UnsafeRawBufferPointer";
+const RAW_BUFFER_TOKEN = "$sSW"; // $s mangling of UnsafeRawBufferPointer
 
 interface LoadableScalar {
+  token: string; // $s mangling feeding the pointer-auth discriminator
   nativeType: NativeCallbackArgumentType;
   decode?: (raw: NativeCallbackArgumentValue) => unknown; // set only by non-scalar wire shapes (String)
   encode?: (value: unknown) => NativeCallbackReturnValue;
@@ -632,28 +635,32 @@ function encodeString(value: unknown): NativePointer[] {
   return [s.readPointer(), s.add(Process.pointerSize).readPointer()];
 }
 
-// Scalar types passable through a loadable closure, with the native type Frida marshals them as.
+// $s manglings feeding the discriminator (verified against the fixture's blraa); Frida type marshals.
 const LOADABLE_SCALARS: Record<string, LoadableScalar> = {
-  "Swift.Int": { nativeType: "int64" },
-  "Swift.UInt": { nativeType: "uint64" },
-  "Swift.Bool": { nativeType: "bool" },
-  "Swift.Double": { nativeType: "double" },
-  "Swift.Float": { nativeType: "float" },
-  "Swift.Int8": { nativeType: "int8" },
-  "Swift.Int16": { nativeType: "int16" },
-  "Swift.Int32": { nativeType: "int32" },
-  "Swift.Int64": { nativeType: "int64" },
-  "Swift.UInt8": { nativeType: "uint8" },
-  "Swift.UInt16": { nativeType: "uint16" },
-  "Swift.UInt32": { nativeType: "uint32" },
-  "Swift.UInt64": { nativeType: "uint64" },
-  "Swift.UnsafeRawPointer": { nativeType: "pointer" },
-  "Swift.UnsafeMutableRawPointer": { nativeType: "pointer" },
-  "Swift.String": { nativeType: STRING_WORDS, decode: decodeString, encode: encodeString },
+  "Swift.Int": { token: "$sSi", nativeType: "int64" },
+  "Swift.UInt": { token: "$sSu", nativeType: "uint64" },
+  "Swift.Bool": { token: "$sSb", nativeType: "bool" },
+  "Swift.Double": { token: "$sSd", nativeType: "double" },
+  "Swift.Float": { token: "$sSf", nativeType: "float" },
+  "Swift.Int8": { token: "$ss4Int8V", nativeType: "int8" },
+  "Swift.Int16": { token: "$ss5Int16V", nativeType: "int16" },
+  "Swift.Int32": { token: "$ss5Int32V", nativeType: "int32" },
+  "Swift.Int64": { token: "$ss5Int64V", nativeType: "int64" },
+  "Swift.UInt8": { token: "$ss5UInt8V", nativeType: "uint8" },
+  "Swift.UInt16": { token: "$ss6UInt16V", nativeType: "uint16" },
+  "Swift.UInt32": { token: "$ss6UInt32V", nativeType: "uint32" },
+  "Swift.UInt64": { token: "$ss6UInt64V", nativeType: "uint64" },
+  "Swift.UnsafeRawPointer": { token: "$sSV", nativeType: "pointer" },
+  "Swift.UnsafeMutableRawPointer": { token: "$sSv", nativeType: "pointer" },
+  "Swift.String": { token: "$sSS", nativeType: STRING_WORDS, decode: decodeString, encode: encodeString },
 };
 
-function closurePlan(shape: ClosureShape): ArgPlan {
-  return { kind: "closure", shape };
+function closurePlan(paramTokens: string[], resultTokens: string[], shape: ClosureShape): ArgPlan {
+  return {
+    kind: "closure",
+    discriminator: closureDiscriminator(closureHashString(paramTokens, resultTokens)),
+    shape,
+  };
 }
 
 function planClosureType(spelling: FunctionTypeSpelling, genericParams: string[], typeArguments: Metadata[]): ArgPlan {
@@ -662,18 +669,21 @@ function planClosureType(spelling: FunctionTypeSpelling, genericParams: string[]
   const resultIsVoid = result === "()" || result === "Swift.Void";
   const takesBuffer = spelling.params.length === 1 && spelling.params[0].trim() === RAW_BUFFER_PARAM;
   if ((spelling.params.length === 0 || takesBuffer) && (resultIsVoid || resultIsGeneric)) {
-    return closurePlan({ mode: "buffer", throws: spelling.throws });
+    const paramTokens = takesBuffer ? [RAW_BUFFER_TOKEN] : [];
+    const resultTokens = resultIsGeneric ? [INDIRECT] : [];
+    return closurePlan(paramTokens, resultTokens, { mode: "buffer" });
   }
 
   const params = spelling.params.map((p) => LOADABLE_SCALARS[p.trim()] ?? null);
   if (params.every((p) => p !== null)) {
     const scalars = params as LoadableScalar[];
+    const paramTokens = scalars.map((p) => p.token);
     if (resultIsGeneric) {
       const resultMetadata = typeArguments[genericParams.indexOf(result)];
       if (resultMetadata === undefined) {
         throw new Error(`missing type argument for closure result ${result}`);
       }
-      return closurePlan({
+      return closurePlan(paramTokens, [INDIRECT], {
         mode: "loadableIndirect",
         params: scalars,
         resultMetadata,
@@ -682,7 +692,7 @@ function planClosureType(spelling: FunctionTypeSpelling, genericParams: string[]
     }
     const resultScalar = resultIsVoid ? null : LOADABLE_SCALARS[result] ?? null;
     if (resultIsVoid || resultScalar !== null) {
-      return closurePlan({
+      return closurePlan(paramTokens, resultScalar === null ? [] : [resultScalar.token], {
         mode: "loadable",
         params: scalars,
         result: resultScalar,
@@ -873,7 +883,7 @@ function decodeArgs(raw: NativeCallbackArgumentValue[], params: LoadableScalar[]
   return raw.map((value, i) => (params[i].decode ? params[i].decode!(value) : value));
 }
 
-function marshalClosure(plan: { shape: ClosureShape }, arg: CallArg): SwiftClosure {
+function marshalClosure(plan: { discriminator: number; shape: ClosureShape }, arg: CallArg): SwiftClosure {
   if (!(arg instanceof ClosureSpec)) {
     throw new Error("expected a Swift.closure() argument for a function-typed parameter");
   }
@@ -885,7 +895,7 @@ function marshalClosure(plan: { shape: ClosureShape }, arg: CallArg): SwiftClosu
       const r = userBody(...decodeArgs(raw as NativeCallbackArgumentValue[], shape.params));
       return r instanceof SwiftThrow || encode === undefined ? r : (encode(r) as never);
     };
-    return SwiftClosure.loadable(body, loadableNativeTypes(shape.params), shape.result?.nativeType ?? "void", {
+    return SwiftClosure.loadable(body, loadableNativeTypes(shape.params), shape.result?.nativeType ?? "void", plan.discriminator, {
       throws: shape.throws,
     });
   }
@@ -901,15 +911,11 @@ function marshalClosure(plan: { shape: ClosureShape }, arg: CallArg): SwiftClosu
         writeValue(resultMetadata, result, r);
       },
       loadableNativeTypes(shape.params),
+      plan.discriminator,
       { throws: shape.throws }
     );
   }
-  const userBody = arg.body;
-  const body: ClosureBody = (buffer, result) => {
-    const r = userBody(buffer, result);
-    return r instanceof SwiftThrow ? r.error : (r as NativePointer | void);
-  };
-  return SwiftClosure.overBytes(body, { throws: shape.throws });
+  return SwiftClosure.overBytes(arg.body as ClosureBody, plan.discriminator);
 }
 
 function inferClosureTypeArguments(signature: SwiftFunctionSignature): Metadata[] {

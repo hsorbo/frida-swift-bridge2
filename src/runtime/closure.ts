@@ -1,5 +1,11 @@
 import { getSwiftCoreApi } from "./api.js";
 
+const CLOSURE_KEY: PointerAuthenticationKey = "ia";
+
+// Swift authenticates a closure's function pointer (blraa) only under the arm64e ABI; on a plain
+// arm64/x86 runtime the call is a bare blr and signing would leave PAC bits that fault the branch.
+const ARM64E_ABI = Process.platform === "darwin" && Process.arch === "arm64";
+
 // HeapObject header: [metadata, refCounts]. swift_allocObject installs strong count 1.
 const HEAP_HEADER_SIZE = Process.pointerSize * 2;
 const HEAP_ALIGN_MASK = Process.pointerSize - 1;
@@ -29,8 +35,7 @@ export type LoadableIndirectBody = (args: LoadableValue[], result: NativePointer
 
 export type AnyClosureBody = (...args: any[]) => any;
 
-// Deferred closure request: the ABI shape (loadable vs buffer, result routing) is known only at
-// marshal time, so hold just the body until then.
+// Unsigned closure request: signing needs the call-site discriminator, known only at marshal time.
 export class ClosureSpec {
   constructor(readonly body: AnyClosureBody) {}
 }
@@ -59,8 +64,8 @@ export class SwiftClosure {
   // ignored by our trampoline). Owned at +1; released when this wrapper is collected.
   readonly context: NativePointer;
 
-  private constructor(resources: ClosureResources) {
-    this.fnPointer = resources.code;
+  private constructor(resources: ClosureResources, discriminator: number) {
+    this.fnPointer = ARM64E_ABI ? resources.code.sign(CLOSURE_KEY, discriminator) : resources.code;
     this.context = allocContext(resources);
     liveResources.add(resources);
     const release = getSwiftCoreApi().swift_release;
@@ -77,7 +82,7 @@ export class SwiftClosure {
     return buffer;
   }
 
-  static overBytes(fn: ClosureBody, options: { throws?: boolean } = {}): SwiftClosure {
+  static overBytes(fn: ClosureBody, discriminator: number, options: { throws?: boolean } = {}): SwiftClosure {
     const slots = Memory.alloc(Process.pointerSize * 2);
     const resultSlot = slots;
     const errorSlot = slots.add(Process.pointerSize);
@@ -105,7 +110,7 @@ export class SwiftClosure {
       errorSlot,
       routesError: options.throws === true,
     });
-    return new SwiftClosure({ callback, code, slots });
+    return new SwiftClosure({ callback, code, slots }, discriminator);
   }
 
   // Loadable params and a loadable/Void result match the C ABI a NativeCallback already speaks
@@ -116,6 +121,7 @@ export class SwiftClosure {
     body: LoadableClosureBody,
     paramTypes: NativeCallbackArgumentType[],
     resultType: NativeCallbackReturnType,
+    discriminator: number,
     options: { throws?: boolean } = {}
   ): SwiftClosure {
     if (options.throws !== true) {
@@ -124,7 +130,7 @@ export class SwiftClosure {
         resultType,
         paramTypes
       ) as AnyNativeCallback;
-      return new SwiftClosure({ callback, code: callback as unknown as NativePointer, slots: ptr(0) });
+      return new SwiftClosure({ callback, code: callback as unknown as NativePointer, slots: ptr(0) }, discriminator);
     }
 
     const errorSlot = Memory.alloc(Process.pointerSize);
@@ -139,13 +145,14 @@ export class SwiftClosure {
     ) as AnyNativeCallback;
     const code = Memory.alloc(Process.pageSize);
     writeClosureTrampoline(code, { target: callback as NativePointer, resultSlot: null, errorSlot, routesError: true });
-    return new SwiftClosure({ callback, code, slots: errorSlot });
+    return new SwiftClosure({ callback, code, slots: errorSlot }, discriminator);
   }
 
   // Like loadable, but the result is written through x8 (stashed by the trampoline), as in overBytes.
   static loadableProducing(
     body: LoadableIndirectBody,
     paramTypes: NativeCallbackArgumentType[],
+    discriminator: number,
     options: { throws?: boolean } = {}
   ): SwiftClosure {
     const slots = Memory.alloc(Process.pointerSize * 2);
@@ -161,7 +168,7 @@ export class SwiftClosure {
     ) as AnyNativeCallback;
     const code = Memory.alloc(Process.pageSize);
     writeClosureTrampoline(code, { target: callback as NativePointer, resultSlot, errorSlot, routesError: options.throws === true });
-    return new SwiftClosure({ callback, code, slots });
+    return new SwiftClosure({ callback, code, slots }, discriminator);
   }
 }
 
@@ -189,7 +196,9 @@ function allocContext(resources: ClosureResources): NativePointer {
     []
   );
   resources.destroy = destroy;
-  // The destroy slot (metadata-16) is stored unsigned; swift_release calls it raw on this runtime.
+  // This Darwin runtime stores `destroy` unsigned (verified: arm64e class/box destroy slots carry no
+  // PAC and release fine). A device libswiftCore that signs it expects key IA, discriminator 0xbbbf,
+  // address-diversified on the slot (metadata-16) — sign here when that target is supported.
   metadata.sub(Process.pointerSize * 2).writePointer(destroy);
 
   context = api.swift_allocObject(metadata, HEAP_HEADER_SIZE, HEAP_ALIGN_MASK) as NativePointer;
@@ -203,7 +212,7 @@ interface ClosureTrampolineConfig {
   routesError: boolean;
 }
 
-// Swift branches in; stash x8 (the @out result) for the callback, then route its error to x21.
+// Swift blraa's in; stash x8 (the @out result) for the callback, then route its error to x21.
 // x21 is swifterror only when the closure throws — otherwise it's callee-saved and left untouched.
 function writeClosureTrampoline(code: NativePointer, cfg: ClosureTrampolineConfig): void {
   Memory.patchCode(code, 0x80, (slot) => {
