@@ -7,14 +7,25 @@ import { ValueInstance } from "../abi/value.js";
 import { readValue, writeValue, embedsManagedReference, SwiftValue } from "../abi/instance.js";
 import { findType } from "../reflection/registry.js";
 import { demangle } from "./demangle.js";
-import { parseSwiftSignature, resolveType, resolveTypeExpr, splitBoundTypeName, SwiftFunctionSignature } from "./symbolication.js";
+import {
+  parseSwiftSignature,
+  parseFunctionTypeSpelling,
+  FunctionTypeSpelling,
+  voidMetadata,
+  resolveType,
+  resolveTypeExpr,
+  splitBoundTypeName,
+  SwiftFunctionSignature,
+} from "./symbolication.js";
 import {
   makeSwiftNativeFunction,
   SwiftNativeFunction,
   SwiftArgType,
   shouldPassIndirectly,
 } from "./calling-convention.js";
+import { SwiftClosure, ClosureSpec, ClosureBody, LoadableClosureBody, SwiftThrow } from "./closure.js";
 import { typeName } from "./type-name.js";
+import { readString, createString } from "../abi/string.js";
 import { findProtocol, conformsToProtocol } from "../abi/protocol-conformance.js";
 
 export type MethodKind = "method" | "init";
@@ -25,8 +36,9 @@ export function isSwiftObject(value: CallResult): value is SwiftObject {
   return typeof value === "object" && value !== null && "$kind" in value;
 }
 
-// A JS value, a ValueInstance (byte-copied in, e.g. an Array), or a facade (unwrapped in marshalArg).
-export type CallArg = SwiftValue | ValueInstance | SwiftObject;
+// A JS value, a ValueInstance (byte-copied in, e.g. an Array), a facade (unwrapped in marshalArg),
+// or a closure request marshalled into a function-typed generic parameter.
+export type CallArg = SwiftValue | ValueInstance | SwiftObject | ClosureSpec;
 
 export interface RawInstance {
   readonly handle: NativePointer;
@@ -583,12 +595,112 @@ export function bindValueMethod(
   return new BoundValueMethod(resolved, receiver, self, options.mutating === true);
 }
 
+// buffer: (UnsafeRawBufferPointer) -> @out, via an asm trampoline. loadable: register params and
+// result. loadableIndirect: register params, @out result (e.g. (Int) -> R).
+type ClosureShape =
+  | { mode: "buffer"; throws: boolean }
+  | { mode: "loadable"; params: LoadableScalar[]; result: LoadableScalar | null; throws: boolean }
+  | { mode: "loadableIndirect"; params: LoadableScalar[]; resultMetadata: Metadata; throws: boolean };
+
 type ArgPlan =
   | { kind: "generic"; index: number; metadata: Metadata }
   | { kind: "concrete"; metadata: Metadata }
-  | { kind: "abstractIndirect"; metadata: Metadata };
+  | { kind: "abstractIndirect"; metadata: Metadata }
+  | { kind: "closure"; shape: ClosureShape };
+
+const RAW_BUFFER_PARAM = "Swift.UnsafeRawBufferPointer";
+
+interface LoadableScalar {
+  nativeType: NativeCallbackArgumentType;
+  decode?: (raw: NativeCallbackArgumentValue) => unknown; // set only by non-scalar wire shapes (String)
+  encode?: (value: unknown) => NativeCallbackReturnValue;
+}
+
+const STRING_WORDS: NativeCallbackArgumentType = ["pointer", "pointer"];
+
+function decodeString(raw: NativeCallbackArgumentValue): string {
+  const words = raw as NativePointer[];
+  const buffer = Memory.alloc(Process.pointerSize * 2);
+  buffer.writePointer(words[0]);
+  buffer.add(Process.pointerSize).writePointer(words[1]);
+  return readString(buffer) ?? "";
+}
+
+// createString's +1 rides the words to Swift, which owns the closure result.
+function encodeString(value: unknown): NativePointer[] {
+  const s = createString(value as string);
+  return [s.readPointer(), s.add(Process.pointerSize).readPointer()];
+}
+
+// Scalar types passable through a loadable closure, with the native type Frida marshals them as.
+const LOADABLE_SCALARS: Record<string, LoadableScalar> = {
+  "Swift.Int": { nativeType: "int64" },
+  "Swift.UInt": { nativeType: "uint64" },
+  "Swift.Bool": { nativeType: "bool" },
+  "Swift.Double": { nativeType: "double" },
+  "Swift.Float": { nativeType: "float" },
+  "Swift.Int8": { nativeType: "int8" },
+  "Swift.Int16": { nativeType: "int16" },
+  "Swift.Int32": { nativeType: "int32" },
+  "Swift.Int64": { nativeType: "int64" },
+  "Swift.UInt8": { nativeType: "uint8" },
+  "Swift.UInt16": { nativeType: "uint16" },
+  "Swift.UInt32": { nativeType: "uint32" },
+  "Swift.UInt64": { nativeType: "uint64" },
+  "Swift.UnsafeRawPointer": { nativeType: "pointer" },
+  "Swift.UnsafeMutableRawPointer": { nativeType: "pointer" },
+  "Swift.String": { nativeType: STRING_WORDS, decode: decodeString, encode: encodeString },
+};
+
+function closurePlan(shape: ClosureShape): ArgPlan {
+  return { kind: "closure", shape };
+}
+
+function planClosureType(spelling: FunctionTypeSpelling, genericParams: string[], typeArguments: Metadata[]): ArgPlan {
+  const result = spelling.result.trim();
+  const resultIsGeneric = genericParams.includes(result);
+  const resultIsVoid = result === "()" || result === "Swift.Void";
+  const takesBuffer = spelling.params.length === 1 && spelling.params[0].trim() === RAW_BUFFER_PARAM;
+  if ((spelling.params.length === 0 || takesBuffer) && (resultIsVoid || resultIsGeneric)) {
+    return closurePlan({ mode: "buffer", throws: spelling.throws });
+  }
+
+  const params = spelling.params.map((p) => LOADABLE_SCALARS[p.trim()] ?? null);
+  if (params.every((p) => p !== null)) {
+    const scalars = params as LoadableScalar[];
+    if (resultIsGeneric) {
+      const resultMetadata = typeArguments[genericParams.indexOf(result)];
+      if (resultMetadata === undefined) {
+        throw new Error(`missing type argument for closure result ${result}`);
+      }
+      return closurePlan({
+        mode: "loadableIndirect",
+        params: scalars,
+        resultMetadata,
+        throws: spelling.throws,
+      });
+    }
+    const resultScalar = resultIsVoid ? null : LOADABLE_SCALARS[result] ?? null;
+    if (resultIsVoid || resultScalar !== null) {
+      return closurePlan({
+        mode: "loadable",
+        params: scalars,
+        result: resultScalar,
+        throws: spelling.throws,
+      });
+    }
+  }
+
+  throw new Error(
+    `unsupported closure type (${spelling.params.join(", ")}) -> ${result}; supported: () or (${RAW_BUFFER_PARAM}) returning Void or a generic, or loadable scalars (${Object.keys(LOADABLE_SCALARS).join(", ")}) returning a scalar, Void, or a generic`
+  );
+}
 
 function planGenericType(name: string, genericParams: string[], typeArguments: Metadata[]): ArgPlan {
+  const fn = parseFunctionTypeSpelling(name);
+  if (fn !== null) {
+    return planClosureType(fn, genericParams, typeArguments);
+  }
   const index = genericParams.indexOf(name);
   if (index !== -1) {
     const metadata = typeArguments[index];
@@ -655,6 +767,8 @@ function swiftArgType(plan: ArgPlan): SwiftArgType {
       return plan.metadata;
     case "abstractIndirect":
       return { metadata: plan.metadata, addressOnly: true };
+    case "closure":
+      return { closure: true };
   }
 }
 
@@ -711,43 +825,145 @@ export class GenericBoundMethod {
   }
 
   call(...args: CallArg[]): CallResult {
-    if (args.length !== this.plan.argPlans.length) {
-      throw new Error(`${this.selector} expects ${this.plan.argPlans.length} argument(s), got ${args.length}`);
+    const plans = this.plan.argPlans;
+    if (args.length !== plans.length) {
+      throw new Error(`${this.selector} expects ${plans.length} argument(s), got ${args.length}`);
     }
-    const argTypes = this.plan.argPlans.map((p) => p.metadata);
-    return callBorrowingArgs(argTypes, args, this.plan.returnPlan?.metadata ?? null, (argPtrs) =>
-      this.indirectSelf ? this.fn(this.self, ...argPtrs) : this.fn(...argPtrs, this.self)
+    const closures: SwiftClosure[] = []; // in scope through the call: Swift invokes them in-flight
+    const argPtrs: NativePointer[] = [];
+    const borrowed: { metadata: Metadata; ptr: NativePointer }[] = [];
+    for (let i = 0; i < plans.length; i++) {
+      const plan = plans[i];
+      if (plan.kind === "closure") {
+        const closure = marshalClosure(plan, args[i]);
+        closures.push(closure);
+        argPtrs.push(closure.value());
+        continue;
+      }
+      const ptr = marshalArg(plan.metadata, args[i]);
+      argPtrs.push(ptr);
+      if (plan.metadata.kind !== MetadataKind.Class && !plan.metadata.valueWitnesses.isPOD) {
+        borrowed.push({ metadata: plan.metadata, ptr });
+      }
+    }
+    const returnType = this.plan.returnPlan === null ? null : planMetadata(this.plan.returnPlan);
+    try {
+      const ret = this.indirectSelf ? this.fn(this.self, ...argPtrs) : this.fn(...argPtrs, this.self);
+      return decodeReturn(returnType, ret);
+    } finally {
+      for (const b of borrowed) {
+        b.metadata.valueWitnesses.destroy(b.ptr);
+      }
+    }
+  }
+}
+
+function planMetadata(plan: ArgPlan): Metadata {
+  if (plan.kind === "closure") {
+    throw new Error("closure types are only supported as arguments");
+  }
+  return plan.metadata;
+}
+
+function loadableNativeTypes(params: LoadableScalar[]): NativeCallbackArgumentType[] {
+  return params.map((p) => p.nativeType);
+}
+
+function decodeArgs(raw: NativeCallbackArgumentValue[], params: LoadableScalar[]): unknown[] {
+  return raw.map((value, i) => (params[i].decode ? params[i].decode!(value) : value));
+}
+
+function marshalClosure(plan: { shape: ClosureShape }, arg: CallArg): SwiftClosure {
+  if (!(arg instanceof ClosureSpec)) {
+    throw new Error("expected a Swift.closure() argument for a function-typed parameter");
+  }
+  const shape = plan.shape;
+  if (shape.mode === "loadable") {
+    const userBody = arg.body;
+    const encode = shape.result?.encode;
+    const body: LoadableClosureBody = (...raw) => {
+      const r = userBody(...decodeArgs(raw as NativeCallbackArgumentValue[], shape.params));
+      return r instanceof SwiftThrow || encode === undefined ? r : (encode(r) as never);
+    };
+    return SwiftClosure.loadable(body, loadableNativeTypes(shape.params), shape.result?.nativeType ?? "void", {
+      throws: shape.throws,
+    });
+  }
+  if (shape.mode === "loadableIndirect") {
+    const userBody = arg.body;
+    const resultMetadata = shape.resultMetadata;
+    return SwiftClosure.loadableProducing(
+      (raw, result) => {
+        const r = userBody(...decodeArgs(raw as NativeCallbackArgumentValue[], shape.params));
+        if (r instanceof SwiftThrow) {
+          return r;
+        }
+        writeValue(resultMetadata, result, r);
+      },
+      loadableNativeTypes(shape.params),
+      { throws: shape.throws }
     );
   }
+  const userBody = arg.body;
+  const body: ClosureBody = (buffer, result) => {
+    const r = userBody(buffer, result);
+    return r instanceof SwiftThrow ? r.error : (r as NativePointer | void);
+  };
+  return SwiftClosure.overBytes(body, { throws: shape.throws });
+}
+
+function inferClosureTypeArguments(signature: SwiftFunctionSignature): Metadata[] {
+  const closureResultParams = new Set<string>();
+  for (const argName of signature.argTypeNames) {
+    const fn = parseFunctionTypeSpelling(argName);
+    if (fn !== null && signature.genericParams.includes(fn.result.trim())) {
+      closureResultParams.add(fn.result.trim());
+    }
+  }
+  return signature.genericParams.map((param) => {
+    if (!closureResultParams.has(param)) {
+      throw new Error(`cannot infer type argument ${param} of ${signature.selector}; supply it via { typeArguments }`);
+    }
+    return voidMetadata(); // value-less JS closure ⇒ Void result
+  });
+}
+
+// planGenericMethod also binds a non-generic method whose closure parameter needs ArgPlan lowering.
+function argPlanBound(signature: SwiftFunctionSignature): boolean {
+  return signature.genericParams.length > 0
+    ? signature.simpleGenerics
+    : signature.argTypeNames.some((n) => parseFunctionTypeSpelling(n) !== null);
 }
 
 function planGenericMethod(typeNameArg: string, methodName: string, options: MethodResolveOptions): GenericMethodPlan {
   const fullName = canonicalTypeName(typeNameArg);
   const typeArguments = options.typeArguments ?? [];
   const candidates = applyOverloadFilters(
-    typeMembers(fullName).methods.filter(
-      (c) => c.name === methodName && c.signature.genericParams.length > 0 && c.signature.simpleGenerics
-    ),
+    typeMembers(fullName).methods.filter((c) => c.name === methodName && argPlanBound(c.signature)),
     options
   );
   if (candidates.length === 0) {
-    throw new Error(`no generic method ${methodName} on ${fullName}`);
+    throw new Error(`no generic or closure-taking method ${methodName} on ${fullName}`);
   }
   if (candidates.length > 1) {
     const selectors = candidates.map((c) => c.signature.selector).join(", ");
     throw new Error(`ambiguous generic method ${methodName} on ${fullName}: ${selectors} (disambiguate with { arity } or { labels })`);
   }
   const { address, signature } = candidates[0];
-  if (typeArguments.length !== signature.genericParams.length) {
+  const resolvedTypeArguments =
+    typeArguments.length === 0 && signature.genericParams.length > 0
+      ? inferClosureTypeArguments(signature)
+      : typeArguments;
+  if (resolvedTypeArguments.length !== signature.genericParams.length) {
     throw new Error(`${signature.selector} needs ${signature.genericParams.length} type argument(s), got ${typeArguments.length}`);
   }
-  const argPlans = signature.argTypeNames.map((n) => planGenericType(n, signature.genericParams, typeArguments));
+  const argPlans = signature.argTypeNames.map((n) => planGenericType(n, signature.genericParams, resolvedTypeArguments));
   const returnPlan =
     signature.returnTypeName === null
       ? null
-      : planGenericType(signature.returnTypeName, signature.genericParams, typeArguments);
-  const witnessTables = options.witnessTables ?? autoWitnessTables(signature, typeArguments);
-  return { address, selector: signature.selector, argPlans, returnPlan, throws: signature.throws, typeArguments, witnessTables };
+      : planGenericType(signature.returnTypeName, signature.genericParams, resolvedTypeArguments);
+  const witnessTables = options.witnessTables ?? autoWitnessTables(signature, resolvedTypeArguments);
+  return { address, selector: signature.selector, argPlans, returnPlan, throws: signature.throws, typeArguments: resolvedTypeArguments, witnessTables };
 }
 
 export function bindGenericMethod(

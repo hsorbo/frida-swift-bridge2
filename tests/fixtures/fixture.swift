@@ -359,3 +359,93 @@ public struct Selectors {
     public static func == (lhs: Selectors, rhs: Selectors) -> Bool { lhs.n == rhs.n }
     public func echo<T>(_ x: T) -> T { x }
 }
+
+// Closure-taking helpers: a JS callback marshalled as a Swift thick closure and invoked by Swift.
+// Plain arm64 (blr, no ptrauth) like the rest of this fixture; the arm64e/blraa authentication path
+// lives in arm64e.swift, exercised out-of-suite.
+public func invokeWithBytes(_ base: UnsafeRawPointer, _ count: Int, _ body: (UnsafeRawBufferPointer) -> Void) {
+    body(UnsafeRawBufferPointer(start: base, count: count))
+}
+
+public func invokeGeneric<R>(_ base: UnsafeRawPointer, _ count: Int, _ body: (UnsafeRawBufferPointer) throws -> R) rethrows {
+    _ = try body(UnsafeRawBufferPointer(start: base, count: count))
+}
+
+public func invokeReturning<R>(_ base: UnsafeRawPointer, _ count: Int, _ body: (UnsafeRawBufferPointer) throws -> R) rethrows -> R {
+    return try body(UnsafeRawBufferPointer(start: base, count: count))
+}
+
+public func invokeMapping(_ n: Int, _ body: (Int) -> Int) -> Int {
+    return body(n)
+}
+
+public func invokeCombine(_ a: Int, _ b: Int, _ body: (Int, Int) -> Int) -> Int {
+    return body(a, b)
+}
+
+public func invokePredicate(_ n: Int, _ body: (Int) -> Bool) -> Bool {
+    return body(n)
+}
+
+public func invokeScale(_ x: Double, _ body: (Double) -> Double) -> Double {
+    return body(x)
+}
+
+public func invokeThrowing(_ n: Int, _ body: (Int) throws -> Bool) rethrows -> Bool {
+    return try body(n)
+}
+
+public func invokeProducing<R>(_ n: Int, _ body: (Int) -> R) -> R {
+    return body(n)
+}
+
+public func invokeI32(_ n: Int32, _ body: (Int32) -> Int32) -> Int32 {
+    return body(n)
+}
+
+public func invokeRawPtr(_ p: UnsafeRawPointer, _ body: (UnsafeRawPointer) -> UnsafeRawPointer) -> UnsafeRawPointer {
+    return body(p)
+}
+
+public struct ByteSource {
+    let base: UnsafeRawPointer
+    let count: Int
+    public func withBytes<R>(_ body: (UnsafeRawBufferPointer) throws -> R) rethrows -> R {
+        return try body(UnsafeRawBufferPointer(start: base, count: count))
+    }
+    public func eachByte(_ body: (UnsafeRawBufferPointer) -> Void) {
+        body(UnsafeRawBufferPointer(start: base, count: count))
+    }
+    public func run(_ body: () -> Void) {
+        body()
+    }
+    public func apply(_ n: Int, _ body: (Int) -> Int) -> Int {
+        return body(n)
+    }
+    public func check(_ n: Int, _ body: (Int) -> Bool) -> Bool {
+        return body(n)
+    }
+    public func produce<R>(_ n: Int, _ body: (Int) -> R) -> R {
+        return body(n)
+    }
+    public func mapI32(_ n: Int32, _ body: (Int32) -> Int32) -> Int32 {
+        return body(n)
+    }
+    public func tryCheck(_ n: Int, _ body: (Int) throws -> Bool) rethrows -> Bool {
+        return try body(n)
+    }
+    public func mapStr(_ s: String, _ body: (String) -> String) -> String {
+        return body(s)
+    }
+    public func strLen(_ s: String, _ body: (String) -> Int) -> Int {
+        return body(s)
+    }
+    public func label(_ n: Int, _ body: (Int) -> String) -> String {
+        return body(n)
+    }
+}
+
+var escapingBody: (() -> Void)?
+public func storeEscaping(_ body: @escaping () -> Void) { escapingBody = body }
+public func fireEscaping() { escapingBody?() }
+public func releaseEscaping() { escapingBody = nil }

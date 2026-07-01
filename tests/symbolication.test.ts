@@ -4,6 +4,7 @@ import { loadFixture } from "./fixtures/load.js";
 import { Swift } from "../src/index.js";
 import {
   parseSwiftSignature,
+  parseFunctionTypeSpelling,
   symbolicate,
   resolveFunctionSignature,
   resolveType,
@@ -103,12 +104,49 @@ describe("parseSwiftSignature", () => {
     expect(s.simpleGenerics).toBe(false);
   });
 
+  test("keeps a function-typed (closure) parameter intact past its arrow", () => {
+    const s = parseSwiftSignature(
+      "fixture.ByteSource.withBytes<A>(_: (Swift.UnsafeRawBufferPointer) throws -> A) rethrows -> A"
+    ) as SwiftFunctionSignature;
+    expect(s.name).toBe("withBytes");
+    expect(s.genericParams).toEqual(["A"]);
+    expect(s.argTypeNames).toEqual(["(Swift.UnsafeRawBufferPointer) throws -> A"]);
+    expect(s.returnTypeName).toBe("A");
+  });
+
+  test("treats rethrows as throwing", () => {
+    const s = parseSwiftSignature(
+      "fixture.ByteSource.withBytes<A>(_: (Swift.UnsafeRawBufferPointer) throws -> A) rethrows -> A"
+    ) as SwiftFunctionSignature;
+    expect(s.throws).toBe(true);
+  });
+
   test("parses a property accessor", () => {
     const s = parseSwiftSignature("fixture.Point.doubled.getter : Swift.Int") as SwiftAccessorSignature;
     expect(s.kind).toBe("getter");
     expect(s.context).toBe("fixture.Point");
     expect(s.member).toBe("doubled");
     expect(s.typeName).toBe("Swift.Int");
+  });
+});
+
+describe("parseFunctionTypeSpelling", () => {
+  test("splits a closure type into params and result", () => {
+    expect(parseFunctionTypeSpelling("(Swift.UnsafeRawBufferPointer) throws -> A")).toEqual({
+      params: ["Swift.UnsafeRawBufferPointer"],
+      result: "A",
+      throws: true,
+    });
+    expect(parseFunctionTypeSpelling("(Swift.Int) -> Swift.Bool")).toEqual({
+      params: ["Swift.Int"],
+      result: "Swift.Bool",
+      throws: false,
+    });
+  });
+
+  test("returns null for a non-function type", () => {
+    expect(parseFunctionTypeSpelling("Swift.Int")).toBeNull();
+    expect(parseFunctionTypeSpelling("(Swift.Int, Swift.Int)")).toBeNull();
   });
 });
 

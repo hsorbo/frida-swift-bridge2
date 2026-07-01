@@ -28,6 +28,13 @@ export function requireLinux(ctx: { skip: (reason?: string) => never }): void {
   }
 }
 
+// Closure synthesis works on any arm64 Swift host: Darwin signs (blraa), Linux uses a plain blr.
+export function requireClosures(ctx: { skip: (reason?: string) => void }): void {
+  if (Process.arch !== "arm64" || !Swift.available) {
+    ctx.skip("needs an arm64 Swift host");
+  }
+}
+
 export function requireSwiftHost(): void {
   const ok =
     Process.arch === "arm64" &&
