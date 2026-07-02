@@ -10,6 +10,7 @@ describe("type wrappers", () => {
     const t = Swift.typeOf(Swift.metadataFor("fixture.LoadableStruct")!) as StructType;
     expect(t.name).toBe("fixture.LoadableStruct");
     expect(t.fields.map((f) => f.name)).toEqual(["a", "b", "c", "d"]);
+    expect(t.fields.every((f) => !f.isVar)).toBe(true);
     const v = t.new({ a: 1, b: 2, c: 3, d: 4 });
     expect(v.$fields).toEqual({ a: 1, b: 2, c: 3, d: 4 });
     v.$dispose();
@@ -57,6 +58,7 @@ describe("type wrappers", () => {
     const t = Swift.typeOf(Swift.metadataFor("fixture.Accumulator")!) as StructType;
     expect(t.methods().sort()).toEqual(["add(_:)", "describe(_:)", "peek(_:)"]);
     expect(t.methods({ static: true }).sort()).toEqual(["summing(_:_:)", "zero()"]);
+    expect(t.fields).toEqual([{ name: "total", type: t.fields[0].type, isVar: true }]);
   });
 
   test("type methods mirror the keys an instance's type exposes", () => {

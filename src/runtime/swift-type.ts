@@ -35,6 +35,7 @@ import { Protocol, ProtocolComposition, protocolsForType } from "./protocol.js";
 export interface TypeMember {
   name: string;
   type: Metadata | null;
+  isVar: boolean;
 }
 
 export interface MethodQuery {
@@ -104,6 +105,7 @@ export class StructType extends ValueType {
     return [...enumerateFields(this.metadata.description)].map((f) => ({
       name: f.name,
       type: fieldTypeIn(this.metadata, f),
+      isVar: f.isVar,
     }));
   }
 }
@@ -117,6 +119,7 @@ export class EnumType extends ValueType {
     return [...enumerateFields(this.metadata.description)].map((f) => ({
       name: f.name,
       type: f.mangledTypeName !== null ? fieldTypeIn(this.metadata, f) : null,
+      isVar: f.isVar,
     }));
   }
 }
