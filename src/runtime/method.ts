@@ -27,6 +27,7 @@ import { SwiftClosure, ClosureSpec, ClosureBody, LoadableClosureBody, SwiftThrow
 import { typeName } from "./type-name.js";
 import { readString, createString } from "../abi/string.js";
 import { findProtocol, conformsToProtocol } from "../abi/protocol-conformance.js";
+import type { SwiftType } from "./swift-type.js";
 
 export type MethodKind = "method" | "init";
 
@@ -43,6 +44,8 @@ export type CallArg = SwiftValue | ValueInstance | SwiftObject | ClosureSpec;
 export interface RawInstance {
   readonly handle: NativePointer;
   readonly owned: boolean;
+  readonly kind: "object" | "value";
+  readonly type: SwiftType;
   get(name: string): CallResult;
   set(name: string, value: CallArg): void;
   call(name: string, ...args: CallArg[]): CallResult;

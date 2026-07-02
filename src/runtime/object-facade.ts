@@ -14,7 +14,7 @@ import {
   enumerateProperties,
 } from "./method.js";
 import { typeName } from "./type-name.js";
-import { SwiftType, typeOf } from "./swift-type.js";
+import { SwiftType } from "./swift-type.js";
 import { ClosureSpec } from "./closure.js";
 
 const RESERVED = new Set([
@@ -148,9 +148,9 @@ export function createObject(source: NativePointer | ClassInstance | ValueInstan
         case "$handle":
           return handle();
         case "$kind":
-          return isValue ? "value" : "object";
+          return target.kind;
         case "$type":
-          return typeOf(dynamicType());
+          return target.type;
         case "$className":
           return typeName(dynamicType());
         case "$fields":

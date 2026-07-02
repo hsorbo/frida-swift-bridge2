@@ -59,4 +59,15 @@ describe("ClassInstance", () => {
     const counter = makeCounter(1);
     expect(counter.metadata.isTypeMetadata).toBe(true);
   });
+
+  test("type exposes the instance's SwiftType for symmetric reflection", () => {
+    const counter = makeCounter(1);
+    expect(counter.type.name).toBe("fixture.Counter");
+    expect(Swift.typeName(counter.type.metadata)).toBe("fixture.Counter");
+  });
+
+  test("kind tags the wrapper as an object instance", () => {
+    const counter = makeCounter(1);
+    expect(counter.kind).toBe("object");
+  });
 });

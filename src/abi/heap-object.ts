@@ -4,6 +4,7 @@ import { readVTableChain, VTableEntry } from "./class-descriptor.js";
 import { enumerateClassInstanceFields, readObject, SwiftValue } from "./instance.js";
 import { ValueInstance } from "./value.js";
 import { getSwiftCoreApi } from "../runtime/api.js";
+import { SwiftType, typeOf } from "../runtime/swift-type.js";
 import {
   BoundMethod,
   GenericBoundMethod,
@@ -63,6 +64,14 @@ export class ClassInstance implements RawInstance {
 
   get dynamicType(): Metadata {
     return dynamicTypeOf(this.handle);
+  }
+
+  get kind(): "object" {
+    return "object";
+  }
+
+  get type(): SwiftType {
+    return typeOf(this.dynamicType);
   }
 
   get retainCount(): number {
