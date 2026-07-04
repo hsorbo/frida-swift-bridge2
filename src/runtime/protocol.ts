@@ -9,6 +9,7 @@ import {
   getExistentialTypeMetadata,
   protocolClassConstraint,
 } from "../abi/existential.js";
+import { ProtocolRequirement, readProtocolRequirements } from "../abi/protocol-descriptor.js";
 
 const OFFSETOF_NUM_REQUIREMENTS = 0x10;
 
@@ -42,6 +43,10 @@ export class Protocol {
 
   get numRequirements(): number {
     return this.descriptor.handle.add(OFFSETOF_NUM_REQUIREMENTS).readU32();
+  }
+
+  get requirements(): ProtocolRequirement[] {
+    return readProtocolRequirements(this.descriptor);
   }
 
   get isClassOnly(): boolean {

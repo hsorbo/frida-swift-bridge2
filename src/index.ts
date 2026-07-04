@@ -50,6 +50,12 @@ export {
 } from "./abi/protocol-conformance.js";
 export { Protocol, ProtocolComposition } from "./runtime/protocol.js";
 export {
+  ProtocolRequirementKind,
+  ProtocolRequirement,
+  readProtocolRequirements,
+} from "./abi/protocol-descriptor.js";
+export { WitnessTable } from "./abi/witness-table.js";
+export {
   Field,
   enumerateFields,
   resolveFieldType,

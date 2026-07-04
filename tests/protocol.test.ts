@@ -8,6 +8,7 @@ import {
   ClassType,
   Protocol,
   ProtocolComposition,
+  ProtocolRequirementKind,
   readString,
   readValue,
 } from "../src/index.js";
@@ -50,6 +51,14 @@ describe("Protocol", () => {
   test("returns null for an unknown protocol", () => {
     loadFixture();
     expect(Protocol.find("fixture.NoSuchProtocolQX")).toBeNull();
+  });
+
+  test("requirements lists Greeter's single method requirement", () => {
+    loadFixture();
+    const greeter = Protocol.find("fixture.Greeter")!;
+    expect(greeter.requirements.length).toBe(greeter.numRequirements);
+    expect(greeter.requirements[0].kind).toBe(ProtocolRequirementKind.Method);
+    expect(greeter.requirements[0].isInstance).toBe(true);
   });
 
   test("conformanceFor yields a witness table for a conformer and null otherwise", () => {
