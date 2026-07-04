@@ -72,6 +72,7 @@ export interface MethodInfo {
   argLabels: (string | null)[];
   returnTypeName: string | null;
   selector: string;
+  genericParams: string[]; // placeholders that may appear in argTypeNames/returnTypeName, e.g. "A"
 }
 
 export interface ResolvedMethod {
@@ -331,6 +332,7 @@ export function enumerateMethods(typeName: string, ownOnly = false): MethodInfo[
         argLabels: c.signature.argLabels,
         returnTypeName: c.signature.returnTypeName,
         selector: c.signature.selector,
+        genericParams: c.signature.genericParams,
       });
     }
   }

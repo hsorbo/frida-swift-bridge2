@@ -90,14 +90,17 @@ describe("enumerateMethods", () => {
     expect(methods.filter((m) => m.name === "at").length).toBe(2);
   });
 
-  test("strips the operator fixity keyword; a generic return is still a bare placeholder", () => {
+  test("strips the operator fixity keyword; a generic return is labeled via genericParams", () => {
     loadFixture();
     const methods = enumerateMethods("fixture.Selectors");
     const eq = methods.find((m) => m.name === "==")!;
     expect(eq.selector).toBe("==(_:_:)");
     expect(eq.isStatic).toBe(true);
     expect(eq.returnTypeName).toBe("Swift.Bool");
-    expect(methods.find((m) => m.name === "echo")!.returnTypeName).toBe("A");
+    expect(eq.genericParams).toEqual([]);
+    const echo = methods.find((m) => m.name === "echo")!;
+    expect(echo.returnTypeName).toBe("A");
+    expect(echo.genericParams).toEqual(["A"]);
   });
 });
 
