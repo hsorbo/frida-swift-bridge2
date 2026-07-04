@@ -55,9 +55,19 @@ export {
   readProtocolRequirements,
   readAssociatedTypeNames,
   requirementBaseDescriptor,
+  readRequirementSignature,
 } from "./abi/protocol-descriptor.js";
+export {
+  GenericRequirementKind,
+  GenericRequirementDescriptor,
+  readGenericRequirementDescriptors,
+} from "./abi/generic-requirement-descriptor.js";
 export { WitnessTable } from "./abi/witness-table.js";
 export { resolveAssociatedConformance } from "./abi/associated-type.js";
+export {
+  ConditionalRequirement,
+  resolveConditionalRequirements,
+} from "./abi/conditional-conformance.js";
 export {
   Field,
   enumerateFields,

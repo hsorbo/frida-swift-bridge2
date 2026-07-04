@@ -2,6 +2,7 @@ import { BoundMethod, CallArg, CallResult, bindWitnessMethod, witnessGetProperty
 import { Metadata } from "./metadata.js";
 import { ProtocolRequirement } from "./protocol-descriptor.js";
 import { resolveAssociatedConformance, resolveAssociatedType } from "./associated-type.js";
+import { ConditionalRequirement, resolveConditionalRequirements } from "./conditional-conformance.js";
 
 export class WitnessTable {
   constructor(readonly handle: NativePointer, readonly conformingType: Metadata) {}
@@ -32,5 +33,9 @@ export class WitnessTable {
 
   associatedConformance(associatedType: Metadata, requirement: ProtocolRequirement): WitnessTable {
     return resolveAssociatedConformance(this, associatedType, requirement);
+  }
+
+  get conditionalRequirements(): ConditionalRequirement[] {
+    return resolveConditionalRequirements(this);
   }
 }

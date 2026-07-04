@@ -11,7 +11,12 @@ import {
   getExistentialTypeMetadata,
   protocolClassConstraint,
 } from "../abi/existential.js";
-import { ProtocolRequirement, readProtocolRequirements } from "../abi/protocol-descriptor.js";
+import {
+  ProtocolRequirement,
+  readProtocolRequirements,
+  readRequirementSignature,
+} from "../abi/protocol-descriptor.js";
+import { GenericRequirementDescriptor } from "../abi/generic-requirement-descriptor.js";
 import { WitnessTable } from "../abi/witness-table.js";
 
 const OFFSETOF_NUM_REQUIREMENTS = 0x10;
@@ -50,6 +55,10 @@ export class Protocol {
 
   get requirements(): ProtocolRequirement[] {
     return readProtocolRequirements(this.descriptor);
+  }
+
+  get requirementSignature(): GenericRequirementDescriptor[] {
+    return readRequirementSignature(this.descriptor);
   }
 
   get isClassOnly(): boolean {

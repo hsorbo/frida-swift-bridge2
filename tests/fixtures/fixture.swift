@@ -204,6 +204,14 @@ public func storeGreeter(_ p: UnsafeMutableRawPointer) {
     p.assumingMemoryBound(to: (any Greeter).self).initialize(to: PoliteGreeter(name: "Ada"))
 }
 
+public struct Pair<T> {
+    public var first: T
+    public var second: T
+}
+extension Pair: Greeter where T: Greeter {
+    public func greet() -> String { "\(first.greet()) & \(second.greet())" }
+}
+
 public protocol Named: AnyObject {
     var label: String { get }
 }

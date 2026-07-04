@@ -1,5 +1,10 @@
 import { ContextDescriptor, ContextDescriptorKind } from "./context-descriptor.js";
 import { RelativeDirectPointer } from "../basic/relative-pointer.js";
+import {
+  GENERIC_REQUIREMENT_DESCRIPTOR_SIZE,
+  GenericRequirementDescriptor,
+  readGenericRequirementDescriptors,
+} from "./generic-requirement-descriptor.js";
 
 export enum ProtocolRequirementKind {
   BaseProtocol = 0,
@@ -26,7 +31,6 @@ const OFFSETOF_NUM_REQUIREMENTS_IN_SIGNATURE = 0xc;
 const OFFSETOF_NUM_REQUIREMENTS = 0x10;
 const OFFSETOF_ASSOCIATED_TYPE_NAMES = 0x14;
 const OFFSETOF_REQUIREMENT_SIGNATURE = 0x18;
-const GENERIC_REQUIREMENT_DESCRIPTOR_SIZE = 0xc;
 const PROTOCOL_REQUIREMENT_SIZE = 8;
 const OFFSETOF_DEFAULT_IMPL = 0x4;
 
@@ -68,6 +72,21 @@ export function readProtocolRequirements(descriptor: ContextDescriptor): Protoco
 // reqBase for swift_getAssociatedTypeWitness/swift_getAssociatedConformanceWitness.
 export function requirementBaseDescriptor(requirement: ProtocolRequirement): NativePointer {
   return requirement.address.sub(requirement.witnessIndex * PROTOCOL_REQUIREMENT_SIZE);
+}
+
+// unlike ProtocolConformance.conditionalRequirements, Param here is Self/associated-type relative
+// and has no flat generic-argument vector to resolve against
+export function readRequirementSignature(descriptor: ContextDescriptor): GenericRequirementDescriptor[] {
+  if (descriptor.kind !== ContextDescriptorKind.Protocol) {
+    throw new Error("readRequirementSignature: descriptor is not a protocol");
+  }
+
+  const base = descriptor.handle;
+  const numRequirementsInSignature = base.add(OFFSETOF_NUM_REQUIREMENTS_IN_SIGNATURE).readU32();
+  return readGenericRequirementDescriptors(
+    base.add(OFFSETOF_REQUIREMENT_SIGNATURE),
+    numRequirementsInSignature
+  );
 }
 
 // Only names AssociatedTypeAccessFunction-kind requirements; other kinds contribute nothing.

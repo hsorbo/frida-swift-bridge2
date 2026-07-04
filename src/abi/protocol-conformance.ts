@@ -7,6 +7,10 @@ import {
 import { getSwiftSection } from "../image/sections.js";
 import { enumerateSwiftModules } from "../reflection/registry.js";
 import { getSwiftCoreApi } from "../runtime/api.js";
+import {
+  GenericRequirementDescriptor,
+  readGenericRequirementDescriptors,
+} from "./generic-requirement-descriptor.js";
 
 const RECORD_SIZE = 4;
 const PROTOCOL_RECORD_INT_MASK = 0x2;
@@ -14,6 +18,11 @@ const PROTOCOL_RECORD_INT_MASK = 0x2;
 const OFFSETOF_CONF_PROTOCOL = 0x0;
 const OFFSETOF_CONF_TYPE_REF = 0x4;
 const OFFSETOF_CONF_FLAGS = 0xc;
+const OFFSETOF_CONF_TRAILING_OBJECTS = 0x10;
+
+const CONFORMANCE_FLAG_IS_RETROACTIVE = 0x40;
+const CONFORMANCE_NUM_CONDITIONAL_REQUIREMENTS_SHIFT = 8;
+const CONFORMANCE_NUM_CONDITIONAL_REQUIREMENTS_MASK = 0xff;
 
 const enum TypeReferenceKind {
   DirectTypeDescriptor = 0,
@@ -47,6 +56,25 @@ export class ProtocolConformance {
       default:
         return null;
     }
+  }
+
+  get isRetroactive(): boolean {
+    return (this.flags & CONFORMANCE_FLAG_IS_RETROACTIVE) !== 0;
+  }
+
+  get numConditionalRequirements(): number {
+    return (this.flags >> CONFORMANCE_NUM_CONDITIONAL_REQUIREMENTS_SHIFT) &
+      CONFORMANCE_NUM_CONDITIONAL_REQUIREMENTS_MASK;
+  }
+
+  // swift_conformsToProtocol already checked these before returning a table; this is introspection only.
+  get conditionalRequirements(): GenericRequirementDescriptor[] {
+    const count = this.numConditionalRequirements;
+    if (count === 0) {
+      return [];
+    }
+    const base = this.handle.add(OFFSETOF_CONF_TRAILING_OBJECTS + (this.isRetroactive ? 4 : 0));
+    return readGenericRequirementDescriptors(base, count);
   }
 }
 
