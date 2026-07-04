@@ -1,7 +1,10 @@
 import { BoundMethod, CallArg, CallResult, bindWitnessMethod, witnessGetProperty, witnessSetProperty } from "../runtime/method.js";
+import { Metadata } from "./metadata.js";
+import { ProtocolRequirement } from "./protocol-descriptor.js";
+import { resolveAssociatedConformance, resolveAssociatedType } from "./associated-type.js";
 
 export class WitnessTable {
-  constructor(readonly handle: NativePointer) {}
+  constructor(readonly handle: NativePointer, readonly conformingType: Metadata) {}
 
   get conformanceDescriptor(): NativePointer {
     return this.handle.readPointer();
@@ -21,5 +24,13 @@ export class WitnessTable {
 
   set(self: NativePointer, name: string, value: CallArg): void {
     witnessSetProperty(this, self, name, value);
+  }
+
+  associatedType(name: string): Metadata {
+    return resolveAssociatedType(this, name);
+  }
+
+  associatedConformance(associatedType: Metadata, requirement: ProtocolRequirement): WitnessTable {
+    return resolveAssociatedConformance(this, associatedType, requirement);
   }
 }

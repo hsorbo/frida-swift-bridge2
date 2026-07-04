@@ -19,10 +19,12 @@ export interface ProtocolRequirement {
   isAsync: boolean;
   defaultImpl: NativePointer | null;
   witnessIndex: number;
+  address: NativePointer;
 }
 
 const OFFSETOF_NUM_REQUIREMENTS_IN_SIGNATURE = 0xc;
 const OFFSETOF_NUM_REQUIREMENTS = 0x10;
+const OFFSETOF_ASSOCIATED_TYPE_NAMES = 0x14;
 const OFFSETOF_REQUIREMENT_SIGNATURE = 0x18;
 const GENERIC_REQUIREMENT_DESCRIPTOR_SIZE = 0xc;
 const PROTOCOL_REQUIREMENT_SIZE = 8;
@@ -57,7 +59,22 @@ export function readProtocolRequirements(descriptor: ContextDescriptor): Protoco
       isAsync: (flags & IS_ASYNC) !== 0,
       defaultImpl,
       witnessIndex: WITNESS_TABLE_FIRST_REQUIREMENT_OFFSET + i,
+      address: rd,
     });
   }
   return entries;
+}
+
+// reqBase for swift_getAssociatedTypeWitness/swift_getAssociatedConformanceWitness.
+export function requirementBaseDescriptor(requirement: ProtocolRequirement): NativePointer {
+  return requirement.address.sub(requirement.witnessIndex * PROTOCOL_REQUIREMENT_SIZE);
+}
+
+// Only names AssociatedTypeAccessFunction-kind requirements; other kinds contribute nothing.
+export function readAssociatedTypeNames(descriptor: ContextDescriptor): string[] {
+  if (descriptor.kind !== ContextDescriptorKind.Protocol) {
+    throw new Error("readAssociatedTypeNames: descriptor is not a protocol");
+  }
+  const ptr = RelativeDirectPointer.resolve(descriptor.handle.add(OFFSETOF_ASSOCIATED_TYPE_NAMES));
+  return ptr === null ? [] : ptr.readUtf8String()!.split(" ");
 }

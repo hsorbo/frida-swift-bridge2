@@ -53,8 +53,11 @@ export {
   ProtocolRequirementKind,
   ProtocolRequirement,
   readProtocolRequirements,
+  readAssociatedTypeNames,
+  requirementBaseDescriptor,
 } from "./abi/protocol-descriptor.js";
 export { WitnessTable } from "./abi/witness-table.js";
+export { resolveAssociatedConformance } from "./abi/associated-type.js";
 export {
   Field,
   enumerateFields,

@@ -58,7 +58,7 @@ export class Protocol {
 
   conformanceFor(type: Metadata): WitnessTable | null {
     const table = conformsToProtocol(type, this.descriptor);
-    return table === null ? null : new WitnessTable(table);
+    return table === null ? null : new WitnessTable(table, type);
   }
 
   conformingTypes(): ContextDescriptor[] {

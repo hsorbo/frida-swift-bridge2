@@ -17,7 +17,7 @@ describe("WitnessTable", () => {
     const requirement = readProtocolRequirements(greeter.descriptor)[0];
 
     const politeGreeter = Swift.metadataFor("fixture.PoliteGreeter")!;
-    const table = new WitnessTable(conformsToProtocol(politeGreeter, greeter.descriptor)!);
+    const table = new WitnessTable(conformsToProtocol(politeGreeter, greeter.descriptor)!, politeGreeter);
 
     const thunk = [...mod.enumerateSymbols()].find((e) => {
       const d = Swift.demangle(e.name);
@@ -34,7 +34,7 @@ describe("WitnessTable", () => {
     loadFixture();
     const greeter = Protocol.find("fixture.Greeter")!;
     const politeGreeter = Swift.metadataFor("fixture.PoliteGreeter")!;
-    const table = new WitnessTable(conformsToProtocol(politeGreeter, greeter.descriptor)!);
+    const table = new WitnessTable(conformsToProtocol(politeGreeter, greeter.descriptor)!, politeGreeter);
 
     const conformance = new ProtocolConformance(table.conformanceDescriptor);
     expect(conformance.protocol!.handle.equals(greeter.descriptor.handle)).toBe(true);

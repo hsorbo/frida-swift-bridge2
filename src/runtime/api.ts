@@ -63,6 +63,14 @@ export interface SwiftCoreApi {
     NativePointer,
     [number, NativePointerValue, number | UInt64, NativePointerValue]
   >;
+  swift_getAssociatedTypeWitness: NativeFunction<
+    [NativePointer, NativePointer],
+    [number | UInt64, NativePointerValue, NativePointerValue, NativePointerValue, NativePointerValue]
+  >;
+  swift_getAssociatedConformanceWitness: NativeFunction<
+    NativePointer,
+    [NativePointerValue, NativePointerValue, NativePointerValue, NativePointerValue, NativePointerValue]
+  >;
 }
 
 let cachedSwiftCore: SwiftCoreApi | null = null;
@@ -154,6 +162,16 @@ export function getSwiftCoreApi(): SwiftCoreApi {
       lib.getExportByName("swift_getExistentialTypeMetadata"),
       "pointer",
       ["uint8", "pointer", "size_t", "pointer"]
+    ),
+    swift_getAssociatedTypeWitness: new NativeFunction(
+      lib.getExportByName("swift_getAssociatedTypeWitness"),
+      ["pointer", "pointer"],
+      ["size_t", "pointer", "pointer", "pointer", "pointer"]
+    ),
+    swift_getAssociatedConformanceWitness: new NativeFunction(
+      lib.getExportByName("swift_getAssociatedConformanceWitness"),
+      "pointer",
+      ["pointer", "pointer", "pointer", "pointer", "pointer"]
     ),
   };
   return cachedSwiftCore;

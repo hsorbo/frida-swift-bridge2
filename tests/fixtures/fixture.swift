@@ -292,6 +292,24 @@ public struct Person: Greeter, Aged {
 public func makeGreeterAged() -> any Greeter & Aged { Person(name: "Cy", age: 9) }
 public func describeGreeterAged(_ v: any Greeter & Aged) -> String { "\(v.greet()) (\(v.age))" }
 
+public protocol Container {
+    associatedtype Item
+    var item: Item { get }
+}
+public struct IntBox: Container {
+    public let item: Int
+    public init(item: Int) { self.item = item }
+}
+
+public protocol ConstrainedContainer {
+    associatedtype Item: Scalable
+    var item: Item { get }
+}
+public struct ScalableBox: ConstrainedContainer {
+    public let item: WideScalar
+    public init(item: WideScalar) { self.item = item }
+}
+
 // Method invocation: String/labelled/void/static methods, a class arg, an arity overload, a computed property.
 public final class Robot {
     public var name: String
