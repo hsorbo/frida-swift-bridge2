@@ -1,0 +1,36 @@
+import { Metadata } from "./metadata.js";
+
+const OFFSETOF_NUM_ELEMENTS = Process.pointerSize;
+const OFFSETOF_LABELS = 2 * Process.pointerSize;
+const OFFSETOF_ELEMENTS = 3 * Process.pointerSize;
+
+const OFFSETOF_ELEMENT_TYPE = 0x0;
+const OFFSETOF_ELEMENT_OFFSET = Process.pointerSize;
+// Offset is StoredSize on Apple, uint32_t elsewhere; alignment pads Element to 2 words either way.
+const ELEMENT_SIZE = 2 * Process.pointerSize;
+
+export interface TupleElement {
+  type: Metadata;
+  offset: number;
+}
+
+export function tupleNumElements(metadata: Metadata): number {
+  return metadata.handle.add(OFFSETOF_NUM_ELEMENTS).readU32();
+}
+
+export function tupleLabels(metadata: Metadata): string | null {
+  const ptr = metadata.handle.add(OFFSETOF_LABELS).readPointer();
+  return ptr.isNull() ? null : ptr.readUtf8String();
+}
+
+export function* enumerateTupleElements(metadata: Metadata): Generator<TupleElement> {
+  const numElements = tupleNumElements(metadata);
+  const elements = metadata.handle.add(OFFSETOF_ELEMENTS);
+  for (let i = 0; i < numElements; i++) {
+    const element = elements.add(i * ELEMENT_SIZE);
+    yield {
+      type: new Metadata(element.add(OFFSETOF_ELEMENT_TYPE).readPointer()),
+      offset: element.add(OFFSETOF_ELEMENT_OFFSET).readU32(),
+    };
+  }
+}
