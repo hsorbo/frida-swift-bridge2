@@ -18,6 +18,20 @@ const REQUIREMENT_KIND_MASK = 0x1f;
 const REQUIREMENT_KIND_PROTOCOL = 0x0;
 const PROTOCOL_REF_OBJC_BIT = 0x2;
 
+// Params are padded to a 4-byte boundary before the requirements array begins.
+function genericRequirementsOffset(paramsOffset: number, numParams: number): number {
+  return (paramsOffset + numParams + 3) & ~3;
+}
+
+export function genericContextEnd(descriptor: ContextDescriptor): number {
+  const base = genericHeaderOffset(descriptor);
+  const handle = descriptor.handle;
+  const numParams = handle.add(base).readU16();
+  const numRequirements = handle.add(base + OFFSETOF_NUM_REQUIREMENTS).readU16();
+  const paramsOffset = base + OFFSETOF_GENERIC_PARAMS;
+  return genericRequirementsOffset(paramsOffset, numParams) + numRequirements * REQUIREMENT_SIZE;
+}
+
 export function buildGenericMetadata(
   descriptor: ContextDescriptor,
   typeArguments: Metadata[]
@@ -50,7 +64,7 @@ export function buildGenericMetadata(
   paramHandles.forEach((h, i) => paramVector.add(i * Process.pointerSize).writePointer(h));
 
   const witnessTables: NativePointer[] = [];
-  const requirements = handle.add((paramsOffset + numParams + 3) & ~3);
+  const requirements = handle.add(genericRequirementsOffset(paramsOffset, numParams));
   for (let i = 0; i < numRequirements; i++) {
     const requirement = requirements.add(i * REQUIREMENT_SIZE);
     const flags = requirement.readU32();
