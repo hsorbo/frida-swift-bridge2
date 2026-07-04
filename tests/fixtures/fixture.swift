@@ -316,6 +316,26 @@ public struct CustomDescriber: Labeled {
     public func describe() -> String { "custom:\(displayName)" }
 }
 
+public protocol Vocal {
+    func speak() -> String
+}
+public class BaseSpeaker: Vocal {
+    public func speak() -> String { "base" }
+}
+public final class SubSpeaker: BaseSpeaker {
+    public override func speak() -> String { "sub" }
+}
+
+public protocol Squawker: AnyObject {
+    func squawk() -> String
+}
+public class BaseSquawker: Squawker {
+    public func squawk() -> String { "base" }
+}
+public final class SubSquawker: BaseSquawker {
+    public override func squawk() -> String { "sub" }
+}
+
 public protocol Container {
     associatedtype Item
     var item: Item { get }

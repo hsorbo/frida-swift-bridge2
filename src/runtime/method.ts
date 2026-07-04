@@ -1,6 +1,7 @@
 import { Metadata, MetadataKind, getMetadata } from "../abi/metadata.js";
 import { ContextDescriptor, ContextDescriptorKind } from "../abi/context-descriptor.js";
 import { ClassMetadata } from "../abi/class-metadata.js";
+import { readVTableChain } from "../abi/class-descriptor.js";
 import { ClassInstance } from "../abi/heap-object.js";
 import { createObject, SwiftObject, RAW } from "./object-facade.js";
 import { ValueInstance } from "../abi/value.js";
@@ -1368,30 +1369,96 @@ const DIRECT_BRANCH_MNEMONICS: Partial<Record<Architecture, ReadonlySet<string>>
 
 const CONTROL_FLOW_GROUPS = new Set(["jump", "call", "ret"]);
 
-// A witness thunk is a prologue then one direct branch; anything else has no fixed target.
-function followDirectBranch(address: NativePointer, maxInstructions = 8): NativePointer | null {
-  const directMnemonics = DIRECT_BRANCH_MNEMONICS[Process.arch];
-  if (directMnemonics === undefined) {
+type BranchClassification =
+  | { kind: "direct"; target: NativePointer }
+  | { kind: "vtable"; metadataOffset: number }
+  | { kind: "unknown" };
+
+type LoadState =
+  | { phase: "seekingMetadata" }
+  | { phase: "haveMetadata"; reg: string }
+  | { phase: "haveSlot"; reg: string; offset: number };
+
+const SELF_REG = "x20"; // arm64 swiftself register
+
+function asArm64MemLoad(insn: Instruction): { dest: string; base: string; disp: number } | null {
+  if (Process.arch !== "arm64" || insn.mnemonic !== "ldr") {
     return null;
   }
+  const [dest, src] = (insn as Arm64Instruction).operands;
+  if (dest?.type !== "reg" || src?.type !== "mem" || src.value.base === undefined) {
+    return null;
+  }
+  return { dest: dest.value, base: src.value.base, disp: src.value.disp };
+}
+
+// A witness thunk is a prologue, then a fixed branch, or a self→metadata→vtable-slot load chain
+// into an indirect one; anything else resets the chain rather than guessing.
+function classifyBranch(address: NativePointer, maxInstructions = 8): BranchClassification {
+  const directMnemonics = DIRECT_BRANCH_MNEMONICS[Process.arch];
+  if (directMnemonics === undefined) {
+    return { kind: "unknown" };
+  }
   let cursor = address;
+  let state: LoadState = { phase: "seekingMetadata" };
   for (let i = 0; i < maxInstructions; i++) {
     const insn = Instruction.parse(cursor);
     if (insn.groups.some((g) => CONTROL_FLOW_GROUPS.has(g))) {
-      if (!directMnemonics.has(insn.mnemonic)) {
-        return null;
+      if (directMnemonics.has(insn.mnemonic)) {
+        const operand = (insn as Arm64Instruction | X86Instruction).operands[0];
+        return operand !== undefined && operand.type === "imm"
+          ? { kind: "direct", target: ptr(operand.value.toString()) }
+          : { kind: "unknown" };
       }
-      const operand = (insn as Arm64Instruction | X86Instruction).operands[0];
-      return operand !== undefined && operand.type === "imm" ? ptr(operand.value.toString()) : null;
+      if (state.phase === "haveSlot" && insn.mnemonic === "blr") {
+        const target = (insn as Arm64Instruction).operands[0];
+        if (target?.type === "reg" && target.value === state.reg) {
+          return { kind: "vtable", metadataOffset: state.offset / Process.pointerSize };
+        }
+      }
+      return { kind: "unknown" };
+    }
+    const load = asArm64MemLoad(insn);
+    const isSelfRedirect = load !== null && load.base === SELF_REG && load.dest === SELF_REG && load.disp === 0;
+    if (isSelfRedirect) {
+      cursor = insn.next;
+      continue;
+    }
+    if (state.phase === "seekingMetadata" && load !== null && load.base === SELF_REG && load.disp === 0) {
+      state = { phase: "haveMetadata", reg: load.dest };
+    } else if (
+      state.phase === "haveMetadata" &&
+      load !== null &&
+      load.base === state.reg &&
+      load.dest === state.reg &&
+      load.disp !== 0 &&
+      load.disp % Process.pointerSize === 0
+    ) {
+      state = { phase: "haveSlot", reg: load.dest, offset: load.disp };
+    } else {
+      state = { phase: "seekingMetadata" };
     }
     cursor = insn.next;
   }
-  return null;
+  return { kind: "unknown" };
+}
+
+// conformingType may be a subclass reusing an inherited conformance, so the resolved target must
+// be its own live slot, not class-descriptor.ts's static declaredImpl (only accurate for the class
+// that itself declared or overrode the method).
+function resolveVTableTarget(table: WitnessTable, metadataOffset: number): NativePointer | null {
+  try {
+    const classMetadata = new ClassMetadata(table.conformingType.handle);
+    const hasVTableSlot = readVTableChain(classMetadata).some((e) => e.metadataOffset === metadataOffset);
+    return hasVTableSlot ? classMetadata.handle.add(metadataOffset * Process.pointerSize).readPointer() : null;
+  } catch {
+    return null;
+  }
 }
 
 export type WitnessOrigin =
-  | { kind: "default"; symbol: string }
-  | { kind: "override"; symbol: string }
+  | { kind: "default"; symbol: string; dispatch: "direct" | "vtable" }
+  | { kind: "override"; symbol: string; dispatch: "direct" | "vtable" }
   | { kind: "unknown" };
 
 const EXTENSION_PREFIX = /^\(extension in [^)]*\):/;
@@ -1400,7 +1467,13 @@ export function classifyWitnessOrigin(table: WitnessTable, requirement: Protocol
   if (requirement.isAsync || !CALLABLE_REQUIREMENT_KINDS.has(requirement.kind)) {
     return { kind: "unknown" };
   }
-  const target = followDirectBranch(table.requirement(requirement.witnessIndex));
+  const branch = classifyBranch(table.requirement(requirement.witnessIndex));
+  const target =
+    branch.kind === "direct"
+      ? branch.target
+      : branch.kind === "vtable"
+        ? resolveVTableTarget(table, branch.metadataOffset)
+        : null;
   if (target === null) {
     return { kind: "unknown" };
   }
@@ -1410,7 +1483,8 @@ export function classifyWitnessOrigin(table: WitnessTable, requirement: Protocol
   }
   const unwrapped = demangled.replace(EXTENSION_PREFIX, "");
   const protocolName = protocolOf(table).fullTypeName;
+  const dispatch = branch.kind === "vtable" ? "vtable" : "direct";
   return unwrapped.startsWith(`${protocolName}.`)
-    ? { kind: "default", symbol: demangled }
-    : { kind: "override", symbol: demangled };
+    ? { kind: "default", symbol: demangled, dispatch }
+    : { kind: "override", symbol: demangled, dispatch };
 }
