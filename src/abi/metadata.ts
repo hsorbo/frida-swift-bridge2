@@ -7,6 +7,7 @@ export enum MetadataKind {
   Enum = 0x201,
   Optional = 0x202,
   Existential = 0x303,
+  Metatype = 0x304,
 }
 
 const OFFSETOF_KIND = 0x0;
