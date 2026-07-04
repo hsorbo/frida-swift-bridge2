@@ -18,10 +18,8 @@ if ! command -v swiftc >/dev/null 2>&1; then
   exit 0
 fi
 
-# fixturesyms is fixture.swift compiled under a second module name and left
-# UNSTRIPPED, so the value-type init symbols survive. Paired with the stripped
-# fixture it isolates symbol-table presence as the only variable (see
-# value-init.test.ts: struct init resolution needs .symtab on ELF).
+# fixture/resilient are stripped on both platforms, matching a real release binary.
+# fixturesyms is the same source, deliberately left unstripped.
 case "$(uname -s)" in
   Darwin)
     fixture_out="$fixtures/fixture.dylib"
@@ -29,9 +27,11 @@ case "$(uname -s)" in
     fixturesyms_out="$fixtures/fixturesyms.dylib"
 
     swiftc -emit-library -module-name fixture "$fixtures/fixture.swift" -o "$fixture_out"
+    xcrun strip -x "$fixture_out"
     codesign -s - -f "$fixture_out"
 
     swiftc -emit-library -enable-library-evolution -module-name resilient "$fixtures/resilient.swift" -o "$resilient_out"
+    xcrun strip -x "$resilient_out"
     codesign -s - -f "$resilient_out"
 
     swiftc -emit-library -module-name fixturesyms "$fixtures/fixture.swift" -o "$fixturesyms_out"
@@ -48,8 +48,7 @@ case "$(uname -s)" in
     swiftc -emit-library -enable-library-evolution -module-name resilient "$fixtures/resilient.swift" -o "$resilient_out"
     swiftc -emit-library -module-name fixturesyms "$fixtures/fixture.swift" -o "$fixturesyms_out"
 
-    # Strip .symtab so section discovery cannot rely on __start_/__stop_ symbols
-    # (fixturesyms is deliberately left unstripped).
+    # Also proves section discovery is symbol-independent.
     strip "$fixture_out" "$resilient_out"
 
     emit_paths "$fixture_out" "$resilient_out" "$fixturesyms_out"

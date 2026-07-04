@@ -1,5 +1,5 @@
 import { test, expect, describe } from "@frida/injest/agent";
-import { loadFixture } from "./fixtures/load.js";
+import { loadFixture, loadFixtureSyms } from "./fixtures/load.js";
 
 import {
   Swift,
@@ -27,12 +27,21 @@ describe("associated type / associated conformance resolution", () => {
   });
 
   test("dispatches a named getter whose type is an associated type (Container.item on IntBox)", () => {
+    loadFixtureSyms();
+    const container = Protocol.find("fixturesyms.Container")!;
+    const intBox = Swift.metadataFor("fixturesyms.IntBox")!;
+    const table = container.conformanceFor(intBox)!;
+    const value = ValueInstance.fromJS(intBox, { item: 5 });
+    expect(table.get(value.handle, "item")).toBe(5);
+  });
+
+  test("a stripped conformance's witness thunk is unrecoverable, so the named getter throws", () => {
     loadFixture();
     const container = Protocol.find("fixture.Container")!;
     const intBox = Swift.metadataFor("fixture.IntBox")!;
     const table = container.conformanceFor(intBox)!;
     const value = ValueInstance.fromJS(intBox, { item: 5 });
-    expect(table.get(value.handle, "item")).toBe(5);
+    expect(() => table.get(value.handle, "item")).toThrow(/no getter/);
   });
 
   test("unknown associated type name throws", () => {
@@ -44,20 +53,20 @@ describe("associated type / associated conformance resolution", () => {
   });
 
   test("resolves an associated conformance and dispatches through the nested witness table (ConstrainedContainer.Item: Scalable on ScalableBox)", () => {
-    loadFixture();
-    const constrained = Protocol.find("fixture.ConstrainedContainer")!;
-    const scalableBox = Swift.metadataFor("fixture.ScalableBox")!;
+    loadFixtureSyms();
+    const constrained = Protocol.find("fixturesyms.ConstrainedContainer")!;
+    const scalableBox = Swift.metadataFor("fixturesyms.ScalableBox")!;
     const table = constrained.conformanceFor(scalableBox)!;
 
     const itemType = table.associatedType("Item");
-    expect(Swift.typeName(itemType)).toBe("fixture.WideScalar");
+    expect(Swift.typeName(itemType)).toBe("fixturesyms.WideScalar");
 
     const requirement = readProtocolRequirements(constrained.descriptor).find(
       (r) => r.kind === ProtocolRequirementKind.AssociatedConformanceAccessFunction
     )!;
     const nested = table.associatedConformance(itemType, requirement);
 
-    const scalable = Protocol.find("fixture.Scalable")!;
+    const scalable = Protocol.find("fixturesyms.Scalable")!;
     expect(
       new ProtocolConformance(nested.conformanceDescriptor).protocol!.handle.equals(
         scalable.descriptor.handle
