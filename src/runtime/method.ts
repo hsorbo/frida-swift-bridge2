@@ -1237,6 +1237,21 @@ function witnessCandidates(table: WitnessTable): NamedRequirement[] {
   return namedProtocolRequirements(protocolOf(table));
 }
 
+// witness signatures mangle Self as "A" and its associated types as "A.<name>"
+function resolveWitnessSelfOrAssociatedType(table: WitnessTable, name: string): Metadata | null {
+  if (name === "A") {
+    return table.conformingType;
+  }
+  if (name.startsWith("A.")) {
+    try {
+      return table.associatedType(name.slice(2));
+    } catch {
+      return null;
+    }
+  }
+  return null;
+}
+
 export function resolveWitnessMethod(table: WitnessTable, methodName: string): ResolvedMethod {
   const protocolName = protocolOf(table).fullTypeName ?? "protocol";
   const matches = witnessCandidates(table).filter(
@@ -1252,7 +1267,7 @@ export function resolveWitnessMethod(table: WitnessTable, methodName: string): R
   }
   const { requirement, signature } = matches[0];
   const argTypes = signature.argTypeNames.map((name) => {
-    const metadata = resolveTypeExpr(name, () => null);
+    const metadata = resolveTypeExpr(name, (n) => resolveWitnessSelfOrAssociatedType(table, n));
     if (metadata === null) {
       throw new Error(`cannot resolve argument type ${name} of ${signature.selector}`);
     }
@@ -1260,7 +1275,7 @@ export function resolveWitnessMethod(table: WitnessTable, methodName: string): R
   });
   let returnType: Metadata | null = null;
   if (signature.returnTypeName !== null) {
-    returnType = resolveTypeExpr(signature.returnTypeName, () => null);
+    returnType = resolveTypeExpr(signature.returnTypeName, (n) => resolveWitnessSelfOrAssociatedType(table, n));
     if (returnType === null) {
       throw new Error(`cannot resolve return type ${signature.returnTypeName} of ${signature.selector}`);
     }
@@ -1316,7 +1331,7 @@ function resolveWitnessAccessor(table: WitnessTable, member: string, kind: Acces
   if (match === undefined) {
     throw new Error(`no ${kind} for ${member} on ${protocolOf(table).fullTypeName ?? "protocol"}`);
   }
-  const type = resolveType(match.signature.typeName);
+  const type = resolveTypeExpr(match.signature.typeName, (n) => resolveWitnessSelfOrAssociatedType(table, n));
   if (type === null) {
     throw new Error(`cannot resolve ${kind} type ${match.signature.typeName} of ${member}`);
   }

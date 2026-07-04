@@ -69,7 +69,11 @@ export function readGenericRequirementDescriptors(
     let sameTypeName: MangledName | null = null;
     if (kind === GenericRequirementKind.Protocol) {
       ({ protocol, isObjC: isObjCProtocol } = resolveProtocolConstraint(address.add(OFFSETOF_UNION)));
-    } else if (kind === GenericRequirementKind.SameType || kind === GenericRequirementKind.BaseClass) {
+    } else if (
+      kind === GenericRequirementKind.SameType ||
+      kind === GenericRequirementKind.BaseClass ||
+      kind === GenericRequirementKind.SameShape
+    ) {
       sameTypeName = readMangledName(address.add(OFFSETOF_UNION));
     }
 

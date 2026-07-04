@@ -26,6 +26,15 @@ describe("associated type / associated conformance resolution", () => {
     expect(Swift.typeName(table.associatedType("Item"))).toBe("Swift.Int");
   });
 
+  test("dispatches a named getter whose type is an associated type (Container.item on IntBox)", () => {
+    loadFixture();
+    const container = Protocol.find("fixture.Container")!;
+    const intBox = Swift.metadataFor("fixture.IntBox")!;
+    const table = container.conformanceFor(intBox)!;
+    const value = ValueInstance.fromJS(intBox, { item: 5 });
+    expect(table.get(value.handle, "item")).toBe(5);
+  });
+
   test("unknown associated type name throws", () => {
     loadFixture();
     const container = Protocol.find("fixture.Container")!;
