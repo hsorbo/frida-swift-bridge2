@@ -200,6 +200,7 @@ export {
   WitnessMethodSignature,
   WitnessOrigin,
   classifyWitnessOrigin,
+  NamedRequirement,
 } from "./runtime/method.js";
 export { SwiftObject, createObject } from "./runtime/object-facade.js";
 

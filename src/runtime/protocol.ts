@@ -16,6 +16,7 @@ import {
   readProtocolRequirements,
   readRequirementSignature,
 } from "../abi/protocol-descriptor.js";
+import { NamedRequirement, namedProtocolRequirements } from "./method.js";
 import { GenericRequirementDescriptor } from "../abi/generic-requirement-descriptor.js";
 import { WitnessTable } from "../abi/witness-table.js";
 
@@ -55,6 +56,10 @@ export class Protocol {
 
   get requirements(): ProtocolRequirement[] {
     return readProtocolRequirements(this.descriptor);
+  }
+
+  namedRequirements(): NamedRequirement[] {
+    return namedProtocolRequirements(this.descriptor);
   }
 
   get requirementSignature(): GenericRequirementDescriptor[] {

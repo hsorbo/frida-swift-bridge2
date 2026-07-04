@@ -27,7 +27,12 @@ import {
 import { SwiftClosure, ClosureSpec, ClosureBody, LoadableClosureBody, SwiftThrow } from "./closure.js";
 import { typeName } from "./type-name.js";
 import { readString, createString } from "../abi/string.js";
-import { findProtocol, conformsToProtocol, ProtocolConformance } from "../abi/protocol-conformance.js";
+import {
+  findProtocol,
+  conformsToProtocol,
+  conformingTypes,
+  ProtocolConformance,
+} from "../abi/protocol-conformance.js";
 import { ProtocolRequirement, ProtocolRequirementKind, readProtocolRequirements } from "../abi/protocol-descriptor.js";
 import { WitnessTable } from "../abi/witness-table.js";
 import type { SwiftType } from "./swift-type.js";
@@ -1159,38 +1164,83 @@ const CALLABLE_REQUIREMENT_KINDS = new Set<ProtocolRequirementKind>([
   ProtocolRequirementKind.Setter,
 ]);
 
-interface WitnessCandidate {
+export interface NamedRequirement {
   requirement: ProtocolRequirement;
+  name: string; // bare name — round-trips into WitnessTable.method()/get()/set()
   signature: SwiftFunctionSignature | SwiftAccessorSignature;
 }
 
-function witnessCandidates(table: WitnessTable): WitnessCandidate[] {
-  const candidates: WitnessCandidate[] = [];
-  for (const requirement of readProtocolRequirements(protocolOf(table))) {
-    if (requirement.isAsync || !CALLABLE_REQUIREMENT_KINDS.has(requirement.kind)) {
-      continue;
-    }
-    const demangled = symbolicateLocal(table.requirement(requirement.witnessIndex));
-    if (demangled === null) {
-      continue;
-    }
-    const stripped = stripWitnessWrapper(demangled);
-    if (stripped === null) {
-      continue;
-    }
-    const signature = parseSwiftSignature(stripped);
-    if (signature === null) {
-      continue;
-    }
-    candidates.push({ requirement, signature });
+const namedRequirementsByProtocol = new Map<string, NamedRequirement[]>();
+
+// A requirement's witnessIndex is protocol-global: every conformance lays its witness table out in
+// the same requirement order, so a name recovered from one conformance's thunk is valid to attach
+// to any other conformance's table at the same index. Scanning every conforming type (rather than
+// requiring one caller-supplied table) both gives reflection a name with no invocation in hand and
+// lets a stripped conformance's own unrecoverable thunk still resolve by name via a sibling.
+export function namedProtocolRequirements(protocol: ContextDescriptor): NamedRequirement[] {
+  const key = protocol.handle.toString();
+  const cached = namedRequirementsByProtocol.get(key);
+  if (cached !== undefined) {
+    return cached;
   }
-  return candidates;
+
+  const pending = readProtocolRequirements(protocol).filter(
+    (r) => !r.isAsync && CALLABLE_REQUIREMENT_KINDS.has(r.kind)
+  );
+  const found = new Map<number, NamedRequirement>();
+
+  for (const typeDescriptor of pending.length > 0 ? conformingTypes(protocol) : []) {
+    if (found.size === pending.length) {
+      break;
+    }
+    if (typeDescriptor.isGeneric) {
+      continue; // no accessFunction to call without type arguments — never nameable this way
+    }
+    let type: Metadata;
+    try {
+      type = getMetadata(typeDescriptor);
+    } catch {
+      continue;
+    }
+    const tableAddr = conformsToProtocol(type, protocol);
+    if (tableAddr === null) {
+      continue;
+    }
+    const table = new WitnessTable(tableAddr, type);
+    for (const requirement of pending) {
+      if (found.has(requirement.witnessIndex)) {
+        continue;
+      }
+      const demangled = symbolicateLocal(table.requirement(requirement.witnessIndex));
+      if (demangled === null) {
+        continue;
+      }
+      const stripped = stripWitnessWrapper(demangled);
+      if (stripped === null) {
+        continue;
+      }
+      const signature = parseSwiftSignature(stripped);
+      if (signature === null) {
+        continue;
+      }
+      const name = signature.kind === "function" ? signature.name : signature.member;
+      found.set(requirement.witnessIndex, { requirement, name, signature });
+    }
+  }
+
+  const result = [...found.values()];
+  namedRequirementsByProtocol.set(key, result);
+  return result;
+}
+
+function witnessCandidates(table: WitnessTable): NamedRequirement[] {
+  return namedProtocolRequirements(protocolOf(table));
 }
 
 export function resolveWitnessMethod(table: WitnessTable, methodName: string): ResolvedMethod {
   const protocolName = protocolOf(table).fullTypeName ?? "protocol";
   const matches = witnessCandidates(table).filter(
-    (c): c is WitnessCandidate & { signature: SwiftFunctionSignature } =>
+    (c): c is NamedRequirement & { signature: SwiftFunctionSignature } =>
       c.signature.kind === "function" && c.signature.name === methodName
   );
   if (matches.length === 0) {
@@ -1260,7 +1310,7 @@ interface ResolvedWitnessAccessor {
 
 function resolveWitnessAccessor(table: WitnessTable, member: string, kind: AccessorKind): ResolvedWitnessAccessor {
   const match = witnessCandidates(table).find(
-    (c): c is WitnessCandidate & { signature: SwiftAccessorSignature } =>
+    (c): c is NamedRequirement & { signature: SwiftAccessorSignature } =>
       c.signature.kind === kind && c.signature.member === member
   );
   if (match === undefined) {

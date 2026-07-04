@@ -108,6 +108,30 @@ describe("Protocol.conformingTypes", () => {
   });
 });
 
+describe("Protocol.namedRequirements", () => {
+  test("names Greeter.greet, skipping the unresolvable generic Pair<T> conformance", () => {
+    loadFixture();
+    const greeter = Protocol.find("fixture.Greeter")!;
+    const named = greeter.namedRequirements();
+    expect(named.map((r) => r.name)).toContain("greet");
+  });
+
+  test("names Scalable's one requirement via whichever concrete conformer resolves first", () => {
+    loadFixture();
+    const scalable = Protocol.find("fixture.Scalable")!;
+    const named = scalable.namedRequirements();
+    expect(named).toHaveLength(1);
+    expect(named[0].name).toBe("scaled");
+  });
+
+  test("a recovered name's requirement matches one from the raw requirements list", () => {
+    loadFixture();
+    const greeter = Protocol.find("fixture.Greeter")!;
+    const named = greeter.namedRequirements().find((r) => r.name === "greet")!;
+    expect(greeter.requirements.map((r) => r.witnessIndex)).toContain(named.requirement.witnessIndex);
+  });
+});
+
 describe("protocols()", () => {
   test("a type reports its declared conformances as a name->Protocol map", () => {
     loadFixture();
