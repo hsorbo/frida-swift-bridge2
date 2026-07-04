@@ -300,6 +300,22 @@ public struct Person: Greeter, Aged {
 public func makeGreeterAged() -> any Greeter & Aged { Person(name: "Cy", age: 9) }
 public func describeGreeterAged(_ v: any Greeter & Aged) -> String { "\(v.greet()) (\(v.age))" }
 
+// describe() has a default; displayName never does.
+public protocol Labeled {
+    var displayName: String { get }
+    func describe() -> String
+}
+extension Labeled {
+    public func describe() -> String { "<\(displayName)>" }
+}
+public struct DefaultDescriber: Labeled {
+    public let displayName: String
+}
+public struct CustomDescriber: Labeled {
+    public let displayName: String
+    public func describe() -> String { "custom:\(displayName)" }
+}
+
 public protocol Container {
     associatedtype Item
     var item: Item { get }

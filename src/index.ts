@@ -198,6 +198,8 @@ export {
   bindWitnessMethod,
   bindWitnessMethodAt,
   WitnessMethodSignature,
+  WitnessOrigin,
+  classifyWitnessOrigin,
 } from "./runtime/method.js";
 export { SwiftObject, createObject } from "./runtime/object-facade.js";
 

@@ -1295,3 +1295,57 @@ export function witnessSetProperty(table: WitnessTable, self: NativePointer, nam
   const accessor = resolveWitnessAccessor(table, name, "setter");
   invokerForWitnessAccessor(accessor)(self, marshalArg(accessor.type, value));
 }
+
+const DIRECT_BRANCH_MNEMONICS: Partial<Record<Architecture, ReadonlySet<string>>> = {
+  arm64: new Set(["b", "bl"]),
+  x64: new Set(["call", "jmp"]),
+};
+
+const CONTROL_FLOW_GROUPS = new Set(["jump", "call", "ret"]);
+
+// A witness thunk is a prologue then one direct branch; anything else has no fixed target.
+function followDirectBranch(address: NativePointer, maxInstructions = 8): NativePointer | null {
+  const directMnemonics = DIRECT_BRANCH_MNEMONICS[Process.arch];
+  if (directMnemonics === undefined) {
+    return null;
+  }
+  let cursor = address;
+  for (let i = 0; i < maxInstructions; i++) {
+    const insn = Instruction.parse(cursor);
+    if (insn.groups.some((g) => CONTROL_FLOW_GROUPS.has(g))) {
+      if (!directMnemonics.has(insn.mnemonic)) {
+        return null;
+      }
+      const operand = (insn as Arm64Instruction | X86Instruction).operands[0];
+      return operand !== undefined && operand.type === "imm" ? ptr(operand.value.toString()) : null;
+    }
+    cursor = insn.next;
+  }
+  return null;
+}
+
+export type WitnessOrigin =
+  | { kind: "default"; symbol: string }
+  | { kind: "override"; symbol: string }
+  | { kind: "unknown" };
+
+const EXTENSION_PREFIX = /^\(extension in [^)]*\):/;
+
+export function classifyWitnessOrigin(table: WitnessTable, requirement: ProtocolRequirement): WitnessOrigin {
+  if (requirement.isAsync || !CALLABLE_REQUIREMENT_KINDS.has(requirement.kind)) {
+    return { kind: "unknown" };
+  }
+  const target = followDirectBranch(table.requirement(requirement.witnessIndex));
+  if (target === null) {
+    return { kind: "unknown" };
+  }
+  const demangled = symbolicateLocal(target);
+  if (demangled === null) {
+    return { kind: "unknown" };
+  }
+  const unwrapped = demangled.replace(EXTENSION_PREFIX, "");
+  const protocolName = protocolOf(table).fullTypeName;
+  return unwrapped.startsWith(`${protocolName}.`)
+    ? { kind: "default", symbol: demangled }
+    : { kind: "override", symbol: demangled };
+}

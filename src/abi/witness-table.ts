@@ -1,4 +1,13 @@
-import { BoundMethod, CallArg, CallResult, bindWitnessMethod, witnessGetProperty, witnessSetProperty } from "../runtime/method.js";
+import {
+  BoundMethod,
+  CallArg,
+  CallResult,
+  WitnessOrigin,
+  bindWitnessMethod,
+  classifyWitnessOrigin,
+  witnessGetProperty,
+  witnessSetProperty,
+} from "../runtime/method.js";
 import { Metadata } from "./metadata.js";
 import { ProtocolRequirement } from "./protocol-descriptor.js";
 import { resolveAssociatedConformance, resolveAssociatedType } from "./associated-type.js";
@@ -37,5 +46,9 @@ export class WitnessTable {
 
   get conditionalRequirements(): ConditionalRequirement[] {
     return resolveConditionalRequirements(this);
+  }
+
+  originOf(requirement: ProtocolRequirement): WitnessOrigin {
+    return classifyWitnessOrigin(this, requirement);
   }
 }
