@@ -4,12 +4,15 @@ import {
   findProtocol,
   conformsToProtocol,
   conformingProtocols,
+  conformingTypes,
+  protocolDescriptors,
 } from "../abi/protocol-conformance.js";
 import {
   getExistentialTypeMetadata,
   protocolClassConstraint,
 } from "../abi/existential.js";
 import { ProtocolRequirement, readProtocolRequirements } from "../abi/protocol-descriptor.js";
+import { WitnessTable } from "../abi/witness-table.js";
 
 const OFFSETOF_NUM_REQUIREMENTS = 0x10;
 
@@ -53,8 +56,19 @@ export class Protocol {
     return protocolClassConstraint(this.descriptor) === 0;
   }
 
-  conformanceFor(type: Metadata): NativePointer | null {
-    return conformsToProtocol(type, this.descriptor);
+  conformanceFor(type: Metadata): WitnessTable | null {
+    const table = conformsToProtocol(type, this.descriptor);
+    return table === null ? null : new WitnessTable(table);
+  }
+
+  conformingTypes(): ContextDescriptor[] {
+    return conformingTypes(this.descriptor);
+  }
+}
+
+export function* swiftProtocols(module?: Module): Generator<Protocol> {
+  for (const descriptor of protocolDescriptors(module)) {
+    yield new Protocol(descriptor);
   }
 }
 

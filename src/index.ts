@@ -8,7 +8,7 @@ import { symbolicate, parseSwiftSignature, voidMetadata } from "./runtime/symbol
 import { SwiftInterceptor } from "./runtime/interceptor.js";
 import { SwiftType, typeOf, swiftNativeFunction } from "./runtime/swift-type.js";
 import { createObject } from "./runtime/object-facade.js";
-import { Protocol, ProtocolComposition } from "./runtime/protocol.js";
+import { Protocol, ProtocolComposition, swiftProtocols } from "./runtime/protocol.js";
 import { indirect, markResilientModule } from "./runtime/calling-convention.js";
 import { closure } from "./runtime/closure.js";
 
@@ -48,7 +48,7 @@ export {
   findProtocol,
   conformsToProtocol,
 } from "./abi/protocol-conformance.js";
-export { Protocol, ProtocolComposition } from "./runtime/protocol.js";
+export { Protocol, ProtocolComposition, swiftProtocols } from "./runtime/protocol.js";
 export {
   ProtocolRequirementKind,
   ProtocolRequirement,
@@ -200,6 +200,7 @@ export const Swift = {
   findType,
   modules: swiftModules,
   types: swiftTypes,
+  protocols: swiftProtocols,
 
   metadataFor(name: string, typeArguments: Metadata[] = []): Metadata | null {
     if (name === "Swift.Void" || name === "()") {

@@ -87,6 +87,27 @@ function resolveProtocolRecord(record: NativePointer): NativePointer | null {
   return (offset & 1) !== 0 ? address.readPointer().strip() : address;
 }
 
+const cachedProtocolsByModulePath = new Map<string, ContextDescriptor[]>();
+
+function protocolsOf(module: Module): ContextDescriptor[] {
+  let list = cachedProtocolsByModulePath.get(module.path);
+  if (list === undefined) {
+    list = [...enumerateProtocols(module)];
+    cachedProtocolsByModulePath.set(module.path, list);
+  }
+  return list;
+}
+
+export function* protocolDescriptors(module?: Module): Generator<ContextDescriptor> {
+  if (module !== undefined) {
+    yield* protocolsOf(module);
+    return;
+  }
+  for (const m of enumerateSwiftModules()) {
+    yield* protocolsOf(m);
+  }
+}
+
 const resolvedProtocols = new Map<string, ContextDescriptor>();
 
 export function findProtocol(name: string): ContextDescriptor | null {
@@ -100,7 +121,7 @@ export function findProtocol(name: string): ContextDescriptor | null {
   const moduleName = dot === -1 ? null : name.slice(0, dot);
 
   for (const module of enumerateSwiftModules()) {
-    for (const protocol of enumerateProtocols(module)) {
+    for (const protocol of protocolsOf(module)) {
       if (protocol.name !== simpleName) {
         continue;
       }
@@ -151,4 +172,32 @@ export function conformingProtocols(typeDescriptor: NativePointer): ContextDescr
   }
   conformingProtocolsCache.set(key, protocols);
   return protocols;
+}
+
+const conformingTypesCache = new Map<string, ContextDescriptor[]>();
+
+export function conformingTypes(protocol: ContextDescriptor): ContextDescriptor[] {
+  const key = protocol.handle.toString();
+  const cached = conformingTypesCache.get(key);
+  if (cached !== undefined) {
+    return cached;
+  }
+  const types: ContextDescriptor[] = [];
+  const seen = new Set<string>();
+  for (const module of enumerateSwiftModules()) {
+    for (const conformance of enumerateProtocolConformances(module)) {
+      const p = conformance.protocol;
+      if (p === null || !p.handle.equals(protocol.handle)) {
+        continue;
+      }
+      const handle = conformance.typeDescriptor;
+      if (handle === null || seen.has(handle.toString())) {
+        continue;
+      }
+      seen.add(handle.toString());
+      types.push(new ContextDescriptor(handle));
+    }
+  }
+  conformingTypesCache.set(key, types);
+  return types;
 }

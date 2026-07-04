@@ -9,6 +9,7 @@ import {
   Protocol,
   ProtocolComposition,
   ProtocolRequirementKind,
+  WitnessTable,
   readString,
   readValue,
 } from "../src/index.js";
@@ -66,13 +67,44 @@ describe("Protocol", () => {
     const scalable = Protocol.find("fixture.Scalable")!;
     const Int = Swift.metadataFor("Swift.Int")!;
     const Bool = Swift.metadataFor("Swift.Bool")!;
-    expect(scalable.conformanceFor(Int)!.isNull()).toBe(false);
+    expect(scalable.conformanceFor(Int) instanceof WitnessTable).toBe(true);
     expect(scalable.conformanceFor(Bool)).toBeNull();
   });
 
   test("Swift.Protocol exposes the class on the facade", () => {
     loadFixture();
     expect(Swift.Protocol.find("fixture.Greeter")).not.toBeNull();
+  });
+});
+
+describe("Swift.protocols", () => {
+  test("enumerates protocols across loaded modules, including the fixture's", () => {
+    loadFixture();
+    const names = [...Swift.protocols()].map((p) => p.fullName);
+    expect(names).toContain("fixture.Greeter");
+    expect(names).toContain("fixture.Scalable");
+  });
+
+  test("each yielded entry is a usable Protocol", () => {
+    loadFixture();
+    const greeter = [...Swift.protocols()].find((p) => p.fullName === "fixture.Greeter")!;
+    expect(greeter.requirements.length).toBeGreaterThan(0);
+  });
+});
+
+describe("Protocol.conformingTypes", () => {
+  test("is the inverse of protocols(): Scalable includes its retroactive Swift.Int conformance", () => {
+    loadFixture();
+    const scalable = Protocol.find("fixture.Scalable")!;
+    const names = scalable.conformingTypes().map((d) => d.fullTypeName);
+    expect(names).toContain("Swift.Int");
+  });
+
+  test("Greeter's conforming types include Person", () => {
+    loadFixture();
+    const greeter = Protocol.find("fixture.Greeter")!;
+    const names = greeter.conformingTypes().map((d) => d.fullTypeName);
+    expect(names).toContain("fixture.Person");
   });
 });
 
