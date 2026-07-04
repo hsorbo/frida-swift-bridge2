@@ -23,6 +23,10 @@ export enum GenericRequirementKind {
   Layout = 0x1f,
 }
 
+export enum GenericRequirementLayoutKind {
+  Class = 0,
+}
+
 export interface GenericRequirementDescriptor {
   kind: GenericRequirementKind;
   hasKeyArgument: boolean;
@@ -30,6 +34,7 @@ export interface GenericRequirementDescriptor {
   protocol: ContextDescriptor | null;
   isObjCProtocol: boolean;
   sameTypeName: MangledName | null;
+  layoutKind: GenericRequirementLayoutKind | null;
   address: NativePointer;
 }
 
@@ -67,6 +72,7 @@ export function readGenericRequirementDescriptors(
     let protocol: ContextDescriptor | null = null;
     let isObjCProtocol = false;
     let sameTypeName: MangledName | null = null;
+    let layoutKind: GenericRequirementLayoutKind | null = null;
     if (kind === GenericRequirementKind.Protocol) {
       ({ protocol, isObjC: isObjCProtocol } = resolveProtocolConstraint(address.add(OFFSETOF_UNION)));
     } else if (
@@ -75,6 +81,8 @@ export function readGenericRequirementDescriptors(
       kind === GenericRequirementKind.SameShape
     ) {
       sameTypeName = readMangledName(address.add(OFFSETOF_UNION));
+    } else if (kind === GenericRequirementKind.Layout) {
+      layoutKind = address.add(OFFSETOF_UNION).readU32();
     }
 
     entries.push({
@@ -84,6 +92,7 @@ export function readGenericRequirementDescriptors(
       protocol,
       isObjCProtocol,
       sameTypeName,
+      layoutKind,
       address,
     });
   }

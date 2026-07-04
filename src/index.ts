@@ -59,6 +59,7 @@ export {
 } from "./abi/protocol-descriptor.js";
 export {
   GenericRequirementKind,
+  GenericRequirementLayoutKind,
   GenericRequirementDescriptor,
   readGenericRequirementDescriptors,
 } from "./abi/generic-requirement-descriptor.js";
