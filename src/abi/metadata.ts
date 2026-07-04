@@ -18,6 +18,7 @@ const METADATA_REQUEST_COMPLETE = 0;
 
 const OFFSETOF_VALUE_TYPE_GENERIC_HEADER = 0x24;
 const OFFSETOF_CLASS_GENERIC_HEADER = 0x34;
+const OFFSETOF_EXTENSION_GENERIC_HEADER = 0xc;
 const OFFSETOF_NUM_KEY_ARGUMENTS = 0x4;
 
 export interface TypeLayout {
@@ -147,6 +148,8 @@ export function genericHeaderOffset(descriptor: ContextDescriptor): number {
       return OFFSETOF_VALUE_TYPE_GENERIC_HEADER;
     case ContextDescriptorKind.Class:
       return OFFSETOF_CLASS_GENERIC_HEADER;
+    case ContextDescriptorKind.Extension:
+      return OFFSETOF_EXTENSION_GENERIC_HEADER;
     default:
       throw new Error(`generic metadata for descriptor kind ${descriptor.kind} is not supported`);
   }
