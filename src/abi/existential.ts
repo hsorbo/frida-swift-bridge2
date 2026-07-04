@@ -1,5 +1,6 @@
 import { Metadata } from "./metadata.js";
 import { ContextDescriptor } from "./context-descriptor.js";
+import { dynamicTypeOf } from "./class-metadata.js";
 import { getSwiftCoreApi } from "../runtime/api.js";
 
 const FLAGS_OFFSET = Process.pointerSize;
@@ -27,6 +28,22 @@ export interface OpaqueExistential {
 export function projectOpaqueExistential(container: NativePointer): OpaqueExistential {
   const type = new Metadata(container.add(TYPE_OFFSET).readPointer());
   return { type, value: type.valueWitnesses.projectBuffer(container) };
+}
+
+export function projectClassExistential(container: NativePointer): OpaqueExistential {
+  const value = container.readPointer();
+  return { type: dynamicTypeOf(value), value };
+}
+
+export function projectExistentialValue(metadata: Metadata, container: NativePointer): OpaqueExistential {
+  const representation = existentialRepresentation(metadata);
+  if (representation === "class") {
+    return projectClassExistential(container);
+  }
+  if (representation === "opaque") {
+    return projectOpaqueExistential(container);
+  }
+  throw new Error("projectExistentialValue: Error existentials are not supported; use projectErrorExistential");
 }
 
 export function projectErrorExistential(container: NativePointer): OpaqueExistential {

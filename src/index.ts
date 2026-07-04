@@ -99,6 +99,8 @@ export {
   OpaqueExistential,
   existentialRepresentation,
   projectOpaqueExistential,
+  projectClassExistential,
+  projectExistentialValue,
   projectErrorExistential,
 } from "./abi/existential.js";
 export { ValueInstance } from "./abi/value.js";
@@ -179,6 +181,10 @@ export {
   bindStaticMethod,
   bindValueInitializer,
   bindGenericMethod,
+  resolveWitnessMethod,
+  bindWitnessMethod,
+  bindWitnessMethodAt,
+  WitnessMethodSignature,
 } from "./runtime/method.js";
 export { SwiftObject, createObject } from "./runtime/object-facade.js";
 

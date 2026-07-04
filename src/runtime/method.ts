@@ -1,5 +1,5 @@
 import { Metadata, MetadataKind, getMetadata } from "../abi/metadata.js";
-import { ContextDescriptorKind } from "../abi/context-descriptor.js";
+import { ContextDescriptor, ContextDescriptorKind } from "../abi/context-descriptor.js";
 import { ClassMetadata } from "../abi/class-metadata.js";
 import { ClassInstance } from "../abi/heap-object.js";
 import { createObject, SwiftObject, RAW } from "./object-facade.js";
@@ -16,6 +16,7 @@ import {
   resolveTypeExpr,
   splitBoundTypeName,
   SwiftFunctionSignature,
+  SwiftAccessorSignature,
 } from "./symbolication.js";
 import {
   makeSwiftNativeFunction,
@@ -26,7 +27,9 @@ import {
 import { SwiftClosure, ClosureSpec, ClosureBody, LoadableClosureBody, SwiftThrow } from "./closure.js";
 import { typeName } from "./type-name.js";
 import { readString, createString } from "../abi/string.js";
-import { findProtocol, conformsToProtocol } from "../abi/protocol-conformance.js";
+import { findProtocol, conformsToProtocol, ProtocolConformance } from "../abi/protocol-conformance.js";
+import { ProtocolRequirement, ProtocolRequirementKind, readProtocolRequirements } from "../abi/protocol-descriptor.js";
+import { WitnessTable } from "../abi/witness-table.js";
 import type { SwiftType } from "./swift-type.js";
 
 export type MethodKind = "method" | "init";
@@ -1109,4 +1112,186 @@ export function getProperty(self: NativePointer, typeName: string, member: strin
 export function setProperty(self: NativePointer, typeName: string, member: string, value: CallArg): void {
   const accessor = resolveAccessor(typeName, member, "setter");
   invokerForAccessor(accessor)(self, marshalArg(accessor.type, value));
+}
+
+function protocolOf(table: WitnessTable): ContextDescriptor {
+  const protocol = new ProtocolConformance(table.conformanceDescriptor).protocol;
+  if (protocol === null) {
+    throw new Error("witness table's conformance descriptor has no protocol");
+  }
+  return protocol;
+}
+
+function stripWitnessWrapper(demangled: string): string | null {
+  const prefix = "protocol witness for ";
+  if (!demangled.startsWith(prefix)) {
+    return null;
+  }
+  const rest = demangled.slice(prefix.length);
+  const at = rest.indexOf(" in conformance ");
+  return at === -1 ? rest : rest.slice(0, at);
+}
+
+const symbolsByModule = new Map<string, Map<string, string>>();
+
+// Witness thunks are usually private linkage, invisible to symbolicate()'s exports-only lookup.
+function symbolicateLocal(address: NativePointer): string | null {
+  const module = Process.findModuleByAddress(address);
+  if (module === null) {
+    return null;
+  }
+  let names = symbolsByModule.get(module.path);
+  if (names === undefined) {
+    names = new Map<string, string>();
+    for (const s of module.enumerateSymbols()) {
+      names.set(s.address.toString(), s.name);
+    }
+    symbolsByModule.set(module.path, names);
+  }
+  const name = names.get(address.toString());
+  return name === undefined ? null : demangle(name);
+}
+
+const CALLABLE_REQUIREMENT_KINDS = new Set<ProtocolRequirementKind>([
+  ProtocolRequirementKind.Method,
+  ProtocolRequirementKind.Init,
+  ProtocolRequirementKind.Getter,
+  ProtocolRequirementKind.Setter,
+]);
+
+interface WitnessCandidate {
+  requirement: ProtocolRequirement;
+  signature: SwiftFunctionSignature | SwiftAccessorSignature;
+}
+
+function witnessCandidates(table: WitnessTable): WitnessCandidate[] {
+  const candidates: WitnessCandidate[] = [];
+  for (const requirement of readProtocolRequirements(protocolOf(table))) {
+    if (requirement.isAsync || !CALLABLE_REQUIREMENT_KINDS.has(requirement.kind)) {
+      continue;
+    }
+    const demangled = symbolicateLocal(table.requirement(requirement.witnessIndex));
+    if (demangled === null) {
+      continue;
+    }
+    const stripped = stripWitnessWrapper(demangled);
+    if (stripped === null) {
+      continue;
+    }
+    const signature = parseSwiftSignature(stripped);
+    if (signature === null) {
+      continue;
+    }
+    candidates.push({ requirement, signature });
+  }
+  return candidates;
+}
+
+export function resolveWitnessMethod(table: WitnessTable, methodName: string): ResolvedMethod {
+  const protocolName = protocolOf(table).fullTypeName ?? "protocol";
+  const matches = witnessCandidates(table).filter(
+    (c): c is WitnessCandidate & { signature: SwiftFunctionSignature } =>
+      c.signature.kind === "function" && c.signature.name === methodName
+  );
+  if (matches.length === 0) {
+    throw new Error(`no requirement ${methodName} on ${protocolName}`);
+  }
+  if (matches.length > 1) {
+    const overloads = matches.map((m) => m.signature.selector).join(", ");
+    throw new Error(`ambiguous requirement ${methodName} on ${protocolName}: ${overloads}`);
+  }
+  const { requirement, signature } = matches[0];
+  const argTypes = signature.argTypeNames.map((name) => {
+    const metadata = resolveTypeExpr(name, () => null);
+    if (metadata === null) {
+      throw new Error(`cannot resolve argument type ${name} of ${signature.selector}`);
+    }
+    return metadata;
+  });
+  let returnType: Metadata | null = null;
+  if (signature.returnTypeName !== null) {
+    returnType = resolveTypeExpr(signature.returnTypeName, () => null);
+    if (returnType === null) {
+      throw new Error(`cannot resolve return type ${signature.returnTypeName} of ${signature.selector}`);
+    }
+  }
+  return {
+    address: table.requirement(requirement.witnessIndex),
+    argTypes,
+    returnType,
+    throws: signature.throws,
+    isStatic: !requirement.isInstance,
+    selector: signature.selector,
+  };
+}
+
+export function bindWitnessMethod(table: WitnessTable, self: NativePointer, methodName: string): BoundMethod {
+  return new BoundMethod(resolveWitnessMethod(table, methodName), self);
+}
+
+export interface WitnessMethodSignature {
+  argTypes: Metadata[];
+  returnType: Metadata | null;
+  throws?: boolean;
+}
+
+export function bindWitnessMethodAt(
+  table: WitnessTable,
+  witnessIndex: number,
+  self: NativePointer,
+  signature: WitnessMethodSignature
+): BoundMethod {
+  const resolved: ResolvedMethod = {
+    address: table.requirement(witnessIndex),
+    argTypes: signature.argTypes,
+    returnType: signature.returnType,
+    throws: signature.throws ?? false,
+    isStatic: false,
+    selector: `#${witnessIndex}`,
+  };
+  return new BoundMethod(resolved, self);
+}
+
+interface ResolvedWitnessAccessor {
+  address: NativePointer;
+  type: Metadata;
+  kind: AccessorKind;
+}
+
+function resolveWitnessAccessor(table: WitnessTable, member: string, kind: AccessorKind): ResolvedWitnessAccessor {
+  const match = witnessCandidates(table).find(
+    (c): c is WitnessCandidate & { signature: SwiftAccessorSignature } =>
+      c.signature.kind === kind && c.signature.member === member
+  );
+  if (match === undefined) {
+    throw new Error(`no ${kind} for ${member} on ${protocolOf(table).fullTypeName ?? "protocol"}`);
+  }
+  const type = resolveType(match.signature.typeName);
+  if (type === null) {
+    throw new Error(`cannot resolve ${kind} type ${match.signature.typeName} of ${member}`);
+  }
+  return { address: table.requirement(match.requirement.witnessIndex), type, kind };
+}
+
+function invokerForWitnessAccessor(accessor: ResolvedWitnessAccessor): SwiftNativeFunction {
+  const key = `witness:${accessor.address}`;
+  let fn = invokerCache.get(key);
+  if (fn === undefined) {
+    fn =
+      accessor.kind === "getter"
+        ? makeSwiftNativeFunction(accessor.address, accessor.type, [], { hasSelf: true })
+        : makeSwiftNativeFunction(accessor.address, null, [accessor.type], { hasSelf: true });
+    invokerCache.set(key, fn);
+  }
+  return fn;
+}
+
+export function witnessGetProperty(table: WitnessTable, self: NativePointer, name: string): CallResult {
+  const accessor = resolveWitnessAccessor(table, name, "getter");
+  return decodeReturn(accessor.type, invokerForWitnessAccessor(accessor)(self));
+}
+
+export function witnessSetProperty(table: WitnessTable, self: NativePointer, name: string, value: CallArg): void {
+  const accessor = resolveWitnessAccessor(table, name, "setter");
+  invokerForWitnessAccessor(accessor)(self, marshalArg(accessor.type, value));
 }
