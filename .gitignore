@@ -4,4 +4,8 @@ docs/
 tests/fixtures/*.dylib
 tests/fixtures/*.so
 tests/fixtures/paths.ts
+tests/fixtures/*.swiftmodule
+tests/fixtures/*.swiftdoc
+tests/fixtures/*.swiftsourceinfo
+tests/fixtures/*.abi.json
 linux/

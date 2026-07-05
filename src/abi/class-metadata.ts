@@ -2,6 +2,8 @@ import { ContextDescriptor } from "./context-descriptor.js";
 import { Metadata, MetadataKind, getMetadata } from "./metadata.js";
 import { Field, enumerateFields } from "./field-descriptor.js";
 import { getSwiftCoreApi } from "../runtime/api.js";
+import { hasResilientSuperclass } from "./class-descriptor.js";
+import { getClassMetadataBounds } from "./class-metadata-bounds.js";
 
 // Darwin class metadata carries ObjC-interop fields (cacheData[2] + data)
 // between `superclass` and `flags`; non-ObjC platforms omit them, shifting
@@ -14,8 +16,9 @@ const OFFSETOF_INSTANCE_SIZE = 0x18 + OBJC_INTEROP_PREFIX;
 const OFFSETOF_INSTANCE_ALIGN_MASK = 0x1c + OBJC_INTEROP_PREFIX;
 const OFFSETOF_DESCRIPTION = 0x28 + OBJC_INTEROP_PREFIX;
 
+export const ROOT_CLASS_METADATA_SIZE = OFFSETOF_DESCRIPTION + 2 * Process.pointerSize;
+
 const SWIFT_CLASS_IS_SWIFT_MASK = 2; // Darwin (ObjC interop)
-const CLASS_HAS_RESILIENT_SUPERCLASS = 1 << 13; // bit 13 of kind-specific flags
 
 const DESC_OFFSETOF_FIELD_OFFSET_VECTOR_OFFSET = 0x28;
 
@@ -51,12 +54,10 @@ export class ClassMetadata {
 
   fieldOffset(index: number): number {
     const descriptor = this.description;
-    if ((descriptor.flags >>> 16) & CLASS_HAS_RESILIENT_SUPERCLASS) {
-      throw new Error("field offsets for resilient-superclass classes are not supported");
+    let vectorOffset = descriptor.handle.add(DESC_OFFSETOF_FIELD_OFFSET_VECTOR_OFFSET).readU32();
+    if (hasResilientSuperclass(descriptor)) {
+      vectorOffset += getClassMetadataBounds(descriptor).immediateMembersOffset / Process.pointerSize;
     }
-    const vectorOffset = descriptor.handle
-      .add(DESC_OFFSETOF_FIELD_OFFSET_VECTOR_OFFSET)
-      .readU32();
     return this.handle.add((vectorOffset + index) * Process.pointerSize).readU64().toNumber();
   }
 

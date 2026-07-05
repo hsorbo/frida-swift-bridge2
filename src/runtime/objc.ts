@@ -1,5 +1,6 @@
 let cachedMsgSend: NativeFunction<NativePointer, [NativePointerValue, NativePointerValue]> | null = null;
 let cachedUTF8StringSelector: NativePointer | null = null;
+let cachedLookUpClass: NativeFunction<NativePointer, [NativePointerValue]> | null = null;
 
 function getMsgSend(): NativeFunction<NativePointer, [NativePointerValue, NativePointerValue]> {
   if (cachedMsgSend === null) {
@@ -27,4 +28,19 @@ function getUTF8StringSelector(): NativePointer {
 
 export function objcUTF8String(object: NativePointer): string | null {
   return getMsgSend()(object, getUTF8StringSelector()).readUtf8String();
+}
+
+function getLookUpClass(): NativeFunction<NativePointer, [NativePointerValue]> {
+  if (cachedLookUpClass === null) {
+    const libobjc = Process.getModuleByName("libobjc.A.dylib");
+    cachedLookUpClass = new NativeFunction(libobjc.getExportByName("objc_lookUpClass"), "pointer", [
+      "pointer",
+    ]);
+  }
+  return cachedLookUpClass;
+}
+
+export function lookUpObjCClass(name: string): NativePointer | null {
+  const cls = getLookUpClass()(Memory.allocUtf8String(name));
+  return cls.isNull() ? null : cls;
 }

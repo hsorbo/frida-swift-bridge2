@@ -31,3 +31,10 @@ public func translate(_ p: ResilientPoint, dx: Int, dy: Int) -> ResilientPoint {
 public func translateFrozen(_ p: FrozenPoint, dx: Int, dy: Int) -> FrozenPoint {
     return FrozenPoint(x: p.x + dx, y: p.y + dy)
 }
+
+// fixture.ConcreteSub subclasses this cross-module, which is what sets hasResilientSuperclass.
+open class ResilientBase {
+    public var tag: Int
+    public init(tag: Int) { self.tag = tag }
+    open func greeting() -> String { "base" }
+}

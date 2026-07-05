@@ -1,6 +1,8 @@
 // Controlled Swift module the bridge introspects in tests. Grown per pillar;
 // keep additions minimal and named for what they exercise.
 
+import resilient
+
 // 4 words: at the calling-convention loadable boundary, but already out-of-line
 // for value-buffer storage (> 3 words).
 public struct LoadableStruct {
@@ -401,6 +403,19 @@ public class Animal {
 public final class Cat: Animal {
     public override init() { super.init() }
     public override func speak() -> Int { 9 }
+}
+
+// Subclassing ResilientBase cross-module sets hasResilientSuperclass on ConcreteSub itself.
+public final class ConcreteSub: ResilientBase {
+    public var extra: Int
+    public init(tag: Int, extra: Int) {
+        self.extra = extra
+        super.init(tag: tag)
+    }
+    public override func greeting() -> String { "sub" }
+}
+public func makeConcreteSub(_ tag: Int, _ extra: Int) -> ConcreteSub {
+    ConcreteSub(tag: tag, extra: extra)
 }
 
 // Metatype argument in a generic: `T.Type` lowers to a single metadata pointer (loadable, one GP).
