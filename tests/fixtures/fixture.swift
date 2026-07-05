@@ -526,3 +526,14 @@ var escapingBody: (() -> Void)?
 public func storeEscaping(_ body: @escaping () -> Void) { escapingBody = body }
 public func fireEscaping() { escapingBody?() }
 public func releaseEscaping() { escapingBody = nil }
+
+var capturingBody: (Int) -> Int = { $0 }
+public func storeCapturing(_ x: Int) {
+    let suffix = "-fixture"
+    capturingBody = { y in x + y + suffix.count }
+}
+public func capturingContext() -> UnsafeMutableRawPointer {
+    return withUnsafePointer(to: &capturingBody) { p in
+        UnsafeRawPointer(p).load(fromByteOffset: MemoryLayout<Int>.size, as: UnsafeMutableRawPointer.self)
+    }
+}
