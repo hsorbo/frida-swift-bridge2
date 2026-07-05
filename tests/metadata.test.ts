@@ -3,7 +3,10 @@ import { requireSwift } from "./swift.js";
 
 import { Swift } from "../src/index.js";
 import { findType } from "../src/reflection/registry.js";
-import { getMetadata, MetadataKind } from "../src/abi/metadata.js";
+import { getMetadata, getGenericMetadata, MetadataKind } from "../src/abi/metadata.js";
+import { ContextDescriptor, ContextDescriptorKind } from "../src/abi/context-descriptor.js";
+
+const FLAG_IS_GENERIC = 0x80;
 
 describe("metadata", () => {
   test("resolves Int layout via the access function", () => {
@@ -41,5 +44,13 @@ describe("metadata", () => {
     requireSwift();
     expect(Swift.metadataFor("Swift.NoSuchTypeQX")).toBeNull();
     expect(Swift.metadataFor("Swift.Int")!.typeLayout.size).toBe(8);
+  });
+
+  test("getGenericMetadata throws for an opaque type descriptor rather than reading a bogus access function", () => {
+    const descriptor = Memory.alloc(0x14);
+    descriptor.writeU32(ContextDescriptorKind.OpaqueType | FLAG_IS_GENERIC);
+
+    const ctx = new ContextDescriptor(descriptor);
+    expect(() => getGenericMetadata(ctx, [])).toThrow();
   });
 });

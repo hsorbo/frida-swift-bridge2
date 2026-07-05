@@ -2,6 +2,10 @@ import { ContextDescriptor } from "./context-descriptor.js";
 import { Metadata, instantiateGenericMetadata, genericHeaderOffset } from "./metadata.js";
 import { conformsToProtocol } from "./protocol-conformance.js";
 import { resolveTypeByMangledName, symbolicMangledNameLength } from "./field-descriptor.js";
+import {
+  GenericRequirementDescriptor,
+  readGenericRequirementDescriptors,
+} from "./generic-requirement-descriptor.js";
 import { RelativeDirectPointer } from "../basic/relative-pointer.js";
 
 const OFFSETOF_NUM_REQUIREMENTS = 0x2;
@@ -30,6 +34,16 @@ export function genericContextEnd(descriptor: ContextDescriptor): number {
   const numRequirements = handle.add(base + OFFSETOF_NUM_REQUIREMENTS).readU16();
   const paramsOffset = base + OFFSETOF_GENERIC_PARAMS;
   return genericRequirementsOffset(paramsOffset, numParams) + numRequirements * REQUIREMENT_SIZE;
+}
+
+export function genericRequirements(descriptor: ContextDescriptor): GenericRequirementDescriptor[] {
+  const base = genericHeaderOffset(descriptor);
+  const handle = descriptor.handle;
+  const numParams = handle.add(base).readU16();
+  const numRequirements = handle.add(base + OFFSETOF_NUM_REQUIREMENTS).readU16();
+  const paramsOffset = base + OFFSETOF_GENERIC_PARAMS;
+  const requirementsOffset = genericRequirementsOffset(paramsOffset, numParams);
+  return readGenericRequirementDescriptors(handle.add(requirementsOffset), numRequirements);
 }
 
 export function buildGenericMetadata(

@@ -20,6 +20,7 @@ const OFFSETOF_VALUE_TYPE_GENERIC_HEADER = 0x24;
 const OFFSETOF_CLASS_GENERIC_HEADER = 0x34;
 const OFFSETOF_EXTENSION_GENERIC_HEADER = 0xc;
 const OFFSETOF_ANONYMOUS_GENERIC_HEADER = 0x8;
+const OFFSETOF_OPAQUE_TYPE_GENERIC_HEADER = 0x8;
 const OFFSETOF_NUM_KEY_ARGUMENTS = 0x4;
 
 export interface TypeLayout {
@@ -153,12 +154,17 @@ export function genericHeaderOffset(descriptor: ContextDescriptor): number {
       return OFFSETOF_EXTENSION_GENERIC_HEADER;
     case ContextDescriptorKind.Anonymous:
       return OFFSETOF_ANONYMOUS_GENERIC_HEADER;
+    case ContextDescriptorKind.OpaqueType:
+      return OFFSETOF_OPAQUE_TYPE_GENERIC_HEADER;
     default:
       throw new Error(`generic metadata for descriptor kind ${descriptor.kind} is not supported`);
   }
 }
 
 function genericHeader(descriptor: ContextDescriptor): NativePointer {
+  if (descriptor.kind === ContextDescriptorKind.OpaqueType) {
+    throw new Error("generic metadata instantiation is not supported for opaque type descriptors");
+  }
   return descriptor.handle.add(genericHeaderOffset(descriptor));
 }
 
