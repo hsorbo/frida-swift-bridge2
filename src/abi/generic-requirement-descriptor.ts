@@ -1,6 +1,7 @@
 import { ContextDescriptor } from "./context-descriptor.js";
 import { MangledName, symbolicMangledNameLength } from "./field-descriptor.js";
-import { RelativeDirectPointer } from "../basic/relative-pointer.js";
+import { RelativeDirectPointer, RelativeIndirectablePointer } from "../basic/relative-pointer.js";
+import { ProtocolConformance } from "./protocol-conformance.js";
 
 export const GENERIC_REQUIREMENT_DESCRIPTOR_SIZE = 0xc;
 
@@ -27,6 +28,17 @@ export enum GenericRequirementLayoutKind {
   Class = 0,
 }
 
+export enum InvertibleProtocolKind {
+  Copyable = 0,
+  Escapable = 1,
+}
+
+export interface InvertedProtocolsRequirement {
+  // 0xffff: constrains the subject type rather than a generic parameter.
+  genericParamIndex: number;
+  protocolBits: number;
+}
+
 export interface GenericRequirementDescriptor {
   kind: GenericRequirementKind;
   hasKeyArgument: boolean;
@@ -35,6 +47,8 @@ export interface GenericRequirementDescriptor {
   isObjCProtocol: boolean;
   sameTypeName: MangledName | null;
   layoutKind: GenericRequirementLayoutKind | null;
+  conformance: ProtocolConformance | null;
+  invertedProtocols: InvertedProtocolsRequirement | null;
   address: NativePointer;
 }
 
@@ -73,6 +87,8 @@ export function readGenericRequirementDescriptors(
     let isObjCProtocol = false;
     let sameTypeName: MangledName | null = null;
     let layoutKind: GenericRequirementLayoutKind | null = null;
+    let conformance: ProtocolConformance | null = null;
+    let invertedProtocols: InvertedProtocolsRequirement | null = null;
     if (kind === GenericRequirementKind.Protocol) {
       ({ protocol, isObjC: isObjCProtocol } = resolveProtocolConstraint(address.add(OFFSETOF_UNION)));
     } else if (
@@ -83,6 +99,12 @@ export function readGenericRequirementDescriptors(
       sameTypeName = readMangledName(address.add(OFFSETOF_UNION));
     } else if (kind === GenericRequirementKind.Layout) {
       layoutKind = address.add(OFFSETOF_UNION).readU32();
+    } else if (kind === GenericRequirementKind.SameConformance) {
+      const p = RelativeIndirectablePointer.resolve(address.add(OFFSETOF_UNION));
+      conformance = p === null ? null : new ProtocolConformance(p);
+    } else if (kind === GenericRequirementKind.InvertedProtocols) {
+      const at = address.add(OFFSETOF_UNION);
+      invertedProtocols = { genericParamIndex: at.readU16(), protocolBits: at.add(2).readU16() };
     }
 
     entries.push({
@@ -93,6 +115,8 @@ export function readGenericRequirementDescriptors(
       isObjCProtocol,
       sameTypeName,
       layoutKind,
+      conformance,
+      invertedProtocols,
       address,
     });
   }
