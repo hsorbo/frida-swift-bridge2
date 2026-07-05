@@ -9,6 +9,7 @@ export enum MetadataKind {
   Existential = 0x303,
   Metatype = 0x304,
   Tuple = 0x301,
+  Function = 0x302,
   HeapLocalVariable = 0x400,
   HeapGenericLocalVariable = 0x500,
 }
