@@ -9,6 +9,7 @@ import {
 import { RelativeDirectPointer } from "../basic/relative-pointer.js";
 
 const OFFSETOF_NUM_REQUIREMENTS = 0x2;
+const OFFSETOF_HEADER_FLAGS = 0x6;
 const OFFSETOF_GENERIC_PARAMS = 0x8;
 
 const FLAG_HAS_KEY_ARGUMENT = 0x80;
@@ -22,18 +23,67 @@ const REQUIREMENT_KIND_MASK = 0x1f;
 const REQUIREMENT_KIND_PROTOCOL = 0x0;
 const PROTOCOL_REF_OBJC_BIT = 0x2;
 
+const FLAG_HAS_TYPE_PACKS = 0x1;
+const FLAG_HAS_CONDITIONAL_INVERTED_PROTOCOLS = 0x2;
+const FLAG_HAS_VALUES = 0x4;
+
+const SIZEOF_PACK_SHAPE_HEADER = 0x4;
+const SIZEOF_PACK_SHAPE_DESCRIPTOR = 0x8;
+const SIZEOF_CONDITIONAL_INVERTIBLE_PROTOCOL_SET = 0x2;
+const SIZEOF_CONDITIONAL_REQUIREMENT_COUNT = 0x2;
+const SIZEOF_VALUE_HEADER = 0x4;
+const SIZEOF_VALUE_DESCRIPTOR = 0x4;
+
 // Params are padded to a 4-byte boundary before the requirements array begins.
 function genericRequirementsOffset(paramsOffset: number, numParams: number): number {
   return (paramsOffset + numParams + 3) & ~3;
 }
 
+function popcount16(bits: number): number {
+  let count = 0;
+  for (let n = bits; n !== 0; n >>>= 1) {
+    count += n & 1;
+  }
+  return count;
+}
+
+// Trailing order past the requirements array: GenericPackShapeHeader/Descriptors (parameter
+// packs), ConditionalInvertibleProtocolSet/RequirementCounts/Requirements (~Copyable/~Escapable
+// conditional conformances), GenericValueHeader/Descriptors (generic value parameters) — each
+// gated by its own bit in the generic context header's Flags.
 export function genericContextEnd(descriptor: ContextDescriptor): number {
   const base = genericHeaderOffset(descriptor);
   const handle = descriptor.handle;
   const numParams = handle.add(base).readU16();
   const numRequirements = handle.add(base + OFFSETOF_NUM_REQUIREMENTS).readU16();
+  const flags = handle.add(base + OFFSETOF_HEADER_FLAGS).readU16();
   const paramsOffset = base + OFFSETOF_GENERIC_PARAMS;
-  return genericRequirementsOffset(paramsOffset, numParams) + numRequirements * REQUIREMENT_SIZE;
+  let offset = genericRequirementsOffset(paramsOffset, numParams) + numRequirements * REQUIREMENT_SIZE;
+
+  if ((flags & FLAG_HAS_TYPE_PACKS) !== 0) {
+    const numPacks = handle.add(offset).readU16();
+    offset += SIZEOF_PACK_SHAPE_HEADER + numPacks * SIZEOF_PACK_SHAPE_DESCRIPTOR;
+  }
+
+  if ((flags & FLAG_HAS_CONDITIONAL_INVERTED_PROTOCOLS) !== 0) {
+    const invertedSet = handle.add(offset).readU16();
+    offset += SIZEOF_CONDITIONAL_INVERTIBLE_PROTOCOL_SET;
+    const numCounts = popcount16(invertedSet);
+    const totalRequirements =
+      numCounts === 0
+        ? 0
+        : handle.add(offset + (numCounts - 1) * SIZEOF_CONDITIONAL_REQUIREMENT_COUNT).readU16();
+    offset += numCounts * SIZEOF_CONDITIONAL_REQUIREMENT_COUNT;
+    offset = (offset + 3) & ~3;
+    offset += totalRequirements * REQUIREMENT_SIZE;
+  }
+
+  if ((flags & FLAG_HAS_VALUES) !== 0) {
+    const numValues = handle.add(offset).readU32();
+    offset += SIZEOF_VALUE_HEADER + numValues * SIZEOF_VALUE_DESCRIPTOR;
+  }
+
+  return offset;
 }
 
 export function genericRequirements(descriptor: ContextDescriptor): GenericRequirementDescriptor[] {

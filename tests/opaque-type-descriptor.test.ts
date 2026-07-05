@@ -9,6 +9,7 @@ import {
 } from "../src/abi/opaque-type-descriptor.js";
 
 const FLAG_IS_GENERIC = 0x80;
+const FLAG_HAS_TYPE_PACKS = 0x1;
 
 describe("opaque type descriptor", () => {
   test("resolves a trailing underlying-type mangled name when non-generic", () => {
@@ -72,6 +73,26 @@ describe("opaque type descriptor", () => {
 
     const ctx = new ContextDescriptor(descriptor);
     expect(ctx.isGeneric).toBeTruthy();
+    expect(numUnderlyingTypeArguments(ctx)).toBe(1);
+    const name = underlyingTypeArgumentMangledName(ctx, 0);
+    expect(name.address.equals(mangledName)).toBeTruthy();
+  });
+
+  test("resolves an underlying-type mangled name past a non-empty pack-shape section", () => {
+    const descriptor = Memory.alloc(0x20);
+    descriptor.writeU32(ContextDescriptorKind.OpaqueType | FLAG_IS_GENERIC | (1 << 16));
+    descriptor.add(0x4).writeS32(0);
+    descriptor.add(0x8).writeU16(0); // NumParams
+    descriptor.add(0xa).writeU16(0); // NumRequirements
+    descriptor.add(0xe).writeU16(FLAG_HAS_TYPE_PACKS);
+    descriptor.add(0x10).writeU16(1); // PackShapeHeader.NumPacks
+    descriptor.add(0x12).writeU16(0); // PackShapeHeader.NumShapeClasses
+
+    const mangledName = Memory.allocUtf8String("Si");
+    const argField = descriptor.add(0x1c); // past PackShapeHeader(4) + 1*PackShapeDescriptor(8)
+    argField.writeS32(mangledName.sub(argField).toInt32());
+
+    const ctx = new ContextDescriptor(descriptor);
     expect(numUnderlyingTypeArguments(ctx)).toBe(1);
     const name = underlyingTypeArgumentMangledName(ctx, 0);
     expect(name.address.equals(mangledName)).toBeTruthy();
