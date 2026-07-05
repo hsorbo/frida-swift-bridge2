@@ -537,3 +537,49 @@ public func capturingContext() -> UnsafeMutableRawPointer {
         UnsafeRawPointer(p).load(fromByteOffset: MemoryLayout<Int>.size, as: UnsafeMutableRawPointer.self)
     }
 }
+public func invokeCapturing(_ y: Int) -> Int { capturingBody(y) }
+
+var structCapturingBody: () -> Int = { 0 }
+public func storeStructCapturing(_ a: Int, _ b: Int, _ c: Int, _ d: Int) {
+    let s = LoadableStruct(a: a, b: b, c: c, d: d)
+    structCapturingBody = { s.a + s.b + s.c + s.d }
+}
+public func structCapturingContext() -> UnsafeMutableRawPointer {
+    return withUnsafePointer(to: &structCapturingBody) { p in
+        UnsafeRawPointer(p).load(fromByteOffset: MemoryLayout<Int>.size, as: UnsafeMutableRawPointer.self)
+    }
+}
+
+var classCapturingBody: () -> Int = { 0 }
+public func storeClassCapturing(_ kind: Int) {
+    let t = Base(kind: kind)
+    classCapturingBody = { t.kind }
+}
+public func classCapturingContext() -> UnsafeMutableRawPointer {
+    return withUnsafePointer(to: &classCapturingBody) { p in
+        UnsafeRawPointer(p).load(fromByteOffset: MemoryLayout<Int>.size, as: UnsafeMutableRawPointer.self)
+    }
+}
+
+var mixedCapturingBody: () -> Int = { 0 }
+public func storeMixedCapturing(_ flagValue: Int, _ n: Int, _ kind: Int) {
+    let flag = flagValue != 0
+    let t = Base(kind: kind)
+    mixedCapturingBody = { (flag ? 1 : 0) + n + t.kind }
+}
+public func mixedCapturingContext() -> UnsafeMutableRawPointer {
+    return withUnsafePointer(to: &mixedCapturingBody) { p in
+        UnsafeRawPointer(p).load(fromByteOffset: MemoryLayout<Int>.size, as: UnsafeMutableRawPointer.self)
+    }
+}
+
+var genericCapturingBody: () -> Void = {}
+public func storeGenericCapturing<T>(_ value: T) {
+    genericCapturingBody = { _ = value }
+}
+public func triggerGenericCapturing() { storeGenericCapturing(42) }
+public func genericCapturingContext() -> UnsafeMutableRawPointer {
+    return withUnsafePointer(to: &genericCapturingBody) { p in
+        UnsafeRawPointer(p).load(fromByteOffset: MemoryLayout<Int>.size, as: UnsafeMutableRawPointer.self)
+    }
+}
