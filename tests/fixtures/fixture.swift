@@ -2,6 +2,7 @@
 // keep additions minimal and named for what they exercise.
 
 import resilient
+import Distributed
 
 // 4 words: at the calling-convention loadable boundary, but already out-of-line
 // for value-buffer storage (> 3 words).
@@ -588,4 +589,12 @@ public func genericCapturingContext() -> UnsafeMutableRawPointer {
     return withUnsafePointer(to: &genericCapturingBody) { p in
         UnsafeRawPointer(p).load(fromByteOffset: MemoryLayout<Int>.size, as: UnsafeMutableRawPointer.self)
     }
+}
+
+// Distributed thunks are the only emitter of __swift5_acfuncs records: one per distributed func.
+public distributed actor Calculator {
+    public typealias ActorSystem = LocalTestingDistributedActorSystem
+
+    public distributed func add(_ a: Int, _ b: Int) -> Int { a + b }
+    public distributed func greet(_ name: String) -> String { "Hi, \(name)" }
 }

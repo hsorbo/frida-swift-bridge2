@@ -19,6 +19,7 @@ const RANGE_OFFSETS: Record<string, number> = {
   __swift5_protos: 4 * Process.pointerSize,
   __swift5_proto: 6 * Process.pointerSize,
   __swift5_types: 8 * Process.pointerSize,
+  __swift5_acfuncs: 28 * Process.pointerSize,
 };
 
 function metadataSectionsFor(module: Module): NativePointer | null {

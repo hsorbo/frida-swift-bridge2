@@ -11,6 +11,7 @@ import { createObject } from "./runtime/object-facade.js";
 import { Protocol, ProtocolComposition, swiftProtocols } from "./runtime/protocol.js";
 import { indirect, markResilientModule } from "./runtime/calling-convention.js";
 import { closure } from "./runtime/closure.js";
+import { findAccessibleFunction } from "./abi/accessible-function.js";
 
 export { SwiftCoreApi, getSwiftCoreApi } from "./runtime/api.js";
 export { isSwiftSymbol, demangle } from "./runtime/demangle.js";
@@ -49,6 +50,11 @@ export {
   conformsToProtocol,
 } from "./abi/protocol-conformance.js";
 export { Protocol, ProtocolComposition, swiftProtocols } from "./runtime/protocol.js";
+export {
+  AccessibleFunctionRecord,
+  enumerateAccessibleFunctions,
+  findAccessibleFunction,
+} from "./abi/accessible-function.js";
 export {
   ProtocolRequirementKind,
   ProtocolRequirement,
@@ -269,6 +275,7 @@ export const Swift = {
   indirect,
   closure,
   markResilient: markResilientModule,
+  findAccessibleFunction,
   symbolicate,
   parseSignature: parseSwiftSignature,
   Interceptor: SwiftInterceptor,
