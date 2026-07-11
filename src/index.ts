@@ -125,11 +125,30 @@ export {
   StructType,
   EnumType,
   ClassType,
+  TupleType,
+  MetatypeType,
+  FunctionType,
   TypeMember,
   NativeFunctionType,
   typeOf,
   swiftNativeFunction,
 } from "./runtime/swift-type.js";
+export {
+  TupleElement,
+  tupleNumElements,
+  tupleLabels,
+  enumerateTupleElements,
+} from "./abi/tuple.js";
+export { metatypeInstanceType } from "./abi/metatype.js";
+export {
+  FunctionType as FunctionSignature,
+  FunctionParameter,
+  FunctionMetadataConvention,
+  ParameterOwnership,
+  FunctionMetadataDifferentiabilityKind,
+  FunctionIsolation,
+  readFunctionType,
+} from "./abi/function-type.js";
 export {
   ValueWitnessTable,
   NUM_WORDS_VALUE_BUFFER,

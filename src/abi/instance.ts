@@ -1,6 +1,7 @@
 import { Metadata, MetadataKind } from "./metadata.js";
 import { enumerateFields, fieldTypeIn, resolveFieldType } from "./field-descriptor.js";
 import { readEnumCase, projectEnumData, projectBox, injectEnumTag } from "./enum.js";
+import { enumerateTupleElements } from "./tuple.js";
 import { readString, writeString } from "./string.js";
 import {
   existentialRepresentation,
@@ -149,6 +150,13 @@ export function readValue(metadata: Metadata, address: NativePointer): SwiftValu
       return address.readPointer(); // reference; decode with readObject()
     case MetadataKind.Existential:
       return readExistential(metadata, address);
+    case MetadataKind.Tuple: {
+      const elements: SwiftValue[] = [];
+      for (const element of enumerateTupleElements(metadata)) {
+        elements.push(readValue(element.type, address.add(element.offset)));
+      }
+      return elements;
+    }
     default:
       return null;
   }

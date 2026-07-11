@@ -2,7 +2,32 @@ import { test, expect, describe } from "@frida/injest/agent";
 import { requireSwift } from "./swift.js";
 import { loadFixture } from "./fixtures/load.js";
 
-import { Swift, StructType, EnumType, ClassType } from "../src/index.js";
+import {
+  Swift,
+  StructType,
+  EnumType,
+  ClassType,
+  TupleType,
+  MetatypeType,
+  FunctionType,
+  Metadata,
+  MetadataKind,
+  resolveTypeByMangledName,
+} from "../src/index.js";
+
+function mangledType(mangled: string): Metadata {
+  return resolveTypeByMangledName({
+    address: Memory.allocUtf8String(mangled),
+    length: mangled.length,
+  })!;
+}
+
+function syntheticMetadata(kind: MetadataKind, ...words: NativePointer[]): Metadata {
+  const handle = Memory.alloc((1 + words.length) * Process.pointerSize);
+  handle.writeU32(kind);
+  words.forEach((w, i) => handle.add((i + 1) * Process.pointerSize).writePointer(w));
+  return new Metadata(handle);
+}
 
 describe("type wrappers", () => {
   test("StructType.new builds a value and lists fields", () => {
@@ -51,6 +76,35 @@ describe("type wrappers", () => {
     expect(Swift.typeOf(Swift.metadataFor("Swift.Int")!) instanceof StructType).toBe(true);
     expect(Swift.typeOf(Swift.metadataFor("fixture.Pick")!) instanceof EnumType).toBe(true);
     expect(Swift.typeOf(Swift.metadataFor("fixture.Counter")!) instanceof ClassType).toBe(true);
+  });
+
+  test("typeOf wraps a tuple with element reflection", () => {
+    requireSwift();
+    const t = Swift.typeOf(mangledType("Si_Sit")); // (Int, Int)
+    expect(t instanceof TupleType).toBe(true);
+    const tuple = t as TupleType;
+    expect(tuple.elements.length).toBe(2);
+    expect(tuple.elements.every((e) => e.type.kind === MetadataKind.Struct)).toBe(true);
+    expect(tuple.name).toContain("Int");
+  });
+
+  test("typeOf wraps a metatype exposing its instance type", () => {
+    requireSwift();
+    const intMeta = Swift.metadataFor("Swift.Int")!;
+    const t = Swift.typeOf(syntheticMetadata(MetadataKind.Metatype, intMeta.handle));
+    expect(t instanceof MetatypeType).toBe(true);
+    expect((t as MetatypeType).instanceType.name).toBe("Swift.Int");
+  });
+
+  test("typeOf wraps a function type exposing its signature", () => {
+    requireSwift();
+    const intMeta = Swift.metadataFor("Swift.Int")!;
+    const t = Swift.typeOf(syntheticMetadata(MetadataKind.Function, ptr(0), intMeta.handle));
+    expect(t instanceof FunctionType).toBe(true);
+    const sig = (t as FunctionType).signature;
+    expect(sig.numParameters).toBe(0);
+    expect(sig.isThrowing).toBe(false);
+    expect(sig.resultType.kind).toBe(MetadataKind.Struct);
   });
 
   test("methods() static option splits instance from static keys", () => {

@@ -27,6 +27,9 @@ import {
   enumerateProperties,
   resolveMethod,
 } from "./method.js";
+import { enumerateTupleElements, tupleLabels, TupleElement } from "../abi/tuple.js";
+import { metatypeInstanceType } from "../abi/metatype.js";
+import { readFunctionType, FunctionType as FunctionSignature } from "../abi/function-type.js";
 import { demangle } from "./demangle.js";
 import { typeName } from "./type-name.js";
 import { getSwiftCoreApi } from "./api.js";
@@ -228,6 +231,28 @@ export class ClassType extends SwiftType {
   }
 }
 
+export class TupleType extends SwiftType {
+  get labels(): string | null {
+    return tupleLabels(this.metadata);
+  }
+
+  get elements(): TupleElement[] {
+    return [...enumerateTupleElements(this.metadata)];
+  }
+}
+
+export class MetatypeType extends SwiftType {
+  get instanceType(): SwiftType {
+    return typeOf(metatypeInstanceType(this.metadata));
+  }
+}
+
+export class FunctionType extends SwiftType {
+  get signature(): FunctionSignature {
+    return readFunctionType(this.metadata);
+  }
+}
+
 export type NativeFunctionType =
   | SwiftType
   | Protocol
@@ -263,6 +288,12 @@ export function typeOf(metadata: Metadata): SwiftType {
       return new EnumType(metadata);
     case MetadataKind.Class:
       return new ClassType(metadata);
+    case MetadataKind.Tuple:
+      return new TupleType(metadata);
+    case MetadataKind.Metatype:
+      return new MetatypeType(metadata);
+    case MetadataKind.Function:
+      return new FunctionType(metadata);
     default:
       return new SwiftType(metadata);
   }

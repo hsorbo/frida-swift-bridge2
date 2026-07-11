@@ -1,13 +1,20 @@
 import { test, expect, describe } from "@frida/injest/agent";
 import { requireSwift } from "./swift.js";
 
-import { Swift } from "../src/index.js";
+import { Swift, resolveTypeByMangledName } from "../src/index.js";
 import { readValue } from "../src/abi/instance.js";
 
 function box(write: (p: NativePointer) => void, size = 8): NativePointer {
   const storage = Memory.alloc(size);
   write(storage);
   return storage;
+}
+
+function mangledType(mangled: string) {
+  return resolveTypeByMangledName({
+    address: Memory.allocUtf8String(mangled),
+    length: mangled.length,
+  })!;
 }
 
 describe("readValue", () => {
@@ -32,6 +39,15 @@ describe("readValue", () => {
     storage.writeU64(10);
     storage.add(8).writeU64(20);
     expect(readValue(rangeInt, storage)).toEqual({ lowerBound: 10, upperBound: 20 });
+  });
+
+  test("decodes a tuple as a positional array", () => {
+    requireSwift();
+    const tuple = mangledType("Si_Sit"); // (Int, Int)
+    const storage = Memory.alloc(tuple.typeLayout.stride);
+    storage.writeU64(7);
+    storage.add(8).writeU64(11);
+    expect(readValue(tuple, storage)).toEqual([7, 11]);
   });
 
   test("returns a class-typed field as its reference pointer", () => {
