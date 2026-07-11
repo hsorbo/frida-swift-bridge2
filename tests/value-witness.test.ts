@@ -25,6 +25,7 @@ describe("ValueWitnessTable", () => {
     expect(vwt.isPOD).toBe(true);
     expect(vwt.isInlineStorage).toBe(true);
     expect(vwt.isBitwiseTakable).toBe(true);
+    expect(vwt.isCopyable).toBe(true);
   });
 
   test("String is non-POD but bitwise-takable and inline", () => {
@@ -72,6 +73,18 @@ describe("ValueWitnessTable", () => {
     expect(big.isInlineStorage).toBe(false);
     expect(big.isPOD).toBe(true);
     expect(big.isBitwiseTakable).toBe(true);
+  });
+
+  test("noncopyable struct reports isCopyable false and refuses copies", () => {
+    loadFixture();
+    const vwt = Swift.metadataFor("fixture.NoncopyableStruct")!.valueWitnesses;
+    expect(vwt.isCopyable).toBe(false);
+    const src = Memory.alloc(vwt.stride);
+    src.writeU64(7);
+    const dest = Memory.alloc(vwt.stride);
+    expect(() => vwt.initializeWithCopy(dest, src)).toThrow(/noncopyable/);
+    expect(() => vwt.assignWithCopy(dest, src)).toThrow(/noncopyable/);
+    expect(() => vwt.initializeBufferWithCopyOfBuffer(dest, src)).toThrow(/noncopyable/);
   });
 
   test("initializeWithCopy duplicates an out-of-line value", () => {

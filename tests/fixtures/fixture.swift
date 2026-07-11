@@ -21,6 +21,12 @@ public struct BigStruct {
     public let e: Int
 }
 
+// Move-only (SE-0390): its VWT sets IsNonCopyable; copy witnesses are illegal.
+public struct NoncopyableStruct: ~Copyable {
+    public let a: Int
+    public init(a: Int) { self.a = a }
+}
+
 extension LoadableStruct {
     public func dot(_ k: Int) -> Int { (a + b + c + d) * k }
 }

@@ -23,7 +23,9 @@ describe("mach-o swift sections", () => {
 
   test("enumerates type descriptors lazily and reads their names", () => {
     const lib = loadSwiftCore();
-    const section = getSwiftSection(lib, "__swift5_types")!;
+    const recordCount =
+      getSwiftSection(lib, "__swift5_types")!.size / 4 +
+      (getSwiftSection(lib, "__swift5_types2")?.size ?? 0) / 4;
     const limit = lib.base.add(lib.size);
 
     let count = 0;
@@ -38,7 +40,7 @@ describe("mach-o swift sections", () => {
     }
 
     expect(count).toBeGreaterThan(0);
-    expect(count).toBe(section.size / 4);
+    expect(count).toBe(recordCount);
     const wellKnown = ["Int", "String", "Array", "Bool", "Double"];
     expect(wellKnown.some((n) => names.has(n))).toBeTruthy();
   });

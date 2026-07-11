@@ -14,6 +14,7 @@ const ALIGNMENT_MASK = 0xff;
 const IS_NON_POD = 0x10000;
 const IS_NON_INLINE = 0x20000;
 const IS_NON_BITWISE_TAKABLE = 0x100000;
+const IS_NON_COPYABLE = 0x800000;
 
 export const NUM_WORDS_VALUE_BUFFER = 3;
 
@@ -56,7 +57,12 @@ export class ValueWitnessTable {
     return (this.flags & IS_NON_BITWISE_TAKABLE) === 0;
   }
 
+  get isCopyable(): boolean {
+    return (this.flags & IS_NON_COPYABLE) === 0;
+  }
+
   initializeWithCopy(dest: NativePointer, src: NativePointer): NativePointer {
+    this.requireCopyable();
     return this.call3(OFFSETOF_INITIALIZE_WITH_COPY, dest, src);
   }
 
@@ -65,6 +71,7 @@ export class ValueWitnessTable {
   }
 
   assignWithCopy(dest: NativePointer, src: NativePointer): NativePointer {
+    this.requireCopyable();
     return this.call3(OFFSETOF_ASSIGN_WITH_COPY, dest, src);
   }
 
@@ -73,6 +80,7 @@ export class ValueWitnessTable {
   }
 
   initializeBufferWithCopyOfBuffer(dest: NativePointer, src: NativePointer): NativePointer {
+    this.requireCopyable();
     return this.call3(OFFSETOF_INITIALIZE_BUFFER_WITH_COPY_OF_BUFFER, dest, src);
   }
 
@@ -88,6 +96,12 @@ export class ValueWitnessTable {
     return this.isInlineStorage
       ? buffer
       : getSwiftCoreApi().swift_projectBox(buffer.readPointer());
+  }
+
+  private requireCopyable(): void {
+    if (!this.isCopyable) {
+      throw new Error("cannot copy a value of a noncopyable (~Copyable) type");
+    }
   }
 
   private call3(offset: number, dest: NativePointer, src: NativePointer): NativePointer {

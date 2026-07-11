@@ -52,9 +52,27 @@ function getRegisteredSwiftSection(module: Module, name: string): SwiftSection |
   return size === 0 ? null : { address: range.readPointer(), size };
 }
 
+// Sections the ELF runtime leaves out of MetadataSections; read by ELF name from the loaded image.
+const ELF_SECTION_NAMES: Record<string, string> = {
+  __swift5_types2: "swift5_type_metadata_2",
+};
+
+function getElfSectionByName(module: Module, name: string): SwiftSection | null {
+  const elfName = ELF_SECTION_NAMES[name];
+  if (elfName === undefined) {
+    return null;
+  }
+  for (const section of module.enumerateSections()) {
+    if (section.name === elfName) {
+      return section.size === 0 ? null : { address: section.address, size: section.size };
+    }
+  }
+  return null;
+}
+
 export function getSwiftSection(module: Module, name: string): SwiftSection | null {
   if (Process.platform !== "darwin") {
-    return getRegisteredSwiftSection(module, name);
+    return getRegisteredSwiftSection(module, name) ?? getElfSectionByName(module, name);
   }
 
   const segNamePtr = Memory.allocUtf8String(SWIFT_SEGMENT);
@@ -67,8 +85,14 @@ export function getSwiftSection(module: Module, name: string): SwiftSection | nu
   return size === 0 ? null : { address, size };
 }
 
+// Noncopyable types live in __swift5_types2, hidden from pre-SE-0390 runtimes.
 export function* enumerateTypeContextDescriptors(module: Module): Generator<NativePointer> {
-  const section = getSwiftSection(module, "__swift5_types");
+  yield* enumerateTypeRecords(module, "__swift5_types");
+  yield* enumerateTypeRecords(module, "__swift5_types2");
+}
+
+function* enumerateTypeRecords(module: Module, sectionName: string): Generator<NativePointer> {
+  const section = getSwiftSection(module, sectionName);
   if (section === null) {
     return;
   }
