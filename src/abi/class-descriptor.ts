@@ -53,6 +53,8 @@ const KIND_FLAGS_SHIFT = 16;
 const CLASS_HAS_VTABLE = 1 << 15;
 const CLASS_HAS_RESILIENT_SUPERCLASS = 1 << 13;
 const CLASS_ARE_IMMEDIATE_MEMBERS_NEGATIVE = 1 << 12;
+const CLASS_IS_DEFAULT_ACTOR = 1 << 8;
+const CLASS_IS_ACTOR = 1 << 7;
 const CLASS_RESILIENT_SUPERCLASS_REFERENCE_KIND_SHIFT = 9;
 const CLASS_RESILIENT_SUPERCLASS_REFERENCE_KIND_MASK = 0x7;
 const METADATA_INITIALIZATION_MASK = 0x3;
@@ -67,6 +69,15 @@ function kindFlags(descriptor: ContextDescriptor): number {
 
 export function hasResilientSuperclass(descriptor: ContextDescriptor): boolean {
   return (kindFlags(descriptor) & CLASS_HAS_RESILIENT_SUPERCLASS) !== 0;
+}
+
+export function isActor(descriptor: ContextDescriptor): boolean {
+  return (kindFlags(descriptor) & CLASS_IS_ACTOR) !== 0;
+}
+
+// May be false for an actor with a resilient superclass.
+export function isDefaultActor(descriptor: ContextDescriptor): boolean {
+  return (kindFlags(descriptor) & CLASS_IS_DEFAULT_ACTOR) !== 0;
 }
 
 export function metadataInitializationKind(descriptor: ContextDescriptor): MetadataInitializationKind {

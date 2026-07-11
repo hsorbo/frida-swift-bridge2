@@ -1,6 +1,6 @@
 import { Metadata, MetadataKind } from "../abi/metadata.js";
 import { ClassMetadata } from "../abi/class-metadata.js";
-import { readVTableChain, VTableEntry } from "../abi/class-descriptor.js";
+import { isActor, isDefaultActor, readVTableChain, VTableEntry } from "../abi/class-descriptor.js";
 import { ValueInstance } from "../abi/value.js";
 import { ClassInstance } from "../abi/heap-object.js";
 import { createObject, SwiftObject } from "./object-facade.js";
@@ -147,6 +147,14 @@ export class ClassType extends SwiftType {
     return superclass !== null && superclass.isTypeMetadata
       ? typeOf(new Metadata(superclass.handle))
       : null;
+  }
+
+  get isActor(): boolean {
+    return isActor(new ClassMetadata(this.metadata.handle).description);
+  }
+
+  get isDefaultActor(): boolean {
+    return isDefaultActor(new ClassMetadata(this.metadata.handle).description);
   }
 
   init(...args: SwiftValue[]): SwiftObject {

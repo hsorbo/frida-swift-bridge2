@@ -591,6 +591,11 @@ public func genericCapturingContext() -> UnsafeMutableRawPointer {
     }
 }
 
+public actor Ticker {
+    public var count = 0
+    public func tick() { count += 1 }
+}
+
 // Distributed thunks are the only emitter of __swift5_acfuncs records: one per distributed func.
 public distributed actor Calculator {
     public typealias ActorSystem = LocalTestingDistributedActorSystem
