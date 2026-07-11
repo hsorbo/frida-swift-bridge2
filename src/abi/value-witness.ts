@@ -6,9 +6,12 @@ const OFFSETOF_INITIALIZE_WITH_COPY = 0x10;
 const OFFSETOF_ASSIGN_WITH_COPY = 0x18;
 const OFFSETOF_INITIALIZE_WITH_TAKE = 0x20;
 const OFFSETOF_ASSIGN_WITH_TAKE = 0x28;
+const OFFSETOF_GET_ENUM_TAG_SINGLE_PAYLOAD = 0x30;
+const OFFSETOF_STORE_ENUM_TAG_SINGLE_PAYLOAD = 0x38;
 const OFFSETOF_SIZE = 0x40;
 const OFFSETOF_STRIDE = 0x48;
 const OFFSETOF_FLAGS = 0x50;
+const OFFSETOF_EXTRA_INHABITANT_COUNT = 0x54;
 
 const ALIGNMENT_MASK = 0xff;
 const IS_NON_POD = 0x10000;
@@ -35,6 +38,10 @@ export class ValueWitnessTable {
 
   get flags(): number {
     return this.table.add(OFFSETOF_FLAGS).readU32();
+  }
+
+  get extraInhabitantCount(): number {
+    return this.table.add(OFFSETOF_EXTRA_INHABITANT_COUNT).readU32();
   }
 
   get alignmentMask(): number {
@@ -82,6 +89,24 @@ export class ValueWitnessTable {
   initializeBufferWithCopyOfBuffer(dest: NativePointer, src: NativePointer): NativePointer {
     this.requireCopyable();
     return this.call3(OFFSETOF_INITIALIZE_BUFFER_WITH_COPY_OF_BUFFER, dest, src);
+  }
+
+  getEnumTagSinglePayload(enumAddress: NativePointer, emptyCases: number): number {
+    const fn = new NativeFunction(
+      this.table.add(OFFSETOF_GET_ENUM_TAG_SINGLE_PAYLOAD).readPointer(),
+      "uint",
+      ["pointer", "uint", "pointer"]
+    );
+    return fn(enumAddress, emptyCases, this.type) as number;
+  }
+
+  storeEnumTagSinglePayload(enumAddress: NativePointer, whichCase: number, emptyCases: number): void {
+    const fn = new NativeFunction(
+      this.table.add(OFFSETOF_STORE_ENUM_TAG_SINGLE_PAYLOAD).readPointer(),
+      "void",
+      ["pointer", "uint", "uint", "pointer"]
+    );
+    fn(enumAddress, whichCase, emptyCases, this.type);
   }
 
   destroy(value: NativePointer): void {

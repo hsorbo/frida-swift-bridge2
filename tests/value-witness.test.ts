@@ -87,6 +87,33 @@ describe("ValueWitnessTable", () => {
     expect(() => vwt.initializeBufferWithCopyOfBuffer(dest, src)).toThrow(/noncopyable/);
   });
 
+  test("reports extra-inhabitant counts from the type layout", () => {
+    requireSwift();
+    expect(Swift.metadataFor("Swift.Int")!.valueWitnesses.extraInhabitantCount).toBe(0);
+    expect(Swift.metadataFor("Swift.Bool")!.valueWitnesses.extraInhabitantCount).toBe(254);
+    // a class pointer's invalid low addresses are all extra inhabitants
+    expect(
+      Swift.metadataFor("Swift.__RawSetStorage")!.valueWitnesses.extraInhabitantCount
+    ).toBeGreaterThan(0);
+  });
+
+  test("single-payload witnesses discriminate a class optional's nil", () => {
+    requireSwift();
+    const cls = Swift.metadataFor("Swift.__RawSetStorage")!;
+    const vwt = cls.valueWitnesses;
+    const storage = Memory.alloc(Process.pointerSize);
+
+    storage.writePointer(cls.handle); // any valid high pointer is the payload case
+    expect(vwt.getEnumTagSinglePayload(storage, 1)).toBe(0);
+
+    storage.writePointer(ptr(0));
+    expect(vwt.getEnumTagSinglePayload(storage, 1)).toBe(1); // nil -> empty case
+
+    storage.writePointer(cls.handle);
+    vwt.storeEnumTagSinglePayload(storage, 1, 1); // overwrite with the empty case
+    expect(vwt.getEnumTagSinglePayload(storage, 1)).toBe(1);
+  });
+
   test("initializeWithCopy duplicates an out-of-line value", () => {
     loadFixture();
     const vwt = Swift.metadataFor("fixture.BigStruct")!.valueWitnesses;

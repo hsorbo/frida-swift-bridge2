@@ -106,6 +106,7 @@ export {
   readEnumCase,
   projectEnumData,
   injectEnumTag,
+  setEnumTag,
   projectBox,
 } from "./abi/enum.js";
 export {

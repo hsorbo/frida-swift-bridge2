@@ -1,6 +1,6 @@
 import { Metadata, MetadataKind } from "./metadata.js";
 import { enumerateFields, fieldTypeIn, resolveFieldType } from "./field-descriptor.js";
-import { readEnumCase, projectEnumData, projectBox, injectEnumTag } from "./enum.js";
+import { readEnumCase, projectEnumData, projectBox, setEnumTag } from "./enum.js";
 import { enumerateTupleElements } from "./tuple.js";
 import { readString, writeString } from "./string.js";
 import {
@@ -127,7 +127,7 @@ function writeEnum(metadata: Metadata, address: NativePointer, value: SwiftValue
     }
     writeValue(payloadType, address, payload as SwiftValue);
   }
-  injectEnumTag(metadata, address, tag);
+  setEnumTag(metadata, address, tag);
 }
 
 export function readValue(metadata: Metadata, address: NativePointer): SwiftValue {
