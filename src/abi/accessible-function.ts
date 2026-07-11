@@ -1,4 +1,5 @@
 import { RelativeDirectPointer } from "../basic/relative-pointer.js";
+import { AsyncFunctionPointer } from "./async-function-pointer.js";
 import {
   MangledName,
   resolveTypeByMangledName,
@@ -46,6 +47,10 @@ export class AccessibleFunctionRecord {
   // An async function pointer record, not code, for async/distributed thunks.
   get functionPointer(): NativePointer {
     return RelativeDirectPointer.resolve(this.handle.add(OFFSETOF_FUNCTION))!;
+  }
+
+  get asyncFunctionPointer(): AsyncFunctionPointer {
+    return new AsyncFunctionPointer(this.functionPointer);
   }
 
   get isDistributed(): boolean {

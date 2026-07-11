@@ -55,6 +55,7 @@ export {
   enumerateAccessibleFunctions,
   findAccessibleFunction,
 } from "./abi/accessible-function.js";
+export { AsyncFunctionPointer } from "./abi/async-function-pointer.js";
 export {
   ProtocolRequirementKind,
   ProtocolRequirement,
