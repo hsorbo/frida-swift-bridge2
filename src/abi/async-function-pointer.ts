@@ -15,3 +15,7 @@ export class AsyncFunctionPointer {
     return this.handle.add(OFFSETOF_EXPECTED_CONTEXT_SIZE).readU32();
   }
 }
+
+export function isAsyncFunctionPointerSymbol(mangled: string): boolean {
+  return /^_?\$[sS]/.test(mangled) && mangled.endsWith("Tu");
+}

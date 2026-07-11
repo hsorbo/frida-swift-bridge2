@@ -4,6 +4,7 @@ import { ValueInstance } from "../abi/value.js";
 import { ClassInstance } from "../abi/heap-object.js";
 import { projectErrorExistential } from "../abi/existential.js";
 import { shouldPassIndirectly, floatLayout } from "./calling-convention.js";
+import { AsyncFunctionPointer, isAsyncFunctionPointerSymbol } from "../abi/async-function-pointer.js";
 import { symbolicate, parseSwiftSignature, resolveType, resolveTypeExpr } from "./symbolication.js";
 import { typeName } from "./type-name.js";
 import { createObject } from "./object-facade.js";
@@ -348,8 +349,52 @@ function attach(target: NativePointer, callbacks: SwiftInvocationCallbacks): Inv
   return Interceptor.attach(target, { onEnter, onLeave });
 }
 
-export interface SwiftInterceptorApi {
-  attach(target: NativePointer, callbacks: SwiftInvocationCallbacks): InvocationListener;
+export interface SwiftAsyncCallbacks {
+  onEnter?: (this: InvocationContext, args: SwiftValue[], context: NativePointer) => void;
+  // The entry partial function returning: reached the first suspension, not logical completion.
+  onFirstSuspend?: (this: InvocationContext) => void;
 }
 
-export const SwiftInterceptor: SwiftInterceptorApi = { attach };
+function resolveAsyncEntry(target: NativePointer): NativePointer {
+  const symbol = symbolicate(target);
+  if (symbol !== null && isAsyncFunctionPointerSymbol(symbol.name)) {
+    return new AsyncFunctionPointer(target).code;
+  }
+  return target;
+}
+
+function attachAsync(target: NativePointer, callbacks: SwiftAsyncCallbacks): InvocationListener {
+  if (callbacks.onEnter === undefined && callbacks.onFirstSuspend === undefined) {
+    throw new Error("attachAsync requires onEnter or onFirstSuspend");
+  }
+  const code = resolveAsyncEntry(target);
+  const { args, genericParams } = callShape(code);
+
+  const onEnter =
+    callbacks.onEnter !== undefined
+      ? function (this: InvocationContext) {
+          const context = this.context as Arm64CpuContext;
+          const { values } = materializeArgs(context, args, genericParams);
+          callbacks.onEnter!.call(this, values, context.x22);
+        }
+      : undefined;
+
+  if (callbacks.onFirstSuspend !== undefined) {
+    const onFirstSuspend = callbacks.onFirstSuspend;
+    return Interceptor.attach(code, {
+      onEnter,
+      onLeave: function (this: InvocationContext) {
+        onFirstSuspend.call(this);
+      },
+    });
+  }
+  // onEnter-only: a bare function is a probe listener, which never traps the return.
+  return Interceptor.attach(code, onEnter!);
+}
+
+export interface SwiftInterceptorApi {
+  attach(target: NativePointer, callbacks: SwiftInvocationCallbacks): InvocationListener;
+  attachAsync(target: NativePointer, callbacks: SwiftAsyncCallbacks): InvocationListener;
+}
+
+export const SwiftInterceptor: SwiftInterceptorApi = { attach, attachAsync };

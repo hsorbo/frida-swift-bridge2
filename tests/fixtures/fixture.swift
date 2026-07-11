@@ -3,6 +3,7 @@
 
 import resilient
 import Distributed
+import Dispatch
 
 // 4 words: at the calling-convention loadable boundary, but already out-of-line
 // for value-buffer storage (> 3 words).
@@ -594,6 +595,24 @@ public func genericCapturingContext() -> UnsafeMutableRawPointer {
 public actor Ticker {
     public var count = 0
     public func tick() { count += 1 }
+}
+
+public func computeAsync(_ x: Int) async -> Int {
+    await Task.yield()
+    return x * 2
+}
+
+final class AsyncResultBox: @unchecked Sendable { var value = 0 }
+
+public func driveComputeAsync(_ x: Int) -> Int {
+    let sem = DispatchSemaphore(value: 0)
+    let box = AsyncResultBox()
+    Task {
+        box.value = await computeAsync(x)
+        sem.signal()
+    }
+    sem.wait()
+    return box.value
 }
 
 // Distributed thunks are the only emitter of __swift5_acfuncs records: one per distributed func.

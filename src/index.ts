@@ -198,7 +198,7 @@ export {
   resolveFunctionSignature,
   resolveType,
 } from "./runtime/symbolication.js";
-export { SwiftInterceptor, SwiftInvocationCallbacks } from "./runtime/interceptor.js";
+export { SwiftInterceptor, SwiftInvocationCallbacks, SwiftAsyncCallbacks } from "./runtime/interceptor.js";
 export {
   BoundMethod,
   CallResult,
