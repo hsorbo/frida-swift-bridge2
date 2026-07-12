@@ -54,6 +54,48 @@ describe("ValueInstance", () => {
     c.dispose();
   });
 
+  test("equals compares structurally, not by address", () => {
+    loadFixture();
+    const Loadable = Swift.metadataFor("fixture.LoadableStruct")!;
+    const a = ValueInstance.fromJS(Loadable, { a: 1, b: 2, c: 3, d: 4 });
+    const b = ValueInstance.fromJS(Loadable, { a: 1, b: 2, c: 3, d: 4 });
+    const c = ValueInstance.fromJS(Loadable, { a: 1, b: 2, c: 3, d: 9 });
+    expect(a.handle.equals(b.handle)).toBe(false);
+    expect(a.equals(b)).toBe(true);
+    expect(a.equals(c)).toBe(false);
+    a.dispose();
+    b.dispose();
+    c.dispose();
+  });
+
+  test("equals is false across different value types", () => {
+    loadFixture();
+    const one = ValueInstance.fromJS(Swift.metadataFor("Swift.Int")!, 1);
+    const big = ValueInstance.fromJS(Swift.metadataFor("fixture.BigStruct")!, {
+      a: 1,
+      b: 2,
+      c: 3,
+      d: 4,
+      e: 5,
+    });
+    expect(one.equals(big)).toBe(false);
+    one.dispose();
+    big.dispose();
+  });
+
+  test("equals matches primitive and enum values structurally", () => {
+    requireSwift();
+    const Int = Swift.metadataFor("Swift.Int")!;
+    const a = ValueInstance.fromJS(Int, 7);
+    const b = ValueInstance.fromJS(Int, 7);
+    const c = ValueInstance.fromJS(Int, 8);
+    expect(a.equals(b)).toBe(true);
+    expect(a.equals(c)).toBe(false);
+    a.dispose();
+    b.dispose();
+    c.dispose();
+  });
+
   test("use after dispose throws; dispose is idempotent", () => {
     requireSwift();
     const v = ValueInstance.fromJS(Swift.metadataFor("Swift.Int")!, 42);

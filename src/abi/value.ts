@@ -1,5 +1,5 @@
 import { Metadata, MetadataKind } from "./metadata.js";
-import { readValue, writeValue, enumerateInstanceFields, SwiftValue } from "./instance.js";
+import { readValue, writeValue, enumerateInstanceFields, swiftValueEquals, SwiftValue } from "./instance.js";
 import { decodeBridgedContainer } from "./container.js";
 import {
   BoundValueMethod,
@@ -138,6 +138,23 @@ export class ValueInstance implements RawInstance {
 
   call(name: string, ...args: CallArg[]): CallResult | Promise<CallResult> {
     return this.method(name).call(...args);
+  }
+
+  equals(other: ValueInstance): boolean {
+    this.checkLive();
+    other.checkLive();
+    if (!this.metadata.handle.equals(other.metadata.handle)) {
+      return false;
+    }
+    if (this.handle.equals(other.handle)) {
+      return true;
+    }
+    const a = readValue(this.metadata, this.handle);
+    const b = readValue(other.metadata, other.handle);
+    if (a === null || b === null) {
+      return false;
+    }
+    return swiftValueEquals(a, b);
   }
 
   copy(): ValueInstance {

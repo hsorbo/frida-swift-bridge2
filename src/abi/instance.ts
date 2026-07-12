@@ -162,6 +162,34 @@ export function readValue(metadata: Metadata, address: NativePointer): SwiftValu
   }
 }
 
+export function swiftValueEquals(a: SwiftValue, b: SwiftValue): boolean {
+  if (a === null || b === null) {
+    return a === b;
+  }
+  if (a instanceof NativePointer || b instanceof NativePointer) {
+    return a instanceof NativePointer && b instanceof NativePointer && a.equals(b);
+  }
+  if (Array.isArray(a) || Array.isArray(b)) {
+    return (
+      Array.isArray(a) &&
+      Array.isArray(b) &&
+      a.length === b.length &&
+      a.every((element, i) => swiftValueEquals(element, b[i]))
+    );
+  }
+  if (typeof a === "object" || typeof b === "object") {
+    if (typeof a !== "object" || typeof b !== "object") {
+      return false;
+    }
+    const keys = Object.keys(a);
+    return (
+      keys.length === Object.keys(b).length &&
+      keys.every((k) => k in b && swiftValueEquals(a[k], b[k]))
+    );
+  }
+  return a === b;
+}
+
 const managedRefCache = new Map<string, boolean>();
 
 // Mirrors readValue: a reference it can't deep-copy out — a class ref, or the non-POD Opaque leaf
