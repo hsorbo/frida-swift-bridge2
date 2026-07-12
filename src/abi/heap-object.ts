@@ -76,6 +76,10 @@ export class ClassInstance implements RawInstance {
     return typeOf(this.dynamicType);
   }
 
+  equals(other: ClassInstance | NativePointer): boolean {
+    return this.handle.equals(other instanceof NativePointer ? other : other.handle);
+  }
+
   get retainCount(): number {
     return Number(getSwiftCoreApi().swift_retainCount(this.handle));
   }
