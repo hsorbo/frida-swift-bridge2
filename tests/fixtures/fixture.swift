@@ -449,6 +449,11 @@ public func greeterAgedType() -> UnsafeRawPointer { unsafeBitCast((any Greeter &
 public func namedType() -> UnsafeRawPointer { unsafeBitCast((any Named).self, to: UnsafeRawPointer.self) }
 public func errorType() -> UnsafeRawPointer { unsafeBitCast((any Error).self, to: UnsafeRawPointer.self) }
 
+#if canImport(CoreGraphics)
+import CoreGraphics
+public func foreignClassType() -> UnsafeRawPointer { unsafeBitCast(CGColor.self, to: UnsafeRawPointer.self) }
+#endif
+
 // Method-name rendering: an operator and a generic return.
 public struct Selectors {
     public var n: Int

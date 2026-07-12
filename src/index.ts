@@ -159,6 +159,8 @@ export {
   MetatypeType,
   FunctionType,
   ObjCClassWrapperType,
+  ForeignClassType,
+  ForeignReferenceType,
   TypeMember,
   NativeFunctionType,
   typeOf,

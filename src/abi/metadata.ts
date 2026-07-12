@@ -6,6 +6,8 @@ export enum MetadataKind {
   Struct = 0x200,
   Enum = 0x201,
   Optional = 0x202,
+  ForeignClass = 0x203,
+  ForeignReferenceType = 0x204,
   Existential = 0x303,
   Metatype = 0x304,
   ObjCClassWrapper = 0x305,

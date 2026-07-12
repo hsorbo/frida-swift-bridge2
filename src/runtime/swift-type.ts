@@ -1,4 +1,5 @@
 import { Metadata, MetadataKind } from "../abi/metadata.js";
+import { ContextDescriptor } from "../abi/context-descriptor.js";
 import { ClassMetadata } from "../abi/class-metadata.js";
 import { isActor, isDefaultActor, readVTableChain, VTableEntry } from "../abi/class-descriptor.js";
 import { ValueInstance } from "../abi/value.js";
@@ -64,6 +65,10 @@ function typeKindName(metadata: Metadata): string {
       return "function";
     case MetadataKind.ObjCClassWrapper:
       return "objc-class";
+    case MetadataKind.ForeignClass:
+      return "foreign-class";
+    case MetadataKind.ForeignReferenceType:
+      return "foreign-reference";
     default:
       return "type";
   }
@@ -170,6 +175,31 @@ export class EnumType extends ValueType {
 export class ObjCClassWrapperType extends SwiftType {
   get objcClass(): NativePointer {
     return this.metadata.handle.add(Process.pointerSize).readPointer().strip();
+  }
+}
+
+export class ForeignClassType extends SwiftType {
+  get description(): ContextDescriptor {
+    return new ContextDescriptor(this.metadata.handle.add(Process.pointerSize).readPointer().strip());
+  }
+
+  get superClass(): ForeignClassType | null {
+    const superclass = this.metadata.handle.add(2 * Process.pointerSize).readPointer().strip();
+    return superclass.isNull() ? null : new ForeignClassType(new Metadata(superclass));
+  }
+
+  protected get descriptorHandle(): NativePointer {
+    return this.description.handle;
+  }
+}
+
+export class ForeignReferenceType extends SwiftType {
+  get description(): ContextDescriptor {
+    return new ContextDescriptor(this.metadata.handle.add(Process.pointerSize).readPointer().strip());
+  }
+
+  protected get descriptorHandle(): NativePointer {
+    return this.description.handle;
   }
 }
 
@@ -350,6 +380,10 @@ export function typeOf(metadata: Metadata): SwiftType {
       return new FunctionType(metadata);
     case MetadataKind.ObjCClassWrapper:
       return new ObjCClassWrapperType(metadata);
+    case MetadataKind.ForeignClass:
+      return new ForeignClassType(metadata);
+    case MetadataKind.ForeignReferenceType:
+      return new ForeignReferenceType(metadata);
     case MetadataKind.FixedArray:
     case MetadataKind.Borrow:
       throw new Error(`unsupported metadata kind ${MetadataKind[metadata.kind]}`);
