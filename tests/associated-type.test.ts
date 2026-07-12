@@ -1,4 +1,4 @@
-import { test, expect, describe } from "@frida/injest/agent";
+import { test, expect, describe, beforeEach } from "@frida/injest/agent";
 import { loadFixture, loadFixtureSyms } from "./fixtures/load.js";
 
 import {
@@ -12,14 +12,14 @@ import {
 } from "../src/index.js";
 
 describe("associated type / associated conformance resolution", () => {
+  beforeEach(() => { loadFixture(); });
+
   test("readAssociatedTypeNames lists only associated-type requirements, in order", () => {
-    loadFixture();
     const container = Protocol.find("fixture.Container")!;
     expect(readAssociatedTypeNames(container.descriptor)).toEqual(["Item"]);
   });
 
   test("resolves a plain associated type by name (Container.Item on IntBox)", () => {
-    loadFixture();
     const container = Protocol.find("fixture.Container")!;
     const intBox = Swift.metadataFor("fixture.IntBox")!;
     const table = container.conformanceFor(intBox)!;
@@ -36,7 +36,6 @@ describe("associated type / associated conformance resolution", () => {
   });
 
   test("a stripped conformance's witness thunk is unrecoverable, so the named getter throws", () => {
-    loadFixture();
     const container = Protocol.find("fixture.Container")!;
     const intBox = Swift.metadataFor("fixture.IntBox")!;
     const table = container.conformanceFor(intBox)!;
@@ -45,7 +44,6 @@ describe("associated type / associated conformance resolution", () => {
   });
 
   test("unknown associated type name throws", () => {
-    loadFixture();
     const container = Protocol.find("fixture.Container")!;
     const intBox = Swift.metadataFor("fixture.IntBox")!;
     const table = container.conformanceFor(intBox)!;

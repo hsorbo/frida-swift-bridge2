@@ -1,4 +1,4 @@
-import { test, expect, describe } from "@frida/injest/agent";
+import { test, expect, describe, beforeEach } from "@frida/injest/agent";
 import { loadFixture } from "./fixtures/load.js";
 
 import {
@@ -15,8 +15,9 @@ function metadataFor(name: string) {
 }
 
 describe("value return embedding a class ref", () => {
+  beforeEach(() => { loadFixture(); });
+
   test("embedsManagedReference distinguishes a borrowed ref from a deep-copied field", () => {
-    loadFixture();
     expect(embedsManagedReference(metadataFor("fixture.Token"))).toBe(true);
     expect(embedsManagedReference(metadataFor("fixture.Wrapper"))).toBe(true);
     expect(embedsManagedReference(metadataFor("fixture.LoadableStruct"))).toBe(false);
@@ -29,7 +30,6 @@ describe("value return embedding a class ref", () => {
   });
 
   test("a returned aggregate owns its embedded class ref and releases it on dispose", () => {
-    loadFixture();
     const token = (Swift.typeOf(metadataFor("fixture.Token")) as ClassType).init(7);
     const view = new ClassInstance(token.$handle);
     const before = view.retainCount;
@@ -51,8 +51,9 @@ describe("value return embedding a class ref", () => {
 });
 
 describe("bridge-object container return", () => {
+  beforeEach(() => { loadFixture(); });
+
   test("a returned Array is adopted as an owned ValueInstance, not decoded lossily", () => {
-    loadFixture();
     const arr = (Swift.typeOf(metadataFor("fixture.Bag")) as StructType).call("ints") as SwiftObject;
     expect(arr.$kind).toBe("value");
 

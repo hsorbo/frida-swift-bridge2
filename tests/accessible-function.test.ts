@@ -1,4 +1,4 @@
-import { test, expect, describe } from "@frida/injest/agent";
+import { test, expect, describe, beforeEach } from "@frida/injest/agent";
 import { loadFixture } from "./fixtures/load.js";
 
 import {
@@ -17,6 +17,8 @@ function within(module: Module, p: NativePointer): boolean {
 }
 
 describe("accessible functions", () => {
+  beforeEach(() => { loadFixture(); });
+
   test("enumerates the distributed thunks in __swift5_acfuncs", () => {
     const module = loadFixture();
     const records = [...enumerateAccessibleFunctions(module)];
@@ -33,7 +35,6 @@ describe("accessible functions", () => {
   });
 
   test("finds a record by its mangled name", () => {
-    loadFixture();
     const record = findAccessibleFunction(ADD_MANGLED);
     expect(record).not.toBeNull();
     expect(record!.name).toBe(ADD_MANGLED);
@@ -41,19 +42,16 @@ describe("accessible functions", () => {
   });
 
   test("finds a record by its demangled spelling", () => {
-    loadFixture();
     const record = findAccessibleFunction(ADD_DEMANGLED);
     expect(record).not.toBeNull();
     expect(record!.name).toBe(ADD_MANGLED);
   });
 
   test("returns null for an unknown name", () => {
-    loadFixture();
     expect(findAccessibleFunction("does.not.Exist")).toBeNull();
   });
 
   test("resolves the function type as a Swift function metadata when available", () => {
-    loadFixture();
     const record = findAccessibleFunction(ADD_MANGLED)!;
     const functionType = record.functionType;
     // A distributed thunk's type is often unresolvable out of context; tolerate null.

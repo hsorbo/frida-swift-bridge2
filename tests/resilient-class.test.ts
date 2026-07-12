@@ -1,4 +1,4 @@
-import { test, expect, describe } from "@frida/injest/agent";
+import { test, expect, describe, beforeEach } from "@frida/injest/agent";
 import { loadFixture } from "./fixtures/load.js";
 
 import { Swift, ClassType, Metadata, MethodDescriptorKind } from "../src/index.js";
@@ -18,15 +18,15 @@ function String_(): Metadata {
 }
 
 describe("resilient superclass (cross-module fixture)", () => {
+  beforeEach(() => { loadFixture(); });
+
   test("reads both the inherited and the subclass's own stored property", () => {
-    loadFixture();
     const obj = concreteSubType().init(3, 4);
     expect(obj.$field("tag").read()).toBe(3);
     expect(obj.$field("extra").read()).toBe(4);
   });
 
   test("a base slot reaches the most-derived override", () => {
-    loadFixture();
     const entries = concreteSubType().vtable.filter(
       (e) => e.kind === MethodDescriptorKind.Method && e.isInstance
     );
@@ -41,7 +41,6 @@ describe("resilient superclass (cross-module fixture)", () => {
   });
 
   test("the live impl differs from the descriptor's declared impl", () => {
-    loadFixture();
     const entries = concreteSubType().vtable.filter(
       (e) => e.kind === MethodDescriptorKind.Method && e.isInstance
     );

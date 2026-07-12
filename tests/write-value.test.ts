@@ -1,5 +1,4 @@
-import { test, expect, describe } from "@frida/injest/agent";
-import { requireSwift } from "./swift.js";
+import { test, expect, describe, beforeEach } from "@frida/injest/agent";
 import { loadFixture } from "./fixtures/load.js";
 
 import { Swift, readValue, writeValue, projectBox } from "../src/index.js";
@@ -17,8 +16,9 @@ function roundTrip(metadata: ReturnType<typeof Swift.metadataFor>) {
 }
 
 describe("writeValue", () => {
+  beforeEach(() => { loadFixture(); });
+
   test("materializes integer primitives", () => {
-    requireSwift();
     expect(roundTrip(Swift.metadataFor("Swift.Int")).write(-42)).toBe(-42);
     expect(roundTrip(Swift.metadataFor("Swift.UInt8")).write(200)).toBe(200);
     expect(roundTrip(Swift.metadataFor("Swift.Bool")).write(true)).toBe(true);
@@ -26,7 +26,6 @@ describe("writeValue", () => {
   });
 
   test("recurses into nested struct fields", () => {
-    loadFixture();
     const Loadable = Swift.metadataFor("fixture.LoadableStruct");
     expect(roundTrip(Loadable).write({ a: 1, b: 2, c: 3, d: 4 })).toEqual({
       a: 1,
@@ -37,17 +36,14 @@ describe("writeValue", () => {
   });
 
   test("injects a payload enum case", () => {
-    loadFixture();
     expect(roundTrip(Swift.metadataFor("fixture.Pick")).write({ value: 7 })).toEqual({ value: 7 });
   });
 
   test("injects an empty enum case", () => {
-    loadFixture();
     expect(roundTrip(Swift.metadataFor("fixture.Pick")).write("empty")).toBe("empty");
   });
 
   test("constructs a String from a JS literal", () => {
-    requireSwift();
     const String_ = Swift.metadataFor("Swift.String")!;
     const storage = Memory.alloc(String_.typeLayout.stride);
     writeValue(String_, storage, "hi");
@@ -55,13 +51,11 @@ describe("writeValue", () => {
   });
 
   test("rejects an unsupported metadata kind", () => {
-    loadFixture();
     const Counter = Swift.metadataFor("fixture.Counter")!;
     expect(() => writeValue(Counter, Memory.alloc(Counter.typeLayout.stride), ptr(0))).toThrow();
   });
 
   test("writes into a freshly allocated box", () => {
-    requireSwift();
     const Int = Swift.metadataFor("Swift.Int")!;
     const { swift_allocBox, swift_release } = getSwiftCoreApi();
     const [object, buffer] = swift_allocBox(Int.handle);

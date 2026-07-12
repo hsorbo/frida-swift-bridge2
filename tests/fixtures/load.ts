@@ -1,5 +1,6 @@
 import { requireSwift } from "../swift.js";
 import { FIXTURE_DYLIB, RESILIENT_DYLIB, FIXTURESYMS_DYLIB } from "./paths.js";
+import { Swift, Metadata, makeSwiftNativeFunction } from "../../src/index.js";
 
 const EXT = Process.platform === "darwin" ? "dylib" : "so";
 export const FIXTURE_MODULE = `fixture.${EXT}`;
@@ -28,4 +29,20 @@ export function loadResilient(): Module {
 // as fixture but with the value-type init symbols retained in .symtab.
 export function loadFixtureSyms(): Module {
   return loadModule(FIXTURESYMS_DYLIB, FIXTURESYMS_MODULE);
+}
+
+export function fixtureExport(swiftName: string, mod: Module = loadFixture()): NativePointer {
+  for (const e of mod.enumerateExports()) {
+    const demangled = Swift.demangle(e.name);
+    if (demangled !== null && demangled.includes(swiftName)) {
+      return e.address;
+    }
+  }
+  throw new Error(`fixture export not found: ${swiftName}`);
+}
+
+export function existentialMetadata(accessor: string, mod?: Module): Metadata {
+  const RawPointer = Swift.metadataFor("Swift.UnsafeRawPointer")!;
+  const get = makeSwiftNativeFunction(fixtureExport(accessor, mod), RawPointer, []);
+  return new Metadata(get()!.readPointer());
 }

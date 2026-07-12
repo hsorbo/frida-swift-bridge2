@@ -1,4 +1,4 @@
-import { test, expect, describe } from "@frida/injest/agent";
+import { test, expect, describe, beforeEach } from "@frida/injest/agent";
 import { loadResilient } from "./fixtures/load.js";
 
 import { Swift, indirect, isResilientValueType, makeSwiftNativeFunction } from "../src/index.js";
@@ -34,6 +34,8 @@ function xy(result: NativePointer): [number, number] {
 }
 
 describe("resilient calling convention (local library-evolution fixture)", () => {
+  beforeEach(() => { loadResilient(); });
+
   test("a non-frozen resilient struct is passed @in / returned @out", () => {
     const mod = loadResilient();
     const RP = Swift.metadataFor("resilient.ResilientPoint")!;
@@ -57,7 +59,6 @@ describe("resilient calling convention (local library-evolution fixture)", () =>
   // swiftc emits no layout-string bit, so the heuristic can't see local resilient types — they need
   // the explicit AbstractIndirect used above. Pinned so the limitation is explicit, not silent.
   test("auto-detection does not fire for a locally-built resilient struct", () => {
-    loadResilient();
     expect(isResilientValueType(Swift.metadataFor("resilient.ResilientPoint")!)).toBe(false);
     expect(isResilientValueType(Swift.metadataFor("resilient.FrozenPoint")!)).toBe(false);
   });

@@ -1,4 +1,4 @@
-import { test, expect, describe } from "@frida/injest/agent";
+import { test, expect, describe, beforeEach } from "@frida/injest/agent";
 import { loadFixture, loadFixtureSyms } from "./fixtures/load.js";
 
 import {
@@ -11,6 +11,8 @@ import {
 } from "../src/index.js";
 
 describe("WitnessTable", () => {
+  beforeEach(() => { loadFixture(); });
+
   // The thunk symbol only survives in fixturesyms, fixture's unstripped twin.
   test("a requirement slot matches the protocol-witness-thunk symbol", () => {
     const mod = loadFixtureSyms();
@@ -32,7 +34,6 @@ describe("WitnessTable", () => {
   });
 
   test("slot 0 is the conformance descriptor, pointing back at Greeter and PoliteGreeter", () => {
-    loadFixture();
     const greeter = Protocol.find("fixture.Greeter")!;
     const politeGreeter = Swift.metadataFor("fixture.PoliteGreeter")!;
     const table = new WitnessTable(conformsToProtocol(politeGreeter, greeter.descriptor)!, politeGreeter);

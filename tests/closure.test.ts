@@ -1,22 +1,11 @@
-import { test, expect, describe } from "@frida/injest/agent";
+import { test, expect, describe, beforeEach } from "@frida/injest/agent";
 import { requireClosures } from "./swift.js";
-import { loadFixture } from "./fixtures/load.js";
+import { loadFixture, fixtureExport } from "./fixtures/load.js";
 
 import { Swift, ValueInstance } from "../src/index.js";
 import { makeSwiftNativeFunction, indirect, SwiftThrownError } from "../src/runtime/calling-convention.js";
 import { getSwiftCoreApi } from "../src/runtime/api.js";
 import { SwiftClosure, SwiftThrow } from "../src/runtime/closure.js";
-
-function fixtureFn(swiftName: string): NativePointer {
-  const mod = loadFixture();
-  for (const e of mod.enumerateExports()) {
-    const demangled = Swift.demangle(e.name);
-    if (demangled !== null && demangled.includes(swiftName)) {
-      return e.address;
-    }
-  }
-  throw new Error(`fixture export not found: ${swiftName}`);
-}
 
 describe("closure as a Swift argument", (ctx) => {
   requireClosures(ctx);
@@ -32,7 +21,7 @@ describe("closure as a Swift argument", (ctx) => {
       seen = Array.from(new Uint8Array(buf.readBytes()));
     });
 
-    const invoke = makeSwiftNativeFunction(fixtureFn("invokeWithBytes"), null, [
+    const invoke = makeSwiftNativeFunction(fixtureExport("invokeWithBytes"), null, [
       Int,
       Int,
       { closure: true },
@@ -65,7 +54,7 @@ describe("closure as a Swift argument", (ctx) => {
     });
 
     const invoke = makeSwiftNativeFunction(
-      fixtureFn("invokeGeneric"),
+      fixtureExport("invokeGeneric"),
       null,
       [Int, Int, { closure: true }],
       { typeArguments: [Int], throws: true }
@@ -99,7 +88,7 @@ describe("closure result and error routing", (ctx) => {
     });
 
     const invoke = makeSwiftNativeFunction(
-      fixtureFn("invokeReturning"),
+      fixtureExport("invokeReturning"),
       indirect(Int),
       [Int, Int, { closure: true }],
       { typeArguments: [Int], throws: true }
@@ -127,7 +116,7 @@ describe("closure result and error routing", (ctx) => {
     const closure = SwiftClosure.overBytes(() => errorObj, { throws: true });
 
     const invoke = makeSwiftNativeFunction(
-      fixtureFn("invokeGeneric"),
+      fixtureExport("invokeGeneric"),
       null,
       [Int, Int, { closure: true }],
       { typeArguments: [Int], throws: true }
@@ -189,13 +178,13 @@ describe("escaping closure context", (ctx) => {
     const retainCount = (): number => Number(api.swift_retainCount(closure.context));
 
     const storeEscaping = makeSwiftNativeFunction(
-      fixtureFn("storeEscaping"),
+      fixtureExport("storeEscaping"),
       null,
       [{ closure: true }]
     );
-    const fireEscaping = makeSwiftNativeFunction(fixtureFn("fireEscaping"), null, []);
+    const fireEscaping = makeSwiftNativeFunction(fixtureExport("fireEscaping"), null, []);
     const releaseEscaping = makeSwiftNativeFunction(
-      fixtureFn("releaseEscaping"),
+      fixtureExport("releaseEscaping"),
       null,
       []
     );
@@ -214,10 +203,10 @@ describe("escaping closure context", (ctx) => {
 });
 
 describe("closure through the $call facade", (ctx) => {
+  beforeEach(() => { loadFixture(); });
+
   requireClosures(ctx);
   test("Swift.closure passed to a generic rethrows method receives the bytes", () => {
-    loadFixture();
-
     const data = [0x01, 0x02, 0x03, 0x04, 0x05, 0x06];
     const buffer = Memory.alloc(data.length);
     buffer.writeByteArray(data);
@@ -244,8 +233,6 @@ describe("closure through the $call facade", (ctx) => {
   });
 
   test("Swift.closure that throws propagates through a rethrowing buffer method", () => {
-    loadFixture();
-
     const ByteSource = Swift.metadataFor("fixture.ByteSource")!;
     const self = Memory.alloc(ByteSource.valueWitnesses.stride);
     self.writePointer(Memory.alloc(1));
@@ -264,8 +251,6 @@ describe("closure through the $call facade", (ctx) => {
   });
 
   test("Swift.closure passed to a non-generic (buffer) -> Void method receives the bytes", () => {
-    loadFixture();
-
     const data = [0x09, 0x08, 0x07];
     const buffer = Memory.alloc(data.length);
     buffer.writeByteArray(data);
@@ -288,8 +273,6 @@ describe("closure through the $call facade", (ctx) => {
   });
 
   test("Swift.closure passed to a non-generic () -> Void method is invoked", () => {
-    loadFixture();
-
     const ByteSource = Swift.metadataFor("fixture.ByteSource")!;
     const self = Memory.alloc(ByteSource.valueWitnesses.stride);
     self.writePointer(Memory.alloc(1));
@@ -314,7 +297,7 @@ describe("loadable closures (register-passed params and result)", (ctx) => {
     const Int = Swift.metadataFor("Swift.Int")!;
 
     const closure = SwiftClosure.loadable((n) => Number(n) * 3, ["int64"], "int64");
-    const invoke = makeSwiftNativeFunction(fixtureFn("invokeMapping"), Int, [Int, { closure: true }]);
+    const invoke = makeSwiftNativeFunction(fixtureExport("invokeMapping"), Int, [Int, { closure: true }]);
 
     const nArg = Memory.alloc(8);
     nArg.writeU64(7);
@@ -330,7 +313,7 @@ describe("loadable closures (register-passed params and result)", (ctx) => {
       ["int64", "int64"],
       "int64"
     );
-    const invoke = makeSwiftNativeFunction(fixtureFn("invokeCombine"), Int, [Int, Int, { closure: true }]);
+    const invoke = makeSwiftNativeFunction(fixtureExport("invokeCombine"), Int, [Int, Int, { closure: true }]);
 
     const aArg = Memory.alloc(8);
     aArg.writeU64(20);
@@ -344,7 +327,7 @@ describe("loadable closures (register-passed params and result)", (ctx) => {
     const Double = Swift.metadataFor("Swift.Double")!;
 
     const closure = SwiftClosure.loadable((x) => Number(x) / 2, ["double"], "double");
-    const invoke = makeSwiftNativeFunction(fixtureFn("invokeScale"), Double, [Double, { closure: true }]);
+    const invoke = makeSwiftNativeFunction(fixtureExport("invokeScale"), Double, [Double, { closure: true }]);
 
     const xArg = Memory.alloc(8);
     xArg.writeDouble(7);
@@ -356,7 +339,7 @@ describe("loadable closures (register-passed params and result)", (ctx) => {
     const Bool = Swift.metadataFor("Swift.Bool")!;
 
     const closure = SwiftClosure.loadable((n) => Number(n) > 5, ["int64"], "bool");
-    const invoke = makeSwiftNativeFunction(fixtureFn("invokePredicate"), Bool, [Int, { closure: true }]);
+    const invoke = makeSwiftNativeFunction(fixtureExport("invokePredicate"), Bool, [Int, { closure: true }]);
 
     const yes = Memory.alloc(8);
     yes.writeU64(9);
@@ -369,6 +352,8 @@ describe("loadable closures (register-passed params and result)", (ctx) => {
 });
 
 describe("loadable closure through the $call facade", (ctx) => {
+  beforeEach(() => { loadFixture(); });
+
   requireClosures(ctx);
   function byteSource(): ReturnType<typeof Swift.Object> {
     const ByteSource = Swift.metadataFor("fixture.ByteSource")!;
@@ -379,13 +364,11 @@ describe("loadable closure through the $call facade", (ctx) => {
   }
 
   test("Swift.closure (Int) -> Int returns the mapped value", () => {
-    loadFixture();
     const result = byteSource().$call("apply", 7, Swift.closure((n: number) => Number(n) * 6));
     expect(result).toBe(42);
   });
 
   test("Swift.closure (Int) -> Bool returns the predicate result", () => {
-    loadFixture();
     const source = byteSource();
     expect(source.$call("check", 9, Swift.closure((n: number) => Number(n) > 5))).toBe(true);
     expect(source.$call("check", 2, Swift.closure((n: number) => Number(n) > 5))).toBe(false);
@@ -393,6 +376,8 @@ describe("loadable closure through the $call facade", (ctx) => {
 });
 
 describe("throwing loadable closures", (ctx) => {
+  beforeEach(() => { loadFixture(); });
+
   requireClosures(ctx);
   test("a non-throwing body returns its result through a throws closure type", () => {
     const Int = Swift.metadataFor("Swift.Int")!;
@@ -401,7 +386,7 @@ describe("throwing loadable closures", (ctx) => {
     const closure = SwiftClosure.loadable((n) => Number(n) > 5, ["int64"], "bool", {
       throws: true,
     });
-    const invoke = makeSwiftNativeFunction(fixtureFn("invokeThrowing"), Bool, [Int, { closure: true }], {
+    const invoke = makeSwiftNativeFunction(fixtureExport("invokeThrowing"), Bool, [Int, { closure: true }], {
       throws: true,
     });
 
@@ -421,7 +406,7 @@ describe("throwing loadable closures", (ctx) => {
     const closure = SwiftClosure.loadable(() => new SwiftThrow(errorObj), ["int64"], "bool", {
       throws: true,
     });
-    const invoke = makeSwiftNativeFunction(fixtureFn("invokeThrowing"), Bool, [Int, { closure: true }], {
+    const invoke = makeSwiftNativeFunction(fixtureExport("invokeThrowing"), Bool, [Int, { closure: true }], {
       throws: true,
     });
 
@@ -439,8 +424,6 @@ describe("throwing loadable closures", (ctx) => {
   });
 
   test("Swift.closure passed to a throwing-closure method returns the predicate result", () => {
-    loadFixture();
-
     const ByteSource = Swift.metadataFor("fixture.ByteSource")!;
     const self = Memory.alloc(ByteSource.valueWitnesses.stride);
     self.writePointer(Memory.alloc(1));
@@ -453,12 +436,14 @@ describe("throwing loadable closures", (ctx) => {
 });
 
 describe("sized-int and pointer loadable closures", (ctx) => {
+  beforeEach(() => { loadFixture(); });
+
   requireClosures(ctx);
   test("marshals a (Int32) -> Int32 closure", () => {
     const Int32 = Swift.metadataFor("Swift.Int32")!;
 
     const closure = SwiftClosure.loadable((n) => Number(n) + 100, ["int32"], "int32");
-    const invoke = makeSwiftNativeFunction(fixtureFn("invokeI32"), Int32, [Int32, { closure: true }]);
+    const invoke = makeSwiftNativeFunction(fixtureExport("invokeI32"), Int32, [Int32, { closure: true }]);
 
     const nArg = Memory.alloc(4);
     nArg.writeS32(5);
@@ -469,7 +454,7 @@ describe("sized-int and pointer loadable closures", (ctx) => {
     const Raw = Swift.metadataFor("Swift.UnsafeRawPointer")!;
 
     const closure = SwiftClosure.loadable((p) => (p as NativePointer).add(8), ["pointer"], "pointer");
-    const invoke = makeSwiftNativeFunction(fixtureFn("invokeRawPtr"), Raw, [Raw, { closure: true }]);
+    const invoke = makeSwiftNativeFunction(fixtureExport("invokeRawPtr"), Raw, [Raw, { closure: true }]);
 
     const base = Memory.alloc(16);
     const pArg = Memory.alloc(Process.pointerSize);
@@ -478,8 +463,6 @@ describe("sized-int and pointer loadable closures", (ctx) => {
   });
 
   test("Swift.closure (Int32) -> Int32 through the facade", () => {
-    loadFixture();
-
     const ByteSource = Swift.metadataFor("fixture.ByteSource")!;
     const self = Memory.alloc(ByteSource.valueWitnesses.stride);
     self.writePointer(Memory.alloc(1));
@@ -491,6 +474,8 @@ describe("sized-int and pointer loadable closures", (ctx) => {
 });
 
 describe("loadable param with an indirect result", (ctx) => {
+  beforeEach(() => { loadFixture(); });
+
   requireClosures(ctx);
   test("marshals a (Int) -> R closure writing its result through x8", () => {
     const Int = Swift.metadataFor("Swift.Int")!;
@@ -502,7 +487,7 @@ describe("loadable param with an indirect result", (ctx) => {
       ["int64"]
     );
     const invoke = makeSwiftNativeFunction(
-      fixtureFn("invokeProducing"),
+      fixtureExport("invokeProducing"),
       indirect(Int),
       [Int, { closure: true }],
       { typeArguments: [Int] }
@@ -514,7 +499,6 @@ describe("loadable param with an indirect result", (ctx) => {
   });
 
   test("Swift.closure (Int) -> R through $method with an explicit type argument", () => {
-    loadFixture();
     const Int = Swift.metadataFor("Swift.Int")!;
 
     const ByteSource = Swift.metadataFor("fixture.ByteSource")!;
@@ -531,6 +515,8 @@ describe("loadable param with an indirect result", (ctx) => {
 });
 
 describe("String loadable closures through the facade", (ctx) => {
+  beforeEach(() => { loadFixture(); });
+
   requireClosures(ctx);
   function byteSource(): ReturnType<typeof Swift.Object> {
     const ByteSource = Swift.metadataFor("fixture.ByteSource")!;
@@ -541,32 +527,27 @@ describe("String loadable closures through the facade", (ctx) => {
   }
 
   test("(String) -> String round-trips a small inline string", () => {
-    loadFixture();
     const result = byteSource().$call("mapStr", "frida", Swift.closure((s: string) => s.toUpperCase()));
     expect(result).toBe("FRIDA");
   });
 
   test("(String) -> String preserves all 16 bytes of a 12-char inline string", () => {
-    loadFixture();
     // 9–15 char strings store content in the high word; pointer-typed words avoid double precision loss.
     const result = byteSource().$call("mapStr", "abcdefghijkl", Swift.closure((s: string) => s.split("").reverse().join("")));
     expect(result).toBe("lkjihgfedcba");
   });
 
   test("(String) -> String round-trips a heap-allocated string", () => {
-    loadFixture();
     const long = "the quick brown fox jumps over the lazy dog";
     const result = byteSource().$call("mapStr", long, Swift.closure((s: string) => s.toUpperCase()));
     expect(result).toBe(long.toUpperCase());
   });
 
   test("(String) -> Int passes the string and returns a scalar", () => {
-    loadFixture();
     expect(byteSource().$call("strLen", "héllo", Swift.closure((s: string) => s.length))).toBe(5);
   });
 
   test("(Int) -> String returns a synthesized string", () => {
-    loadFixture();
     expect(byteSource().$call("label", 7, Swift.closure((n: number) => `n=${n}`))).toBe("n=7");
   });
 });

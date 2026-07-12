@@ -1,11 +1,12 @@
-import { test, expect, describe } from "@frida/injest/agent";
+import { test, expect, describe, beforeEach } from "@frida/injest/agent";
 import { loadFixture } from "./fixtures/load.js";
 
 import { Protocol, ProtocolRequirementKind, readProtocolRequirements } from "../src/index.js";
 
 describe("readProtocolRequirements", () => {
+  beforeEach(() => { loadFixture(); });
+
   test("reads Greeter's single method requirement", () => {
-    loadFixture();
     const greeter = Protocol.find("fixture.Greeter")!;
     const requirements = readProtocolRequirements(greeter.descriptor);
     expect(requirements.length).toBe(1);
@@ -15,7 +16,6 @@ describe("readProtocolRequirements", () => {
   });
 
   test("throws for a non-protocol descriptor", () => {
-    loadFixture();
     const greeter = Protocol.find("fixture.Greeter")!;
     const moduleDescriptor = greeter.descriptor.parent!;
     expect(() => readProtocolRequirements(moduleDescriptor)).toThrow(/not a protocol/);

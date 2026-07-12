@@ -1,5 +1,4 @@
-import { test, expect, describe } from "@frida/injest/agent";
-import { requireSwift } from "./swift.js";
+import { test, expect, describe, beforeEach } from "@frida/injest/agent";
 import { loadFixture } from "./fixtures/load.js";
 
 import {
@@ -30,8 +29,9 @@ function syntheticMetadata(kind: MetadataKind, ...words: NativePointer[]): Metad
 }
 
 describe("type wrappers", () => {
+  beforeEach(() => { loadFixture(); });
+
   test("StructType.new builds a value and lists fields", () => {
-    loadFixture();
     const t = Swift.typeOf(Swift.metadataFor("fixture.LoadableStruct")!) as StructType;
     expect(t.name).toBe("fixture.LoadableStruct");
     expect(t.fields.map((f) => f.name)).toEqual(["a", "b", "c", "d"]);
@@ -42,7 +42,6 @@ describe("type wrappers", () => {
   });
 
   test("EnumType.case builds payload and empty cases", () => {
-    loadFixture();
     const t = Swift.typeOf(Swift.metadataFor("fixture.Pick")!) as EnumType;
     expect(t.cases.map((c) => c.name).sort()).toEqual(["empty", "value"]);
     const payload = t.case("value", 7);
@@ -54,7 +53,6 @@ describe("type wrappers", () => {
   });
 
   test("ClassType.init runs the real initializer", () => {
-    loadFixture();
     const t = Swift.typeOf(Swift.metadataFor("fixture.Counter")!) as ClassType;
     const obj = t.init(9);
     expect(obj.$field("count").read()).toBe(9);
@@ -62,7 +60,6 @@ describe("type wrappers", () => {
   });
 
   test("ClassType.alloc returns raw storage we can write", () => {
-    loadFixture();
     const t = Swift.typeOf(Swift.metadataFor("fixture.Counter")!) as ClassType;
     const obj = t.alloc();
     expect(obj.$handle.isNull()).toBe(false);
@@ -72,14 +69,12 @@ describe("type wrappers", () => {
   });
 
   test("typeOf dispatches by metadata kind", () => {
-    loadFixture();
     expect(Swift.typeOf(Swift.metadataFor("Swift.Int")!) instanceof StructType).toBe(true);
     expect(Swift.typeOf(Swift.metadataFor("fixture.Pick")!) instanceof EnumType).toBe(true);
     expect(Swift.typeOf(Swift.metadataFor("fixture.Counter")!) instanceof ClassType).toBe(true);
   });
 
   test("typeOf wraps a tuple with element reflection", () => {
-    requireSwift();
     const t = Swift.typeOf(mangledType("Si_Sit")); // (Int, Int)
     expect(t instanceof TupleType).toBe(true);
     const tuple = t as TupleType;
@@ -89,7 +84,6 @@ describe("type wrappers", () => {
   });
 
   test("typeOf wraps a metatype exposing its instance type", () => {
-    requireSwift();
     const intMeta = Swift.metadataFor("Swift.Int")!;
     const t = Swift.typeOf(syntheticMetadata(MetadataKind.Metatype, intMeta.handle));
     expect(t instanceof MetatypeType).toBe(true);
@@ -97,7 +91,6 @@ describe("type wrappers", () => {
   });
 
   test("typeOf wraps a function type exposing its signature", () => {
-    requireSwift();
     const intMeta = Swift.metadataFor("Swift.Int")!;
     const t = Swift.typeOf(syntheticMetadata(MetadataKind.Function, ptr(0), intMeta.handle));
     expect(t instanceof FunctionType).toBe(true);
@@ -108,7 +101,6 @@ describe("type wrappers", () => {
   });
 
   test("methods() static option splits instance from static keys", () => {
-    loadFixture();
     const t = Swift.typeOf(Swift.metadataFor("fixture.Accumulator")!) as StructType;
     expect(t.methods().sort()).toEqual(["add(_:)", "describe(_:)", "peek(_:)", "peekAsync(_:)"]);
     expect(t.methods({ static: true }).sort()).toEqual(["sumStaticAsync(_:_:)", "summing(_:_:)", "zero()"]);
@@ -116,7 +108,6 @@ describe("type wrappers", () => {
   });
 
   test("type methods mirror the keys an instance's type exposes", () => {
-    loadFixture();
     const t = Swift.typeOf(Swift.metadataFor("fixture.Cat")!) as ClassType;
     expect(t.methods().sort()).toEqual(t.init().$type.methods().sort());
     expect(t.methods({ static: true })).toEqual([]);

@@ -1,4 +1,4 @@
-import { test, expect, describe } from "@frida/injest/agent";
+import { test, expect, describe, beforeEach } from "@frida/injest/agent";
 import { loadFixture } from "./fixtures/load.js";
 
 import { Swift, ClassType, StructType, SwiftObject } from "../src/index.js";
@@ -35,8 +35,9 @@ describe("parser labels", () => {
 });
 
 describe("resolveMethod", () => {
+  beforeEach(() => { loadFixture(); });
+
   test("resolves an instance method to address + typed signature", () => {
-    loadFixture();
     const m = resolveMethod("fixture.Robot", "greet", { static: false });
     expect(m.address.isNull()).toBe(false);
     expect(m.isStatic).toBe(false);
@@ -46,21 +47,18 @@ describe("resolveMethod", () => {
   });
 
   test("distinguishes a static method", () => {
-    loadFixture();
     const m = resolveMethod("fixture.Robot", "make", { static: true });
     expect(m.isStatic).toBe(true);
     expect(Swift.typeName(m.returnType!)).toBe("fixture.Robot");
   });
 
   test("throws on an ambiguous overload, resolves by arity", () => {
-    loadFixture();
     expect(() => resolveMethod("fixture.Robot", "at")).toThrow();
     expect(resolveMethod("fixture.Robot", "at", { arity: 1 }).argTypes.length).toBe(1);
     expect(resolveMethod("fixture.Robot", "at", { arity: 2 }).argTypes.length).toBe(2);
   });
 
   test("disambiguates a same-arity overload by labels", () => {
-    loadFixture();
     expect(() => resolveMethod("fixture.Robot", "move")).toThrow();
     expect(() => resolveMethod("fixture.Robot", "move", { arity: 1 })).toThrow();
     expect(resolveMethod("fixture.Robot", "move", { labels: ["to"] }).selector).toBe("move(to:)");
@@ -68,7 +66,6 @@ describe("resolveMethod", () => {
   });
 
   test("disambiguates a same-arity, same-label overload by argTypes", () => {
-    loadFixture();
     expect(() => resolveMethod("fixture.Robot", "tagged")).toThrow();
     expect(() => resolveMethod("fixture.Robot", "tagged", { labels: [null] })).toThrow();
     const i = resolveMethod("fixture.Robot", "tagged", { argTypes: ["Swift.Int"] });
@@ -79,8 +76,9 @@ describe("resolveMethod", () => {
 });
 
 describe("enumerateMethods", () => {
+  beforeEach(() => { loadFixture(); });
+
   test("lists methods with kind/isStatic/arity", () => {
-    loadFixture();
     const methods = enumerateMethods("fixture.Robot");
     const rename = methods.find((m) => m.selector === "rename(to:)")!;
     expect(rename.isStatic).toBe(false);
@@ -91,7 +89,6 @@ describe("enumerateMethods", () => {
   });
 
   test("strips the operator fixity keyword; a generic return is labeled via genericParams", () => {
-    loadFixture();
     const methods = enumerateMethods("fixture.Selectors");
     const eq = methods.find((m) => m.name === "==")!;
     expect(eq.selector).toBe("==(_:_:)");
@@ -105,8 +102,9 @@ describe("enumerateMethods", () => {
 });
 
 describe("enumerateProperties", () => {
+  beforeEach(() => { loadFixture(); });
+
   test("merges get/set into one writable entry per property", () => {
-    loadFixture();
     const props = enumerateProperties("fixture.Point");
     const doubled = props.find((p) => p.name === "doubled")!;
     expect(doubled.typeName).toBe("Swift.Int");
@@ -117,13 +115,11 @@ describe("enumerateProperties", () => {
   });
 
   test("is exposed on the type wrapper as .properties", () => {
-    loadFixture();
     const point = Swift.typeOf(Swift.metadataFor("fixture.Point")!) as StructType;
     expect(point.properties.map((p) => p.name).sort()).toEqual(["doubled", "x"]);
   });
 
   test("lists class properties with their types", () => {
-    loadFixture();
     const props = enumerateProperties("fixture.Robot");
     const badge = props.find((p) => p.name === "badge")!;
     expect(badge.typeName).toBe("Swift.String");
@@ -132,14 +128,14 @@ describe("enumerateProperties", () => {
 });
 
 describe("ClassInstance method invocation", () => {
+  beforeEach(() => { loadFixture(); });
+
   test("calls an instance method with a String arg and return", () => {
-    loadFixture();
     const obj = robotType().init("R2");
     expect(obj.$call("greet", "Alice")).toBe("Hello Alice, I am R2");
   });
 
   test("calls a void method that mutates state", () => {
-    loadFixture();
     const obj = robotType().init("old");
     expect(obj.$field("name").read()).toBe("old");
     obj.$call("rename", "new");
@@ -147,14 +143,12 @@ describe("ClassInstance method invocation", () => {
   });
 
   test("passes a class-typed argument", () => {
-    loadFixture();
     const a = robotType().init("Ada");
     const b = robotType().init("Bee");
     expect(a.$call("merged", b.$handle)).toBe("Ada+Bee");
   });
 
   test("reuses a resolved method across calls", () => {
-    loadFixture();
     const obj = robotType().init("R2");
     const greet = obj.$method("greet");
     expect(greet.call("X")).toBe("Hello X, I am R2");
@@ -162,21 +156,18 @@ describe("ClassInstance method invocation", () => {
   });
 
   test("disambiguates an overload by arity", () => {
-    loadFixture();
     const obj = robotType().init("R2");
     expect(obj.$method("at", { arity: 1 }).call(5)).toBe(5);
     expect(obj.$method("at", { arity: 2 }).call(5, 6)).toBe(11);
   });
 
   test("disambiguates a same-arity overload by labels", () => {
-    loadFixture();
     const obj = robotType().init("R2");
     expect(obj.$method("move", { labels: ["to"] }).call(5)).toBe(5);
     expect(obj.$method("move", { labels: ["by"] }).call(5)).toBe(50);
   });
 
   test("disambiguates a same-arity, same-label overload by argTypes", () => {
-    loadFixture();
     const obj = robotType().init("R2");
     expect(obj.$method("tagged", { argTypes: ["Swift.Int"] }).call(7)).toBe("int:7");
     expect(obj.$method("tagged", { argTypes: ["Swift.String"] }).call("hi")).toBe("str:hi");
@@ -184,14 +175,14 @@ describe("ClassInstance method invocation", () => {
 });
 
 describe("ClassInstance computed property", () => {
+  beforeEach(() => { loadFixture(); });
+
   test("invokes a getter", () => {
-    loadFixture();
     const obj = robotType().init("R2");
     expect(obj.$get("badge")).toBe("[R2]");
   });
 
   test("invokes a setter, observable via getter and stored field", () => {
-    loadFixture();
     const obj = robotType().init("R2");
     obj.$set("badge", "D2");
     expect(obj.$field("name").read()).toBe("D2");
@@ -199,15 +190,15 @@ describe("ClassInstance computed property", () => {
   });
 
   test("throws for an unknown property", () => {
-    loadFixture();
     const obj = robotType().init("R2");
     expect(() => obj.$get("nope")).toThrow();
   });
 });
 
 describe("ClassType static invocation", () => {
+  beforeEach(() => { loadFixture(); });
+
   test("calls a static factory and wraps the class return", () => {
-    loadFixture();
     const made = robotType().call("make", "Forged") as SwiftObject;
     expect(made.$owned).toBe(true);
     expect(made.$field("name").read()).toBe("Forged");

@@ -1,11 +1,12 @@
-import { test, expect, describe } from "@frida/injest/agent";
+import { test, expect, describe, beforeEach } from "@frida/injest/agent";
 import { loadFixture } from "./fixtures/load.js";
 
 import { Swift, Protocol, readProtocolRequirements, ProtocolRequirementKind } from "../src/index.js";
 
 describe("WitnessTable.originOf", () => {
+  beforeEach(() => { loadFixture(); });
+
   test("describe() is default for DefaultDescriber, overridden for CustomDescriber", () => {
-    loadFixture();
     const labeled = Protocol.find("fixture.Labeled")!;
     const describeReq = readProtocolRequirements(labeled.descriptor).find(
       (r) => r.kind === ProtocolRequirementKind.Method
@@ -26,7 +27,6 @@ describe("WitnessTable.originOf", () => {
   });
 
   test("displayName has no default at all, so both conformers report override", () => {
-    loadFixture();
     const labeled = Protocol.find("fixture.Labeled")!;
     const nameReq = readProtocolRequirements(labeled.descriptor).find(
       (r) => r.kind === ProtocolRequirementKind.Getter
@@ -40,7 +40,6 @@ describe("WitnessTable.originOf", () => {
   });
 
   test("a protocol with no defaults anywhere still classifies as override", () => {
-    loadFixture();
     const greeter = Protocol.find("fixture.Greeter")!;
     const greetReq = readProtocolRequirements(greeter.descriptor)[0];
     const table = greeter.conformanceFor(Swift.metadataFor("fixture.PoliteGreeter")!)!;
@@ -53,8 +52,9 @@ describe("WitnessTable.originOf", () => {
 });
 
 describe("WitnessTable.originOf — vtable-dispatched (overridable class) requirements", () => {
+  beforeEach(() => { loadFixture(); });
+
   test("non-AnyObject-constrained conformance: override via vtable", () => {
-    loadFixture();
     const vocal = Protocol.find("fixture.Vocal")!;
     const speakReq = readProtocolRequirements(vocal.descriptor)[0];
     const table = vocal.conformanceFor(Swift.metadataFor("fixture.BaseSpeaker")!)!;
@@ -66,7 +66,6 @@ describe("WitnessTable.originOf — vtable-dispatched (overridable class) requir
   });
 
   test("AnyObject-constrained conformance: override via vtable", () => {
-    loadFixture();
     const squawker = Protocol.find("fixture.Squawker")!;
     const squawkReq = readProtocolRequirements(squawker.descriptor)[0];
     const table = squawker.conformanceFor(Swift.metadataFor("fixture.BaseSquawker")!)!;
@@ -78,7 +77,6 @@ describe("WitnessTable.originOf — vtable-dispatched (overridable class) requir
   });
 
   test("a subclass reusing its ancestor's conformance resolves its own live override, not the ancestor's", () => {
-    loadFixture();
     const vocal = Protocol.find("fixture.Vocal")!;
     const speakReq = readProtocolRequirements(vocal.descriptor)[0];
     const table = vocal.conformanceFor(Swift.metadataFor("fixture.SubSpeaker")!)!;

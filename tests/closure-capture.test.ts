@@ -1,27 +1,15 @@
 import { test, expect, describe } from "@frida/injest/agent";
 import { requireSwift } from "./swift.js";
 
-import { Swift } from "../src/index.js";
 import { readObject } from "../src/abi/instance.js";
 import { layoutCaptures, readCaptures, unwrapReabstractionThunk, writeCaptures } from "../src/abi/closure-capture.js";
 import { captureDescriptorOf, offsetToFirstCapture } from "../src/abi/capture-descriptor.js";
 import { resolveTypeByMangledName } from "../src/abi/field-descriptor.js";
 import { MetadataKind } from "../src/abi/metadata.js";
-import { loadFixture } from "./fixtures/load.js";
+import { fixtureExport } from "./fixtures/load.js";
 
 const HEAP_LOCAL_VARIABLE = 0x400;
 const NOT_A_CLOSURE = 0x0;
-
-function fixtureFn(swiftName: string): NativePointer {
-  const mod = loadFixture();
-  for (const e of mod.enumerateExports()) {
-    const demangled = Swift.demangle(e.name);
-    if (demangled !== null && demangled.includes(swiftName)) {
-      return e.address;
-    }
-  }
-  throw new Error(`fixture export not found: ${swiftName}`);
-}
 
 function writeRelativeDirectPointer(field: NativePointer, target: NativePointer): void {
   field.writeS32(target.sub(field).toInt32());
@@ -147,8 +135,8 @@ describe("reabstraction-thunk unwrap (synthetic)", () => {
 describe("closure capture values (live runtime)", () => {
   test("readCaptures resolves through the reabstraction thunk automatically", () => {
     requireSwift();
-    const storeCapturing = new NativeFunction(fixtureFn("storeCapturing"), "void", ["int64"]);
-    const capturingContext = new NativeFunction(fixtureFn("capturingContext"), "pointer", []);
+    const storeCapturing = new NativeFunction(fixtureExport("storeCapturing"), "void", ["int64"]);
+    const capturingContext = new NativeFunction(fixtureExport("capturingContext"), "pointer", []);
 
     storeCapturing(7);
     const context = capturingContext() as NativePointer;
@@ -158,13 +146,13 @@ describe("closure capture values (live runtime)", () => {
 
   test("decodes a captured struct", () => {
     requireSwift();
-    const storeStructCapturing = new NativeFunction(fixtureFn("storeStructCapturing"), "void", [
+    const storeStructCapturing = new NativeFunction(fixtureExport("storeStructCapturing"), "void", [
       "int64",
       "int64",
       "int64",
       "int64",
     ]);
-    const structCapturingContext = new NativeFunction(fixtureFn("structCapturingContext"), "pointer", []);
+    const structCapturingContext = new NativeFunction(fixtureExport("structCapturingContext"), "pointer", []);
 
     storeStructCapturing(1, 2, 3, 4);
     const context = structCapturingContext() as NativePointer;
@@ -174,8 +162,8 @@ describe("closure capture values (live runtime)", () => {
 
   test("decodes a captured class reference", () => {
     requireSwift();
-    const storeClassCapturing = new NativeFunction(fixtureFn("storeClassCapturing"), "void", ["int64"]);
-    const classCapturingContext = new NativeFunction(fixtureFn("classCapturingContext"), "pointer", []);
+    const storeClassCapturing = new NativeFunction(fixtureExport("storeClassCapturing"), "void", ["int64"]);
+    const classCapturingContext = new NativeFunction(fixtureExport("classCapturingContext"), "pointer", []);
 
     storeClassCapturing(42);
     const context = classCapturingContext() as NativePointer;
@@ -187,12 +175,12 @@ describe("closure capture values (live runtime)", () => {
 
   test("agrees on offsets and values for a mixed Bool/Int/class capture list", () => {
     requireSwift();
-    const storeMixedCapturing = new NativeFunction(fixtureFn("storeMixedCapturing"), "void", [
+    const storeMixedCapturing = new NativeFunction(fixtureExport("storeMixedCapturing"), "void", [
       "int64",
       "int64",
       "int64",
     ]);
-    const mixedCapturingContext = new NativeFunction(fixtureFn("mixedCapturingContext"), "pointer", []);
+    const mixedCapturingContext = new NativeFunction(fixtureExport("mixedCapturingContext"), "pointer", []);
 
     storeMixedCapturing(1, 5, 9);
     const context = mixedCapturingContext() as NativePointer;
@@ -211,8 +199,8 @@ describe("closure capture values (live runtime)", () => {
 
   test("returns null for a closure whose captures depend on a generic parameter", () => {
     requireSwift();
-    const triggerGenericCapturing = new NativeFunction(fixtureFn("triggerGenericCapturing"), "void", []);
-    const genericCapturingContext = new NativeFunction(fixtureFn("genericCapturingContext"), "pointer", []);
+    const triggerGenericCapturing = new NativeFunction(fixtureExport("triggerGenericCapturing"), "void", []);
+    const genericCapturingContext = new NativeFunction(fixtureExport("genericCapturingContext"), "pointer", []);
 
     triggerGenericCapturing();
     const context = genericCapturingContext() as NativePointer;
@@ -222,9 +210,9 @@ describe("closure capture values (live runtime)", () => {
 
   test("writeCaptures mutates a live closure, observable through a real Swift call", () => {
     requireSwift();
-    const storeCapturing = new NativeFunction(fixtureFn("storeCapturing"), "void", ["int64"]);
-    const capturingContext = new NativeFunction(fixtureFn("capturingContext"), "pointer", []);
-    const invokeCapturing = new NativeFunction(fixtureFn("invokeCapturing"), "int64", ["int64"]);
+    const storeCapturing = new NativeFunction(fixtureExport("storeCapturing"), "void", ["int64"]);
+    const capturingContext = new NativeFunction(fixtureExport("capturingContext"), "pointer", []);
+    const invokeCapturing = new NativeFunction(fixtureExport("invokeCapturing"), "int64", ["int64"]);
 
     storeCapturing(7);
     const context = capturingContext() as NativePointer;
@@ -236,8 +224,8 @@ describe("closure capture values (live runtime)", () => {
 
   test("writeCaptures throws on a value-count mismatch", () => {
     requireSwift();
-    const storeCapturing = new NativeFunction(fixtureFn("storeCapturing"), "void", ["int64"]);
-    const capturingContext = new NativeFunction(fixtureFn("capturingContext"), "pointer", []);
+    const storeCapturing = new NativeFunction(fixtureExport("storeCapturing"), "void", ["int64"]);
+    const capturingContext = new NativeFunction(fixtureExport("capturingContext"), "pointer", []);
 
     storeCapturing(7);
     const context = capturingContext() as NativePointer;
@@ -247,9 +235,9 @@ describe("closure capture values (live runtime)", () => {
 
   test("writeCaptures correctly assigns a heap-allocated (non-inline) String capture", () => {
     requireSwift();
-    const storeCapturing = new NativeFunction(fixtureFn("storeCapturing"), "void", ["int64"]);
-    const capturingContext = new NativeFunction(fixtureFn("capturingContext"), "pointer", []);
-    const invokeCapturing = new NativeFunction(fixtureFn("invokeCapturing"), "int64", ["int64"]);
+    const storeCapturing = new NativeFunction(fixtureExport("storeCapturing"), "void", ["int64"]);
+    const capturingContext = new NativeFunction(fixtureExport("capturingContext"), "pointer", []);
+    const invokeCapturing = new NativeFunction(fixtureExport("invokeCapturing"), "int64", ["int64"]);
 
     storeCapturing(7);
     const context = capturingContext() as NativePointer;
@@ -265,12 +253,12 @@ describe("closure capture values (live runtime)", () => {
 
   test("writeCaptures rejects a class-typed capture without mutating any slot", () => {
     requireSwift();
-    const storeMixedCapturing = new NativeFunction(fixtureFn("storeMixedCapturing"), "void", [
+    const storeMixedCapturing = new NativeFunction(fixtureExport("storeMixedCapturing"), "void", [
       "int64",
       "int64",
       "int64",
     ]);
-    const mixedCapturingContext = new NativeFunction(fixtureFn("mixedCapturingContext"), "pointer", []);
+    const mixedCapturingContext = new NativeFunction(fixtureExport("mixedCapturingContext"), "pointer", []);
 
     storeMixedCapturing(1, 5, 9);
     const context = mixedCapturingContext() as NativePointer;

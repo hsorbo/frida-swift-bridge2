@@ -1,4 +1,4 @@
-import { test, expect, describe } from "@frida/injest/agent";
+import { test, expect, describe, beforeEach } from "@frida/injest/agent";
 import { loadFixture } from "./fixtures/load.js";
 
 import { Swift, StructType } from "../src/index.js";
@@ -13,25 +13,23 @@ function takeText(buf: NativePointer): string | null {
 }
 
 describe("createString / writeString", () => {
+  beforeEach(() => { loadFixture(); });
+
   test("round-trips a small (inline) string", () => {
-    loadFixture();
     expect(takeText(createString("short"))).toBe("short");
   });
 
   test("round-trips a large (heap) string", () => {
-    loadFixture();
     const text = "this string is definitely longer than fifteen bytes";
     expect(takeText(createString(text))).toBe(text);
   });
 
   test("round-trips empty and unicode strings", () => {
-    loadFixture();
     expect(takeText(createString(""))).toBe("");
     expect(takeText(createString("café ☕ 日本語"))).toBe("café ☕ 日本語");
   });
 
   test("writeString moves a value into an existing buffer", () => {
-    loadFixture();
     const buf = Memory.alloc(Process.pointerSize * 2);
     writeString(buf, "moved into place");
     expect(takeText(buf)).toBe("moved into place");
@@ -39,8 +37,9 @@ describe("createString / writeString", () => {
 });
 
 describe("writeValue String support", () => {
+  beforeEach(() => { loadFixture(); });
+
   test("ValueInstance.fromJS builds a String value", () => {
-    loadFixture();
     const v = Swift.typeOf(Swift.metadataFor("Swift.String")!);
     const value = (v as StructType).new("hello from JS");
     expect(value.$fields).toBe("hello from JS");
@@ -48,7 +47,6 @@ describe("writeValue String support", () => {
   });
 
   test("constructs a struct with a String field", () => {
-    loadFixture();
     const t = Swift.typeOf(Swift.metadataFor("fixture.PoliteGreeter")!) as StructType;
     const value = t.new({ name: "Ada" });
     expect(value.$fields).toEqual({ name: "Ada" });

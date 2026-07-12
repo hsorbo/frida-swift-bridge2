@@ -1,26 +1,15 @@
 import { test, expect, describe } from "@frida/injest/agent";
-import { loadFixture } from "./fixtures/load.js";
+import { fixtureExport } from "./fixtures/load.js";
 
 import { Swift, type SwiftValue, type CallResult } from "../src/index.js";
 import { makeSwiftNativeFunction } from "../src/runtime/calling-convention.js";
 import { SwiftInterceptor } from "../src/runtime/interceptor.js";
 
-function fixtureAddress(swiftName: string): NativePointer {
-  const mod = loadFixture();
-  for (const e of mod.enumerateExports()) {
-    const demangled = Swift.demangle(e.name);
-    if (demangled !== null && demangled.includes(swiftName)) {
-      return e.address;
-    }
-  }
-  throw new Error(`fixture export not found: ${swiftName}`);
-}
-
 describe("hook decodes generic uses", () => {
   test("resolves A? arg and return per-invocation from the recovered param", () => {
     const Int = Swift.metadataFor("Swift.Int")!;
-    const roundOptional = fixtureAddress("fixture.roundOptional");
-    const trigger = fixtureAddress("fixture.triggerRoundOptional");
+    const roundOptional = fixtureExport("fixture.roundOptional");
+    const trigger = fixtureExport("fixture.triggerRoundOptional");
     let seenArgs: SwiftValue[] | null = null;
     let seenRet: CallResult = null;
     const listener = SwiftInterceptor.attach(roundOptional, {

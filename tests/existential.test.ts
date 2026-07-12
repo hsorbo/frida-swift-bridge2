@@ -1,5 +1,5 @@
 import { test, expect, describe } from "@frida/injest/agent";
-import { loadFixture } from "./fixtures/load.js";
+import { fixtureExport, existentialMetadata } from "./fixtures/load.js";
 
 import {
   Swift,
@@ -10,33 +10,16 @@ import {
 } from "../src/index.js";
 import { makeSwiftNativeFunction } from "../src/runtime/calling-convention.js";
 
-function fixtureFn(swiftName: string): NativePointer {
-  const mod = loadFixture();
-  for (const e of mod.enumerateExports()) {
-    const demangled = Swift.demangle(e.name);
-    if (demangled !== null && demangled.includes(swiftName)) {
-      return e.address;
-    }
-  }
-  throw new Error(`fixture export not found: ${swiftName}`);
-}
-
 function ptrValue(p: NativePointer): NativePointer {
   const cell = Memory.alloc(Process.pointerSize);
   cell.writePointer(p);
   return cell;
 }
 
-function existentialMetadata(accessor: string): Metadata {
-  const RawPointer = Swift.metadataFor("Swift.UnsafeRawPointer")!;
-  const get = makeSwiftNativeFunction(fixtureFn(accessor), RawPointer, []);
-  return new Metadata(get()!.readPointer());
-}
-
 function store(fn: string, metadata: Metadata): NativePointer {
   const RawPointer = Swift.metadataFor("Swift.UnsafeMutableRawPointer")!;
   const container = Memory.alloc(metadata.typeLayout.stride);
-  makeSwiftNativeFunction(fixtureFn(fn), null, [RawPointer])(ptrValue(container));
+  makeSwiftNativeFunction(fixtureExport(fn), null, [RawPointer])(ptrValue(container));
   return container;
 }
 

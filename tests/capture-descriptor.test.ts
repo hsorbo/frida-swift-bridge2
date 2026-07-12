@@ -1,7 +1,6 @@
 import { test, expect, describe } from "@frida/injest/agent";
 import { requireSwift } from "./swift.js";
 
-import { Swift } from "../src/index.js";
 import {
   CaptureDescriptor,
   captureDescriptorOf,
@@ -9,20 +8,9 @@ import {
   resolveCaptureType,
 } from "../src/abi/capture-descriptor.js";
 import { MetadataKind } from "../src/abi/metadata.js";
-import { loadFixture } from "./fixtures/load.js";
+import { fixtureExport } from "./fixtures/load.js";
 
 const HEAP_LOCAL_VARIABLE = 0x400;
-
-function fixtureFn(swiftName: string): NativePointer {
-  const mod = loadFixture();
-  for (const e of mod.enumerateExports()) {
-    const demangled = Swift.demangle(e.name);
-    if (demangled !== null && demangled.includes(swiftName)) {
-      return e.address;
-    }
-  }
-  throw new Error(`fixture export not found: ${swiftName}`);
-}
 
 function writeRelativeDirectPointer(field: NativePointer, target: NativePointer): void {
   field.writeS32(target.sub(field).toInt32());
@@ -129,8 +117,8 @@ describe("capture descriptor", () => {
   // an escaping closure is boxed behind a reabstraction thunk whose sole capture is the real closure.
   test("resolves the capture types of a real closure against the live runtime", () => {
     requireSwift();
-    const storeCapturing = new NativeFunction(fixtureFn("storeCapturing"), "void", ["int64"]);
-    const capturingContext = new NativeFunction(fixtureFn("capturingContext"), "pointer", []);
+    const storeCapturing = new NativeFunction(fixtureExport("storeCapturing"), "void", ["int64"]);
+    const capturingContext = new NativeFunction(fixtureExport("capturingContext"), "pointer", []);
 
     storeCapturing(7);
     const outerContext = capturingContext() as NativePointer;

@@ -1,5 +1,5 @@
-import { test, expect, describe } from "@frida/injest/agent";
-import { loadFixture } from "./fixtures/load.js";
+import { test, expect, describe, beforeEach } from "@frida/injest/agent";
+import { loadFixture, fixtureExport } from "./fixtures/load.js";
 
 import { Swift, ClassType, ValueInstance } from "../src/index.js";
 import { makeSwiftNativeFunction } from "../src/runtime/calling-convention.js";
@@ -8,20 +8,10 @@ function box() {
   return (Swift.typeOf(Swift.metadataFor("fixture.Box")!) as ClassType).init();
 }
 
-function fixtureAddress(swiftName: string): NativePointer {
-  const mod = loadFixture();
-  for (const e of mod.enumerateExports()) {
-    const demangled = Swift.demangle(e.name);
-    if (demangled !== null && demangled.includes(swiftName)) {
-      return e.address;
-    }
-  }
-  throw new Error(`fixture export not found: ${swiftName}`);
-}
-
 describe("compound generic-using exprs in generic methods", () => {
+  beforeEach(() => { loadFixture(); });
+
   test("T? argument and return pass indirectly (Optional payload is address-only)", () => {
-    loadFixture();
     const Int = Swift.metadataFor("Swift.Int")!;
     const roundOpt = box().$method("roundOpt", { typeArguments: [Int] });
     expect(roundOpt.call({ some: 9 })).toEqual({ some: 9 });
@@ -29,13 +19,11 @@ describe("compound generic-using exprs in generic methods", () => {
   });
 
   test("T? round-trips a non-POD payload through the indirect path", () => {
-    loadFixture();
     const Str = Swift.metadataFor("Swift.String")!;
     expect(box().$method("roundOpt", { typeArguments: [Str] }).call({ some: "hi" })).toEqual({ some: "hi" });
   });
 
   test("[T] is a fixed-layout Array passed/returned directly", () => {
-    loadFixture();
     const Int = Swift.metadataFor("Swift.Int")!;
     const ArrInt = Swift.metadataFor("Swift.Array", [Int])!;
 
@@ -45,13 +33,13 @@ describe("compound generic-using exprs in generic methods", () => {
 
     // ABI proof, decode-free: tripled<Int>(7) returns [7,7,7] direct, firstGeneric<Int> reads xs[0].
     const tripled = makeSwiftNativeFunction(
-      fixtureAddress("fixture.Box.tripled"),
+      fixtureExport("fixture.Box.tripled"),
       ArrInt,
       [{ genericParam: 0 }],
       { hasSelf: true, typeArguments: [Int] }
     );
     const firstGeneric = makeSwiftNativeFunction(
-      fixtureAddress("fixture.firstGeneric"),
+      fixtureExport("fixture.firstGeneric"),
       { genericParam: 0 },
       [ArrInt],
       { typeArguments: [Int] }

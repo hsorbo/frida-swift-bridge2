@@ -1,16 +1,15 @@
-import { test, expect, describe } from "@frida/injest/agent";
-import { requireSwift } from "./swift.js";
+import { test, expect, describe, beforeEach } from "@frida/injest/agent";
 import { loadFixture } from "./fixtures/load.js";
 
 import { Swift, ClassType, ValueType, ValueInstance, BoundAsyncMethod, GenericBoundAsyncMethod, SwiftAsyncThrow } from "../src/index.js";
 
 function calc(base: number) {
-  requireSwift();
-  loadFixture();
   return (Swift.typeOf(Swift.metadataFor("fixture.AsyncCalc")!) as ClassType).init(base);
 }
 
 describe("async method", () => {
+  beforeEach(() => { loadFixture(); });
+
   test("awaits an async method through the facade: calc(100).addAsync(5) ⇒ 105", async () => {
     expect(await calc(100).addAsync(5)).toBe(105);
   });
@@ -60,22 +59,16 @@ describe("async method", () => {
   });
 
   test("async method on a small loadable value type trails self after the args: Accumulator.peekAsync(10) ⇒ 15", async () => {
-    requireSwift();
-    loadFixture();
     const acc = ValueInstance.fromJS(Swift.metadataFor("fixture.Accumulator")!, { total: 5 });
     expect(await acc.call("peekAsync", 10)).toBe(15);
   });
 
   test("static async method on a value type (no self): Accumulator.sumStaticAsync(4, 5) ⇒ 9", async () => {
-    requireSwift();
-    loadFixture();
     const t = Swift.typeOf(Swift.metadataFor("fixture.Accumulator")!) as ValueType;
     expect(await t.call("sumStaticAsync", 4, 5)).toBe(9);
   });
 
   test("static async method on a class: AsyncCalc.combineAsync(3, 4) ⇒ 34", async () => {
-    requireSwift();
-    loadFixture();
     const t = Swift.typeOf(Swift.metadataFor("fixture.AsyncCalc")!) as ClassType;
     expect(await t.call("combineAsync", 3, 4)).toBe(34);
   });

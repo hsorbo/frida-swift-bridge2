@@ -1,4 +1,4 @@
-import { test, expect, describe } from "@frida/injest/agent";
+import { test, expect, describe, beforeEach } from "@frida/injest/agent";
 import { loadFixture } from "./fixtures/load.js";
 
 import {
@@ -31,6 +31,8 @@ function syntheticMetadata(kind: MetadataKind, ...words: NativePointer[]): Metad
 }
 
 describe("toJSON", () => {
+  beforeEach(() => { loadFixture(); });
+
   test("a nominal type serializes to identity only, never its structure", () => {
     const mod = loadFixture();
     for (const [name, kind] of [
@@ -44,13 +46,11 @@ describe("toJSON", () => {
   });
 
   test("a tuple type has no module and no elements in its JSON", () => {
-    loadFixture();
     const t = Swift.typeOf(mangledType("Si_Sit"));
     expect(json(t)).toEqual({ kind: "tuple", name: t.name, module: null });
   });
 
   test("kind maps across metatype and function types", () => {
-    loadFixture();
     const intMeta = Swift.metadataFor("Swift.Int")!;
     expect(json(Swift.typeOf(syntheticMetadata(MetadataKind.Metatype, intMeta.handle))).kind).toBe(
       "metatype"
@@ -61,7 +61,6 @@ describe("toJSON", () => {
   });
 
   test("a value instance serializes its decoded value", () => {
-    loadFixture();
     const Loadable = Swift.metadataFor("fixture.LoadableStruct")!;
     const v = ValueInstance.fromJS(Loadable, { a: 1, b: 2, c: 3, d: 4 });
     expect(json(v)).toEqual({
@@ -74,7 +73,6 @@ describe("toJSON", () => {
   });
 
   test("a class instance serializes to kind/type/handle without a field dump", () => {
-    loadFixture();
     const counter = (Swift.typeOf(Swift.metadataFor("fixture.Counter")!) as ClassType).init(5);
     const j = json(counter);
     expect(Object.keys(j).sort()).toEqual(["handle", "kind", "type"]);
@@ -84,7 +82,6 @@ describe("toJSON", () => {
   });
 
   test("the SwiftObject facade delegates JSON.stringify to the wrapped instance", () => {
-    loadFixture();
     const t = Swift.typeOf(Swift.metadataFor("fixture.LoadableStruct")!) as StructType;
     const obj = t.new({ a: 1, b: 2, c: 3, d: 4 });
     expect(json(obj)).toEqual({
@@ -95,7 +92,6 @@ describe("toJSON", () => {
   });
 
   test("a protocol serializes its cheap shape", () => {
-    loadFixture();
     const greeter = Protocol.find("fixture.Greeter")!;
     expect(json(greeter)).toEqual({
       kind: "protocol",

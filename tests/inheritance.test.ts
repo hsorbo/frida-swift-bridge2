@@ -1,4 +1,4 @@
-import { test, expect, describe } from "@frida/injest/agent";
+import { test, expect, describe, beforeEach } from "@frida/injest/agent";
 import { loadFixture } from "./fixtures/load.js";
 
 import { Swift, ClassType, Metadata, MethodDescriptorKind, VTableEntry } from "../src/index.js";
@@ -17,20 +17,19 @@ function Int(): Metadata {
 }
 
 describe("inherited methods (symbol route)", () => {
+  beforeEach(() => { loadFixture(); });
+
   test("calls a method inherited from the superclass", () => {
-    loadFixture();
     expect(catType().init().$call("legs")).toBe(4); // Cat has no legs symbol; declared on Animal
   });
 
   test("resolveMethod finds the inherited impl declared on the superclass", () => {
-    loadFixture();
     const onCat = resolveMethod("fixture.Cat", "legs", { static: false });
     const onAnimal = resolveMethod("fixture.Animal", "legs", { static: false });
     expect(onCat.address.equals(onAnimal.address)).toBe(true);
   });
 
   test("enumerateMethods unions the chain and dedups the override", () => {
-    loadFixture();
     const selectors = enumerateMethods("fixture.Cat").map((m) => m.selector);
     expect(selectors).toContain("legs()"); // inherited
     expect(selectors).toContain("speak()"); // overridden
@@ -38,7 +37,6 @@ describe("inherited methods (symbol route)", () => {
   });
 
   test("the facade exposes inherited methods", () => {
-    loadFixture();
     const cat = catType().init();
     expect(cat.$type.methods()).toContain("legs()");
     expect(cat.legs()).toBe(4);
@@ -46,6 +44,8 @@ describe("inherited methods (symbol route)", () => {
 });
 
 describe("live polymorphic dispatch (metadata vtable)", () => {
+  beforeEach(() => { loadFixture(); });
+
   // The slot that Animal declares speak in; the same word in any subclass metadata holds its override.
   function speakSlot(): number {
     const impl = resolveMethod("fixture.Animal", "speak", { static: false }).address;
@@ -53,14 +53,12 @@ describe("live polymorphic dispatch (metadata vtable)", () => {
   }
 
   test("a base slot reaches the most-derived override", () => {
-    loadFixture();
     const slot = speakSlot();
     expect(catType().init().$vtableMethod(slot, { returnType: Int(), argTypes: [] }).call()).toBe(9); // Cat.speak
     expect(animalType().init().$vtableMethod(slot, { returnType: Int(), argTypes: [] }).call()).toBe(1); // Animal.speak
   });
 
   test("the live impl differs from the descriptor's declared impl", () => {
-    loadFixture();
     const declared = resolveMethod("fixture.Animal", "speak", { static: false }).address;
     const overridden = resolveMethod("fixture.Cat", "speak", { static: false }).address;
     const slot = speakSlot();
@@ -70,7 +68,6 @@ describe("live polymorphic dispatch (metadata vtable)", () => {
   });
 
   test("the subclass vtable surfaces inherited slots", () => {
-    loadFixture();
     const instanceMethods = catType()
       .init()
       .$vtable.filter((e: VTableEntry) => e.kind === MethodDescriptorKind.Method && e.isInstance);

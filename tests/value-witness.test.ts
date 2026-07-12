@@ -1,5 +1,4 @@
-import { test, expect, describe } from "@frida/injest/agent";
-import { requireSwift } from "./swift.js";
+import { test, expect, describe, beforeEach } from "@frida/injest/agent";
 import { loadFixture } from "./fixtures/load.js";
 
 import { Swift } from "../src/index.js";
@@ -16,8 +15,9 @@ function writeSmallString(p: NativePointer, s: string): void {
 }
 
 describe("ValueWitnessTable", () => {
+  beforeEach(() => { loadFixture(); });
+
   test("exposes layout + flags for Int (POD, inline)", () => {
-    requireSwift();
     const vwt = Swift.metadataFor("Swift.Int")!.valueWitnesses;
     expect(vwt.size).toBe(8);
     expect(vwt.stride).toBe(8);
@@ -29,7 +29,6 @@ describe("ValueWitnessTable", () => {
   });
 
   test("String is non-POD but bitwise-takable and inline", () => {
-    requireSwift();
     const vwt = Swift.metadataFor("Swift.String")!.valueWitnesses;
     expect(vwt.size).toBe(16);
     expect(vwt.stride).toBe(16);
@@ -39,7 +38,6 @@ describe("ValueWitnessTable", () => {
   });
 
   test("initializeWithCopy duplicates a POD value", () => {
-    requireSwift();
     const vwt = Swift.metadataFor("Swift.Int")!.valueWitnesses;
     const src = Memory.alloc(8);
     src.writeU64(0x12345678);
@@ -51,7 +49,6 @@ describe("ValueWitnessTable", () => {
   });
 
   test("buffer round-trip projects an inline String value", () => {
-    requireSwift();
     const vwt = Swift.metadataFor("Swift.String")!.valueWitnesses;
     const srcBuf = allocateValueBuffer();
     writeSmallString(srcBuf, "vwt!");
@@ -64,7 +61,6 @@ describe("ValueWitnessTable", () => {
   });
 
   test("reports out-of-line storage for structs larger than 3 words", () => {
-    loadFixture();
     const loadable = Swift.metadataFor("fixture.LoadableStruct")!.valueWitnesses;
     const big = Swift.metadataFor("fixture.BigStruct")!.valueWitnesses;
     expect(loadable.size).toBe(32);
@@ -76,7 +72,6 @@ describe("ValueWitnessTable", () => {
   });
 
   test("noncopyable struct reports isCopyable false and refuses copies", () => {
-    loadFixture();
     const vwt = Swift.metadataFor("fixture.NoncopyableStruct")!.valueWitnesses;
     expect(vwt.isCopyable).toBe(false);
     const src = Memory.alloc(vwt.stride);
@@ -88,7 +83,6 @@ describe("ValueWitnessTable", () => {
   });
 
   test("reports extra-inhabitant counts from the type layout", () => {
-    requireSwift();
     expect(Swift.metadataFor("Swift.Int")!.valueWitnesses.extraInhabitantCount).toBe(0);
     expect(Swift.metadataFor("Swift.Bool")!.valueWitnesses.extraInhabitantCount).toBe(254);
     // a class pointer's invalid low addresses are all extra inhabitants
@@ -98,7 +92,6 @@ describe("ValueWitnessTable", () => {
   });
 
   test("single-payload witnesses discriminate a class optional's nil", () => {
-    requireSwift();
     const cls = Swift.metadataFor("Swift.__RawSetStorage")!;
     const vwt = cls.valueWitnesses;
     const storage = Memory.alloc(Process.pointerSize);
@@ -115,7 +108,6 @@ describe("ValueWitnessTable", () => {
   });
 
   test("initializeWithCopy duplicates an out-of-line value", () => {
-    loadFixture();
     const vwt = Swift.metadataFor("fixture.BigStruct")!.valueWitnesses;
     const src = Memory.alloc(vwt.stride);
     for (let i = 0; i < 5; i++) {

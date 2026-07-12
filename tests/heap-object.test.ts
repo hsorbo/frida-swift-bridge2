@@ -1,19 +1,8 @@
 import { test, expect, describe } from "@frida/injest/agent";
-import { loadFixture } from "./fixtures/load.js";
+import { loadFixture, fixtureExport } from "./fixtures/load.js";
 
 import { Swift, ClassInstance } from "../src/index.js";
 import { makeSwiftNativeFunction } from "../src/runtime/calling-convention.js";
-
-function fixtureFn(swiftName: string): NativePointer {
-  const mod = loadFixture();
-  for (const e of mod.enumerateExports()) {
-    const demangled = Swift.demangle(e.name);
-    if (demangled !== null && demangled.includes(swiftName)) {
-      return e.address;
-    }
-  }
-  throw new Error(`fixture export not found: ${swiftName}`);
-}
 
 function intArg(n: number): NativePointer {
   const cell = Memory.alloc(Process.pointerSize);
@@ -25,7 +14,7 @@ function makeCounter(n: number): ClassInstance {
   loadFixture();
   const Int = Swift.metadataFor("Swift.Int")!;
   const Counter = Swift.metadataFor("fixture.Counter")!;
-  const make = makeSwiftNativeFunction(fixtureFn("fixture.makeCounter"), Counter, [Int]);
+  const make = makeSwiftNativeFunction(fixtureExport("fixture.makeCounter"), Counter, [Int]);
   return new ClassInstance(make(intArg(n))!.readPointer());
 }
 

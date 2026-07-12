@@ -1,4 +1,4 @@
-import { test, expect, describe } from "@frida/injest/agent";
+import { test, expect, describe, beforeEach } from "@frida/injest/agent";
 import { loadFixture, loadFixtureSyms } from "./fixtures/load.js";
 import { requireLinux } from "./swift.js";
 
@@ -13,8 +13,9 @@ function structType(name: string): StructType {
 // recovers it from .symtab. fixturesyms is the unstripped twin of fixture, so
 // here the symbols are present and init resolves + marshals correctly.
 describe("value-type initializers (with symtab)", () => {
+  beforeEach(() => { loadFixtureSyms(); });
+
   test("init on a small loadable struct returns an owned ValueInstance", () => {
-    loadFixtureSyms();
     const v = structType("fixturesyms.Point").init(5);
     expect(v.$owned).toBe(true);
     expect(v.$fields).toEqual({ x: 5 });
@@ -22,28 +23,24 @@ describe("value-type initializers (with symtab)", () => {
   });
 
   test("init marshals a String arg and adopts a non-POD return", () => {
-    loadFixtureSyms();
     const v = structType("fixturesyms.Person").init("Ada", 36);
     expect(v.$fields).toEqual({ name: "Ada", age: 36 });
     v.$dispose();
   });
 
   test("init adopts a large struct returned indirectly", () => {
-    loadFixtureSyms();
     const v = structType("fixturesyms.BigStruct").init(1, 2, 3, 4, 5);
     expect(v.$fields).toEqual({ a: 1, b: 2, c: 3, d: 4, e: 5 });
     v.$dispose();
   });
 
   test("a bound initializer is reusable across calls", () => {
-    loadFixtureSyms();
     const make = structType("fixturesyms.Point").initializer();
     expect(make.call(1).$fields).toEqual({ x: 1 });
     expect(make.call(2).$fields).toEqual({ x: 2 });
   });
 
   test("throws on an argument-count mismatch", () => {
-    loadFixtureSyms();
     expect(() => structType("fixturesyms.Person").init("Ada")).toThrow();
   });
 });
@@ -53,9 +50,10 @@ describe("value-type initializers (with symtab)", () => {
 // (section discovery is symbol-independent), so the type resolves but its init
 // does not. Linux-only: on Mach-O these inits are external and survive stripping.
 describe("value-type initializers (without symtab)", () => {
+  beforeEach(() => { loadFixture(); });
+
   test("a stripped binary cannot resolve a struct's memberwise init", (ctx) => {
     requireLinux(ctx);
-    loadFixture();
     for (const name of ["fixture.Point", "fixture.Person", "fixture.BigStruct"]) {
       expect(() => structType(name).initializer()).toThrow(/no method init/);
     }

@@ -1,4 +1,4 @@
-import { test, expect, describe } from "@frida/injest/agent";
+import { test, expect, describe, beforeEach } from "@frida/injest/agent";
 import { loadFixture } from "./fixtures/load.js";
 
 import { Swift, ClassType, Metadata, MethodDescriptorKind, readVTable } from "../src/index.js";
@@ -17,8 +17,9 @@ function instanceMethods(type: ClassType) {
 }
 
 describe("vtable route", () => {
+  beforeEach(() => { loadFixture(); });
+
   test("enumerates instance-method slots, including the non-exported one", () => {
-    loadFixture();
     expect(instanceMethods(dispatcherType()).length).toBe(2);
   });
 
@@ -34,7 +35,6 @@ describe("vtable route", () => {
   });
 
   test("invokes each slot by offset, reaching the non-exported impl", () => {
-    loadFixture();
     const type = dispatcherType();
     const obj = type.init();
     const results = instanceMethods(type)
@@ -44,7 +44,6 @@ describe("vtable route", () => {
   });
 
   test("the exported slot's impl matches the symbol route", () => {
-    loadFixture();
     const type = dispatcherType();
     const obj = type.init();
     const pub = instanceMethods(type).find(
@@ -55,7 +54,6 @@ describe("vtable route", () => {
   });
 
   test("throws for a class whose vtable offset is not fixed", () => {
-    loadFixture();
     expect(() => readVTable(Swift.findType("fixture.GenericHolder")!)).toThrow(/generic/);
   });
 });

@@ -1,12 +1,12 @@
-import { test, expect, describe } from "@frida/injest/agent";
-import { requireSwift } from "./swift.js";
+import { test, expect, describe, beforeEach } from "@frida/injest/agent";
 import { loadFixture } from "./fixtures/load.js";
 
 import { Swift, ValueInstance, writeValue } from "../src/index.js";
 
 describe("ValueInstance", () => {
+  beforeEach(() => { loadFixture(); });
+
   test("fromJS round-trips a struct through get", () => {
-    loadFixture();
     const v = ValueInstance.fromJS(Swift.metadataFor("fixture.LoadableStruct")!, {
       a: 1,
       b: 2,
@@ -19,7 +19,6 @@ describe("ValueInstance", () => {
   });
 
   test("set overwrites a primitive in place", () => {
-    requireSwift();
     const v = ValueInstance.fromJS(Swift.metadataFor("Swift.Int")!, 1);
     v.write(7);
     expect(v.read()).toBe(7);
@@ -27,7 +26,6 @@ describe("ValueInstance", () => {
   });
 
   test("field exposes a borrowed sub-value that mutates the parent", () => {
-    loadFixture();
     const v = ValueInstance.fromJS(Swift.metadataFor("fixture.LoadableStruct")!, {
       a: 1,
       b: 2,
@@ -43,7 +41,6 @@ describe("ValueInstance", () => {
   });
 
   test("copy is independent of the original", () => {
-    loadFixture();
     const Loadable = Swift.metadataFor("fixture.LoadableStruct")!;
     const v = ValueInstance.fromJS(Loadable, { a: 1, b: 2, c: 3, d: 4 });
     const c = v.copy();
@@ -55,7 +52,6 @@ describe("ValueInstance", () => {
   });
 
   test("equals compares structurally, not by address", () => {
-    loadFixture();
     const Loadable = Swift.metadataFor("fixture.LoadableStruct")!;
     const a = ValueInstance.fromJS(Loadable, { a: 1, b: 2, c: 3, d: 4 });
     const b = ValueInstance.fromJS(Loadable, { a: 1, b: 2, c: 3, d: 4 });
@@ -69,7 +65,6 @@ describe("ValueInstance", () => {
   });
 
   test("equals is false across different value types", () => {
-    loadFixture();
     const one = ValueInstance.fromJS(Swift.metadataFor("Swift.Int")!, 1);
     const big = ValueInstance.fromJS(Swift.metadataFor("fixture.BigStruct")!, {
       a: 1,
@@ -84,7 +79,6 @@ describe("ValueInstance", () => {
   });
 
   test("equals matches primitive and enum values structurally", () => {
-    requireSwift();
     const Int = Swift.metadataFor("Swift.Int")!;
     const a = ValueInstance.fromJS(Int, 7);
     const b = ValueInstance.fromJS(Int, 7);
@@ -97,7 +91,6 @@ describe("ValueInstance", () => {
   });
 
   test("use after dispose throws; dispose is idempotent", () => {
-    requireSwift();
     const v = ValueInstance.fromJS(Swift.metadataFor("Swift.Int")!, 42);
     v.dispose();
     v.dispose();
@@ -105,7 +98,6 @@ describe("ValueInstance", () => {
   });
 
   test("type exposes the value's SwiftType for symmetric reflection", () => {
-    loadFixture();
     const v = ValueInstance.fromJS(Swift.metadataFor("fixture.LoadableStruct")!, {
       a: 1,
       b: 2,
@@ -118,14 +110,12 @@ describe("ValueInstance", () => {
   });
 
   test("kind tags the wrapper as a value instance", () => {
-    requireSwift();
     const v = ValueInstance.fromJS(Swift.metadataFor("Swift.Int")!, 1);
     expect(v.kind).toBe("value");
     v.dispose();
   });
 
   test("borrowed value reads foreign memory and never disposes", () => {
-    requireSwift();
     const Int = Swift.metadataFor("Swift.Int")!;
     const buffer = Memory.alloc(Int.typeLayout.stride);
     writeValue(Int, buffer, 5);

@@ -1,19 +1,9 @@
 import { test, expect, describe } from "@frida/injest/agent";
-import { loadFixtureSyms } from "./fixtures/load.js";
+import { loadFixtureSyms, fixtureExport, existentialMetadata } from "./fixtures/load.js";
 import { requireSwift } from "./swift.js";
 
 import { Swift, Metadata, Protocol, projectExistentialValue, BoundAsyncMethod } from "../src/index.js";
 import { makeSwiftNativeFunction } from "../src/runtime/calling-convention.js";
-
-function fixtureFn(mod: Module, swiftName: string): NativePointer {
-  for (const e of mod.enumerateExports()) {
-    const demangled = Swift.demangle(e.name);
-    if (demangled !== null && demangled.includes(swiftName)) {
-      return e.address;
-    }
-  }
-  throw new Error(`fixture export not found: ${swiftName}`);
-}
 
 function ptrValue(p: NativePointer): NativePointer {
   const cell = Memory.alloc(Process.pointerSize);
@@ -21,16 +11,10 @@ function ptrValue(p: NativePointer): NativePointer {
   return cell;
 }
 
-function existentialMetadata(mod: Module, accessor: string): Metadata {
-  const RawPointer = Swift.metadataFor("Swift.UnsafeRawPointer")!;
-  const get = makeSwiftNativeFunction(fixtureFn(mod, accessor), RawPointer, []);
-  return new Metadata(get()!.readPointer());
-}
-
 function store(mod: Module, fn: string, metadata: Metadata): NativePointer {
   const RawPointer = Swift.metadataFor("Swift.UnsafeMutableRawPointer")!;
   const container = Memory.alloc(metadata.typeLayout.stride);
-  makeSwiftNativeFunction(fixtureFn(mod, fn), null, [RawPointer])(ptrValue(container));
+  makeSwiftNativeFunction(fixtureExport(fn, mod), null, [RawPointer])(ptrValue(container));
   return container;
 }
 
@@ -38,7 +22,7 @@ describe("async witness-table method invocation", () => {
   test("awaits an async protocol requirement by name (TripleScaler : AsyncScaler)", async () => {
     requireSwift();
     const mod = loadFixtureSyms();
-    const AsyncScaler = existentialMetadata(mod, "fixturesyms.asyncScalerType");
+    const AsyncScaler = existentialMetadata("fixturesyms.asyncScalerType", mod);
     const container = store(mod, "fixturesyms.storeAsyncScaler", AsyncScaler);
     const { type, value } = projectExistentialValue(AsyncScaler, container);
 
