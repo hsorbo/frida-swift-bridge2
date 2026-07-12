@@ -1,4 +1,4 @@
-import { ContextDescriptor } from "../abi/context-descriptor.js";
+import { ContextDescriptor, ContextDescriptorKind } from "../abi/context-descriptor.js";
 import {
   getSwiftSection,
   enumerateTypeContextDescriptors,
@@ -45,6 +45,26 @@ export function* swiftTypes(module?: Module): Generator<ContextDescriptor> {
   for (const m of enumerateSwiftModules()) {
     yield* typesOf(m);
   }
+}
+
+function* typesByKind(kind: ContextDescriptorKind, module?: Module): Generator<ContextDescriptor> {
+  for (const descriptor of swiftTypes(module)) {
+    if (descriptor.kind === kind) {
+      yield descriptor;
+    }
+  }
+}
+
+export function* swiftClasses(module?: Module): Generator<ContextDescriptor> {
+  yield* typesByKind(ContextDescriptorKind.Class, module);
+}
+
+export function* swiftStructs(module?: Module): Generator<ContextDescriptor> {
+  yield* typesByKind(ContextDescriptorKind.Struct, module);
+}
+
+export function* swiftEnums(module?: Module): Generator<ContextDescriptor> {
+  yield* typesByKind(ContextDescriptorKind.Enum, module);
 }
 
 const resolved = new Map<string, ContextDescriptor>();
