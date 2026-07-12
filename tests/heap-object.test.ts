@@ -22,6 +22,7 @@ function intArg(n: number): NativePointer {
 }
 
 function makeCounter(n: number): ClassInstance {
+  loadFixture();
   const Int = Swift.metadataFor("Swift.Int")!;
   const Counter = Swift.metadataFor("fixture.Counter")!;
   const make = makeSwiftNativeFunction(fixtureFn("fixture.makeCounter"), Counter, [Int]);
