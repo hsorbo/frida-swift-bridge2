@@ -1378,11 +1378,13 @@ function protocolOf(table: WitnessTable): ContextDescriptor {
 }
 
 function stripWitnessWrapper(demangled: string): string | null {
+  const asyncPtr = "async function pointer to "; // an async witness slot holds the …Tu record, not code
+  const s = demangled.startsWith(asyncPtr) ? demangled.slice(asyncPtr.length) : demangled;
   const prefix = "protocol witness for ";
-  if (!demangled.startsWith(prefix)) {
+  if (!s.startsWith(prefix)) {
     return null;
   }
-  const rest = demangled.slice(prefix.length);
+  const rest = s.slice(prefix.length);
   const at = rest.indexOf(" in conformance ");
   return at === -1 ? rest : rest.slice(0, at);
 }
@@ -1434,8 +1436,10 @@ export function namedProtocolRequirements(protocol: ContextDescriptor): NamedReq
     return cached;
   }
 
+  // Async is unlocked only for methods (driven via BoundAsyncMethod); an async accessor would be
+  // mis-driven synchronously by witnessGetProperty/Set, so keep it out of naming.
   const pending = readProtocolRequirements(protocol).filter(
-    (r) => !r.isAsync && CALLABLE_REQUIREMENT_KINDS.has(r.kind)
+    (r) => CALLABLE_REQUIREMENT_KINDS.has(r.kind) && (!r.isAsync || r.kind === ProtocolRequirementKind.Method)
   );
   const found = new Map<number, NamedRequirement>();
 
@@ -1530,18 +1534,27 @@ export function resolveWitnessMethod(table: WitnessTable, methodName: string): R
       throw new Error(`cannot resolve return type ${signature.returnTypeName} of ${signature.selector}`);
     }
   }
+  const address = table.requirement(requirement.witnessIndex);
   return {
-    address: table.requirement(requirement.witnessIndex),
+    address,
     argTypes,
     returnType,
     throws: signature.throws,
     isStatic: !requirement.isInstance,
     selector: signature.selector,
+    // An async requirement's slot holds the …Tu record (GenProto.cpp getAddrOfAsyncFunctionPointer).
+    async: requirement.isAsync,
+    asyncFunctionPointer: requirement.isAsync ? new AsyncFunctionPointer(address) : undefined,
   };
 }
 
-export function bindWitnessMethod(table: WitnessTable, self: NativePointer, methodName: string): BoundMethod {
-  return new BoundMethod(resolveWitnessMethod(table, methodName), self);
+export function bindWitnessMethod(
+  table: WitnessTable,
+  self: NativePointer,
+  methodName: string
+): BoundMethod | BoundAsyncMethod {
+  const resolved = resolveWitnessMethod(table, methodName);
+  return resolved.async === true ? new BoundAsyncMethod(resolved, self) : new BoundMethod(resolved, self);
 }
 
 export interface WitnessMethodSignature {

@@ -673,6 +673,21 @@ public func makePairAsync(_ a: Int, _ b: Int) async -> AsyncPair {
     return AsyncPair(a: a, b: b)
 }
 
+public protocol AsyncScaler {
+    func scaled(_ x: Int) async -> Int
+}
+public struct TripleScaler: AsyncScaler {
+    public let factor: Int
+    public func scaled(_ x: Int) async -> Int {
+        await Task.yield()
+        return x * factor
+    }
+}
+public func asyncScalerType() -> UnsafeRawPointer { unsafeBitCast((any AsyncScaler).self, to: UnsafeRawPointer.self) }
+public func storeAsyncScaler(_ p: UnsafeMutableRawPointer) {
+    p.assumingMemoryBound(to: (any AsyncScaler).self).initialize(to: TripleScaler(factor: 3))
+}
+
 public func computeDoubleAsync(_ x: Double) async -> Double {
     await Task.yield()
     return x * 2
