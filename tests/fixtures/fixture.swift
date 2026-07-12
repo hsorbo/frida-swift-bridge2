@@ -466,6 +466,7 @@ public func holderIntType() -> UnsafeRawPointer { unsafeBitCast((any Holder<Int>
 public func storeHolderInt(_ p: UnsafeMutableRawPointer) {
     p.assumingMemoryBound(to: (any Holder<Int>).self).initialize(to: IntHolder(item: 42))
 }
+public func makeHolderInt() -> any Holder<Int> { IntHolder(item: 42) }
 
 public protocol Ref<T>: AnyObject {
     associatedtype T

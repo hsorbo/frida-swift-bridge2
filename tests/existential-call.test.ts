@@ -2,6 +2,7 @@ import { test, expect, describe } from "@frida/injest/agent";
 import { fixtureExport, existentialMetadata } from "./fixtures/load.js";
 
 import { Swift, readValue, readString } from "../src/index.js";
+import { shouldPassIndirectly } from "../src/runtime/calling-convention.js";
 import { makeSwiftNativeFunction } from "../src/runtime/calling-convention.js";
 
 function intArg(n: number): NativePointer {
@@ -29,5 +30,12 @@ describe("existential by-value calling convention", () => {
     expect(readValue(Greeter, g)).toEqual({ name: "Ada" });
     const greet = makeSwiftNativeFunction(fixtureExport("fixture.greetExistential"), String_, [Greeter]);
     expect(readString(greet(g)!)).toBe("Hello, Ada");
+  });
+
+  test("returns a parameterized-protocol existential by value (extended, opaque → indirect)", () => {
+    const Holder = existentialMetadata("fixture.holderIntType");
+    expect(shouldPassIndirectly(Holder)).toBe(true);
+    const make = makeSwiftNativeFunction(fixtureExport("fixture.makeHolderInt"), Holder, []);
+    expect(readValue(Holder, make()!)).toEqual({ item: 42 });
   });
 });
