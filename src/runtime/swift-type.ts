@@ -303,6 +303,9 @@ export function typeOf(metadata: Metadata): SwiftType {
       return new MetatypeType(metadata);
     case MetadataKind.Function:
       return new FunctionType(metadata);
+    case MetadataKind.FixedArray:
+    case MetadataKind.Borrow:
+      throw new Error(`unsupported metadata kind ${MetadataKind[metadata.kind]}`);
     default:
       return new SwiftType(metadata);
   }

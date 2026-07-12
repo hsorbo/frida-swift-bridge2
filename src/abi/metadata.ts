@@ -10,6 +10,8 @@ export enum MetadataKind {
   Metatype = 0x304,
   Tuple = 0x301,
   Function = 0x302,
+  FixedArray = 0x308,
+  Borrow = 0x309,
   HeapLocalVariable = 0x400,
   HeapGenericLocalVariable = 0x500,
 }

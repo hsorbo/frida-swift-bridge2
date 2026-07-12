@@ -3,8 +3,9 @@ import { requireSwift } from "./swift.js";
 
 import { Swift } from "../src/index.js";
 import { findType } from "../src/reflection/registry.js";
-import { getMetadata, getGenericMetadata, MetadataKind } from "../src/abi/metadata.js";
+import { getMetadata, getGenericMetadata, Metadata, MetadataKind } from "../src/abi/metadata.js";
 import { ContextDescriptor, ContextDescriptorKind } from "../src/abi/context-descriptor.js";
+import { typeOf } from "../src/runtime/swift-type.js";
 
 const FLAG_IS_GENERIC = 0x80;
 
@@ -52,5 +53,14 @@ describe("metadata", () => {
 
     const ctx = new ContextDescriptor(descriptor);
     expect(() => getGenericMetadata(ctx, [])).toThrow();
+  });
+
+  test("typeOf rejects the FixedArray and Borrow kinds that slip under the class normalization", () => {
+    for (const kind of [MetadataKind.FixedArray, MetadataKind.Borrow]) {
+      const handle = Memory.alloc(Process.pointerSize);
+      handle.writeU32(kind);
+      expect(new Metadata(handle).kind).toBe(kind);
+      expect(() => typeOf(new Metadata(handle))).toThrow(new RegExp(MetadataKind[kind]));
+    }
   });
 });
