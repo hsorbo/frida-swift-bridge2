@@ -34,7 +34,7 @@ export function unwrapReabstractionThunk(context: NativePointer): NativePointer 
   }
 }
 
-// a bare class-reference capture reuses the object itself as context, with no descriptor.
+// sole unresolved capture holding an indirect class reference at its second word.
 function layoutSoleClassCapture(context: NativePointer): CaptureSlot[] | null {
   const descriptor = captureDescriptorOf(context);
   if (descriptor === null || descriptor.numBindings !== 0 || descriptor.numCaptureTypes !== 1) {
