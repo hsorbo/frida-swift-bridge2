@@ -24,7 +24,10 @@ import {
   SwiftNativeFunction,
   SwiftArgType,
   shouldPassIndirectly,
+  floatLayout,
 } from "./calling-convention.js";
+import { AsyncFunctionPointer, findAsyncFunctionPointer } from "../abi/async-function-pointer.js";
+import { callAsync, AsyncCallOptions, AsyncResultShape, AsyncFloatArg } from "./async-call.js";
 import { SwiftClosure, ClosureSpec, ClosureBody, LoadableClosureBody, SwiftThrow } from "./closure.js";
 import { typeName } from "./type-name.js";
 import { readString, createString } from "../abi/string.js";
@@ -57,7 +60,7 @@ export interface RawInstance {
   readonly type: SwiftType;
   get(name: string): CallResult;
   set(name: string, value: CallArg): void;
-  call(name: string, ...args: CallArg[]): CallResult;
+  call(name: string, ...args: CallArg[]): CallResult | Promise<CallResult>;
   field(name: string): ValueInstance;
   dispose(): void;
   [Symbol.dispose](): void;
@@ -82,6 +85,8 @@ export interface ResolvedMethod {
   throws: boolean;
   isStatic: boolean;
   selector: string;
+  async?: boolean;
+  asyncFunctionPointer?: AsyncFunctionPointer;
 }
 
 export interface MethodResolveOptions {
@@ -102,6 +107,7 @@ export interface ValueMethodResolveOptions extends MethodResolveOptions {
 interface MethodCandidate {
   address: NativePointer;
   name: string;
+  mangled: string;
   isStatic: boolean;
   signature: SwiftFunctionSignature;
 }
@@ -292,7 +298,7 @@ function typeMembers(fullName: string): TypeMembers {
       }
       const { context, isStatic } = stripReceiverKeyword(signature.context);
       if (context === fullName) {
-        methods.push({ address, name: signature.name, isStatic, signature });
+        methods.push({ address, name: signature.name, mangled: name, isStatic, signature });
       }
     } else if (!initsOnly && signature.kind !== "modify") {
       const { context, isStatic } = stripReceiverKeyword(signature.context);
@@ -400,7 +406,7 @@ export function resolveMethod(
       );
     }
 
-    const { address, isStatic, signature } = candidates[0];
+    const { address, isStatic, signature, mangled } = candidates[0];
     const argTypes = signature.argTypeNames.map((name) => {
       const metadata = resolveTypeExpr(name, () => null);
       if (metadata === null) {
@@ -415,7 +421,16 @@ export function resolveMethod(
         throw new Error(`cannot resolve return type ${signature.returnTypeName} of ${signature.selector}`);
       }
     }
-    return { address, argTypes, returnType, throws: signature.throws, isStatic, selector: signature.selector };
+    let asyncFunctionPointer: AsyncFunctionPointer | undefined;
+    if (signature.async) {
+      const module = Process.findModuleByAddress(address);
+      const afp = module === null ? null : findAsyncFunctionPointer(module, mangled);
+      if (afp === null) {
+        throw new Error(`cannot resolve async function pointer for ${signature.selector}`);
+      }
+      asyncFunctionPointer = afp;
+    }
+    return { address, argTypes, returnType, throws: signature.throws, isStatic, selector: signature.selector, async: signature.async, asyncFunctionPointer };
   }
   throw new Error(`no method ${methodName} on ${fullName}`);
 }
@@ -468,6 +483,124 @@ export class BoundMethod {
   }
 }
 
+// null ⇒ Void; check indirect before float, matching lowerArg (a resilient float aggregate is @out).
+function asyncResultShape(returnType: Metadata | null): AsyncResultShape | null {
+  if (returnType === null || returnType.valueWitnesses.size === 0) {
+    return null;
+  }
+  if (shouldPassIndirectly(returnType)) {
+    return { kind: "indirect", stride: returnType.valueWitnesses.stride };
+  }
+  const fl = floatLayout(returnType);
+  if (fl !== null) {
+    return { kind: "float", cls: fl.cls, count: fl.count };
+  }
+  return { kind: "gp", words: Math.ceil(returnType.valueWitnesses.size / Process.pointerSize) };
+}
+
+interface LoweredAsyncArgs {
+  gp: NativePointer[];
+  fp: AsyncFloatArg[];
+}
+
+function pushAsyncArg(metadata: Metadata, buffer: NativePointer, gp: NativePointer[], fp: AsyncFloatArg[]): void {
+  if (metadata.kind === MetadataKind.Class) {
+    gp.push(buffer.readPointer());
+    return;
+  }
+  if (shouldPassIndirectly(metadata)) {
+    gp.push(buffer);
+    return;
+  }
+  const fl = floatLayout(metadata);
+  if (fl !== null) {
+    const stride = fl.cls === "double" ? 8 : 4;
+    for (let k = 0; k < fl.count; k++) {
+      fp.push({ bytes: buffer.add(k * stride), cls: fl.cls });
+    }
+    return;
+  }
+  const words = Math.ceil(metadata.valueWitnesses.size / Process.pointerSize);
+  for (let w = 0; w < words; w++) {
+    gp.push(buffer.add(w * Process.pointerSize).readPointer());
+  }
+}
+
+function lowerAsyncArgs(argTypes: Metadata[], buffers: NativePointer[]): LoweredAsyncArgs {
+  const gp: NativePointer[] = [];
+  const fp: AsyncFloatArg[] = [];
+  for (let i = 0; i < argTypes.length; i++) {
+    pushAsyncArg(argTypes[i], buffers[i], gp, fp);
+  }
+  return { gp, fp };
+}
+
+// Arg temps are borrowed for the whole async call, so they are destroyed on settle, not synchronously.
+export class BoundAsyncMethod {
+  readonly asyncFunctionPointer: AsyncFunctionPointer;
+  private readonly result: AsyncResultShape | null;
+
+  constructor(
+    readonly resolved: ResolvedMethod,
+    private readonly self: NativePointer | null,
+    private readonly selfRouting: SelfRouting = { indirect: true }
+  ) {
+    if (resolved.asyncFunctionPointer === undefined) {
+      throw new Error(`${resolved.selector} is not async`);
+    }
+    this.asyncFunctionPointer = resolved.asyncFunctionPointer;
+    this.result = asyncResultShape(resolved.returnType);
+  }
+
+  get address(): NativePointer {
+    return this.resolved.address;
+  }
+
+  call(...args: CallArg[]): Promise<CallResult> {
+    const { argTypes, returnType, throws } = this.resolved;
+    if (args.length !== argTypes.length) {
+      throw new Error(`${this.resolved.selector} expects ${argTypes.length} argument(s), got ${args.length}`);
+    }
+    const buffers = args.map((value, i) => marshalArg(argTypes[i], value));
+    const cleanup = (): void => {
+      for (let i = 0; i < argTypes.length; i++) {
+        const metadata = argTypes[i];
+        if (metadata.kind !== MetadataKind.Class && !metadata.valueWitnesses.isPOD) {
+          metadata.valueWitnesses.destroy(buffers[i]);
+        }
+      }
+    };
+    const { gp, fp } = lowerAsyncArgs(argTypes, buffers);
+    const options: AsyncCallOptions = { throws };
+    if (this.self !== null) {
+      if (this.selfRouting.indirect) {
+        options.receiver = this.self;
+      } else {
+        pushAsyncArg(this.selfRouting.receiver, this.self, gp, fp); // small loadable value self trails the args
+      }
+    }
+    if (fp.length > 0) {
+      options.floatArgs = fp;
+    }
+    if (this.result !== null) {
+      options.result = this.result;
+    }
+    return callAsync(this.asyncFunctionPointer, gp, options).then(
+      (ret) => {
+        try {
+          return decodeReturn(returnType, this.result === null ? null : ret);
+        } finally {
+          cleanup();
+        }
+      },
+      (error) => {
+        cleanup();
+        throw error;
+      }
+    );
+  }
+}
+
 function staticInvokerFor(resolved: ResolvedMethod): SwiftNativeFunction {
   const key = `${resolved.address}:static`;
   let fn = invokerCache.get(key);
@@ -505,8 +638,9 @@ export function bindStaticMethod(
   receiver: Metadata,
   name: string,
   options: MethodResolveOptions = {}
-): BoundStaticMethod {
-  return new BoundStaticMethod(resolveMethod(typeName(receiver), name, { ...options, static: true }));
+): BoundStaticMethod | BoundAsyncMethod {
+  const resolved = resolveMethod(typeName(receiver), name, { ...options, static: true });
+  return resolved.async === true ? new BoundAsyncMethod(resolved, null) : new BoundStaticMethod(resolved);
 }
 
 // A value-type initializer is self-less: the @thin metatype self is erased, so it lowers like a
@@ -604,8 +738,11 @@ export function bindValueMethod(
   self: NativePointer,
   name: string,
   options: ValueMethodResolveOptions = {}
-): BoundValueMethod {
+): BoundValueMethod | BoundAsyncMethod {
   const resolved = resolveMethod(typeName(receiver), name, options);
+  if (resolved.async === true) {
+    return new BoundAsyncMethod(resolved, self, valueSelfRouting(receiver, options.mutating === true));
+  }
   return new BoundValueMethod(resolved, receiver, self, options.mutating === true);
 }
 
@@ -810,6 +947,8 @@ interface GenericMethodPlan {
   argPlans: ArgPlan[];
   returnPlan: ArgPlan | null;
   throws: boolean;
+  async: boolean;
+  asyncFunctionPointer?: AsyncFunctionPointer;
   typeArguments: Metadata[];
   witnessTables: NativePointer[];
 }
@@ -869,6 +1008,99 @@ export class GenericBoundMethod {
         b.metadata.valueWitnesses.destroy(b.ptr);
       }
     }
+  }
+}
+
+// A generic return is address-only (@out), even when the concrete type would ride registers.
+function genericAsyncResultShape(returnPlan: ArgPlan | null): AsyncResultShape | null {
+  if (returnPlan === null) {
+    return null;
+  }
+  const metadata = planMetadata(returnPlan);
+  if (returnPlan.kind === "generic" || returnPlan.kind === "abstractIndirect") {
+    return metadata.valueWitnesses.size === 0 ? null : { kind: "indirect", stride: metadata.valueWitnesses.stride };
+  }
+  return asyncResultShape(metadata);
+}
+
+// Like BoundAsyncMethod, but generic/abstract params are @in pointers and type-metadata + witnesses
+// trail the formal args (indirect self only).
+export class GenericBoundAsyncMethod {
+  readonly address: NativePointer;
+  readonly selector: string;
+  readonly asyncFunctionPointer: AsyncFunctionPointer;
+  private readonly result: AsyncResultShape | null;
+
+  constructor(
+    private readonly plan: GenericMethodPlan,
+    private readonly self: NativePointer,
+    routing: SelfRouting
+  ) {
+    if (plan.asyncFunctionPointer === undefined) {
+      throw new Error(`${plan.selector} is not async`);
+    }
+    if (!routing.indirect) {
+      throw new Error(`${plan.selector}: trailing value self is unsupported for async generic methods`);
+    }
+    this.address = plan.address;
+    this.selector = plan.selector;
+    this.asyncFunctionPointer = plan.asyncFunctionPointer;
+    this.result = genericAsyncResultShape(plan.returnPlan);
+  }
+
+  call(...args: CallArg[]): Promise<CallResult> {
+    const plans = this.plan.argPlans;
+    if (args.length !== plans.length) {
+      throw new Error(`${this.selector} expects ${plans.length} argument(s), got ${args.length}`);
+    }
+    if (plans.some((p) => p.kind === "closure")) {
+      throw new Error(`${this.selector}: closure arguments are unsupported for async generic methods`);
+    }
+    const metas = plans.map(planMetadata);
+    const buffers = plans.map((p, i) => marshalArg(metas[i], args[i]));
+    const cleanup = (): void => {
+      for (let i = 0; i < metas.length; i++) {
+        if (metas[i].kind !== MetadataKind.Class && !metas[i].valueWitnesses.isPOD) {
+          metas[i].valueWitnesses.destroy(buffers[i]);
+        }
+      }
+    };
+    const gp: NativePointer[] = [];
+    const fp: AsyncFloatArg[] = [];
+    plans.forEach((plan, i) => {
+      if (plan.kind === "generic" || plan.kind === "abstractIndirect") {
+        gp.push(buffers[i]);
+      } else {
+        pushAsyncArg(metas[i], buffers[i], gp, fp);
+      }
+    });
+    for (const metadata of this.plan.typeArguments) {
+      gp.push(metadata.handle);
+    }
+    for (const witnessTable of this.plan.witnessTables) {
+      gp.push(witnessTable);
+    }
+    const options: AsyncCallOptions = { throws: this.plan.throws, receiver: this.self };
+    if (fp.length > 0) {
+      options.floatArgs = fp;
+    }
+    if (this.result !== null) {
+      options.result = this.result;
+    }
+    const returnType = this.plan.returnPlan === null ? null : planMetadata(this.plan.returnPlan);
+    return callAsync(this.asyncFunctionPointer, gp, options).then(
+      (ret) => {
+        try {
+          return decodeReturn(returnType, this.result === null ? null : ret);
+        } finally {
+          cleanup();
+        }
+      },
+      (error) => {
+        cleanup();
+        throw error;
+      }
+    );
   }
 }
 
@@ -963,7 +1195,7 @@ function planGenericMethod(typeNameArg: string, methodName: string, options: Met
     const selectors = candidates.map((c) => c.signature.selector).join(", ");
     throw new Error(`ambiguous generic method ${methodName} on ${fullName}: ${selectors} (disambiguate with { arity } or { labels })`);
   }
-  const { address, signature } = candidates[0];
+  const { address, signature, mangled } = candidates[0];
   const resolvedTypeArguments =
     typeArguments.length === 0 && signature.genericParams.length > 0
       ? inferClosureTypeArguments(signature)
@@ -977,7 +1209,15 @@ function planGenericMethod(typeNameArg: string, methodName: string, options: Met
       ? null
       : planGenericType(signature.returnTypeName, signature.genericParams, resolvedTypeArguments);
   const witnessTables = options.witnessTables ?? autoWitnessTables(signature, resolvedTypeArguments);
-  return { address, selector: signature.selector, argPlans, returnPlan, throws: signature.throws, typeArguments: resolvedTypeArguments, witnessTables };
+  let asyncFunctionPointer: AsyncFunctionPointer | undefined;
+  if (signature.async) {
+    const module = Process.findModuleByAddress(address);
+    asyncFunctionPointer = module === null ? undefined : findAsyncFunctionPointer(module, mangled) ?? undefined;
+    if (asyncFunctionPointer === undefined) {
+      throw new Error(`cannot resolve async function pointer for ${signature.selector}`);
+    }
+  }
+  return { address, selector: signature.selector, argPlans, returnPlan, throws: signature.throws, async: signature.async, asyncFunctionPointer, typeArguments: resolvedTypeArguments, witnessTables };
 }
 
 export function bindGenericMethod(
@@ -985,8 +1225,10 @@ export function bindGenericMethod(
   methodName: string,
   self: NativePointer,
   options: MethodResolveOptions = {}
-): GenericBoundMethod {
-  return new GenericBoundMethod(planGenericMethod(typeName, methodName, options), self, { indirect: true });
+): GenericBoundMethod | GenericBoundAsyncMethod {
+  const plan = planGenericMethod(typeName, methodName, options);
+  const routing: SelfRouting = { indirect: true };
+  return plan.async ? new GenericBoundAsyncMethod(plan, self, routing) : new GenericBoundMethod(plan, self, routing);
 }
 
 export function bindGenericValueMethod(
@@ -994,9 +1236,10 @@ export function bindGenericValueMethod(
   self: NativePointer,
   methodName: string,
   options: ValueMethodResolveOptions = {}
-): GenericBoundMethod {
+): GenericBoundMethod | GenericBoundAsyncMethod {
   const plan = planGenericMethod(typeName(receiver), methodName, options);
-  return new GenericBoundMethod(plan, self, valueSelfRouting(receiver, options.mutating === true));
+  const routing = valueSelfRouting(receiver, options.mutating === true);
+  return plan.async ? new GenericBoundAsyncMethod(plan, self, routing) : new GenericBoundMethod(plan, self, routing);
 }
 
 // A bare type parameter (T) is address-only in the generic context but concretely sized by the
@@ -1047,6 +1290,9 @@ function planGenericTypeMethod(receiver: Metadata, methodName: string, options: 
     throw new Error(`ambiguous method ${methodName} on ${unboundName}: ${overloads} (disambiguate with { arity }, { labels }, or { argTypes })`);
   }
   const { address, signature } = candidates[0];
+  if (signature.async) {
+    throw new Error(`${signature.selector}: async methods on a generic type (self-recovered metadata) are not yet supported`);
+  }
   const argPlans = signature.argTypeNames.map((n) => planTypeMemberArg(n, typeParams, typeArguments));
   const returnPlan =
     signature.returnTypeName === null ? null : planTypeMemberArg(signature.returnTypeName, typeParams, typeArguments);
@@ -1056,6 +1302,7 @@ function planGenericTypeMethod(receiver: Metadata, methodName: string, options: 
     argPlans,
     returnPlan,
     throws: signature.throws,
+    async: false,
     typeArguments: trailsSelfMetadata ? [receiver] : [],
     witnessTables: [],
   };

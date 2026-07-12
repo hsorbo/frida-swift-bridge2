@@ -5,7 +5,9 @@ import { SwiftValue } from "../abi/instance.js";
 import {
   BoundMethod,
   BoundValueMethod,
+  BoundAsyncMethod,
   GenericBoundMethod,
+  GenericBoundAsyncMethod,
   CallResult,
   CallArg,
   MethodResolveOptions,
@@ -53,8 +55,8 @@ export interface SwiftObject {
   readonly $className: string;
   readonly $fields: { [name: string]: SwiftValue } | SwiftValue;
   readonly $owned: boolean;
-  $call(name: string, ...args: CallArg[]): CallResult;
-  $method(name: string, options?: MethodResolveOptions): BoundMethod | BoundValueMethod | GenericBoundMethod;
+  $call(name: string, ...args: CallArg[]): CallResult | Promise<CallResult>;
+  $method(name: string, options?: MethodResolveOptions): BoundMethod | BoundValueMethod | GenericBoundMethod | GenericBoundAsyncMethod | BoundAsyncMethod;
   $get(name: string): CallResult;
   $set(name: string, value: CallArg): void;
   $field(name: string): ValueInstance;
@@ -101,7 +103,7 @@ export function createObject(source: NativePointer | ClassInstance | ValueInstan
     isValue ? value.set(name, v) : object.set(name, v);
   const method = (name: string, options: ValueMethodResolveOptions = {}) =>
     isValue ? value.method(name, options) : object.method(name, options);
-  const invoke = (name: string, args: CallArg[]): CallResult => {
+  const invoke = (name: string, args: CallArg[]): CallResult | Promise<CallResult> => {
     const options: MethodResolveOptions = { arity: args.length };
     if (args.some((a) => a instanceof ClosureSpec)) {
       options.typeArguments = []; // generic path; planGenericMethod infers the closure-result R
@@ -126,7 +128,7 @@ export function createObject(source: NativePointer | ClassInstance | ValueInstan
     return index;
   };
 
-  const callables = new Map<string, (...args: CallArg[]) => CallResult>();
+  const callables = new Map<string, (...args: CallArg[]) => CallResult | Promise<CallResult>>();
 
   const proxy = new Proxy(target, {
     has(t, key) {

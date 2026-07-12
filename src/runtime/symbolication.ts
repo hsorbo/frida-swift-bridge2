@@ -20,6 +20,7 @@ export interface SwiftFunctionSignature {
   genericParams: string[];
   // false for same-type / pack / shape signatures: metadata count != genericParams.length
   simpleGenerics: boolean;
+  async: boolean;
   throws: boolean;
   argTypeNames: string[];
   argLabels: (string | null)[]; // null = unlabelled
@@ -144,6 +145,7 @@ function parseFunction(s: string): SwiftFunctionSignature | null {
     name,
     genericParams,
     simpleGenerics,
+    async: /\basync\b/.test(tail.slice(0, arrow)),
     throws: /\b(?:re)?throws\b/.test(tail.slice(0, arrow)),
     argTypeNames,
     argLabels,

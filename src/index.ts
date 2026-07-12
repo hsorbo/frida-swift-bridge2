@@ -58,6 +58,15 @@ export {
 export { AsyncFunctionPointer } from "./abi/async-function-pointer.js";
 export { AsyncContext } from "./abi/async-context.js";
 export {
+  driveAsyncCall,
+  callAsync,
+  SwiftAsyncThrow,
+  AsyncCallOptions,
+  AsyncResultShape,
+  AsyncFloatArg,
+  FloatClass,
+} from "./runtime/async-call.js";
+export {
   ProtocolRequirementKind,
   ProtocolRequirement,
   readProtocolRequirements,
@@ -202,6 +211,7 @@ export {
 export { SwiftInterceptor, SwiftInvocationCallbacks, SwiftAsyncCallbacks } from "./runtime/interceptor.js";
 export {
   BoundMethod,
+  BoundAsyncMethod,
   CallResult,
   isSwiftObject,
   CallArg,
@@ -214,6 +224,7 @@ export {
   BoundStaticMethod,
   BoundValueInitializer,
   GenericBoundMethod,
+  GenericBoundAsyncMethod,
   AccessorKind,
   PropertyInfo,
   resolveMethod,

@@ -68,9 +68,17 @@ public struct Accumulator {
         total += amount
     }
     public func peek(_ x: Int) -> Int { total + x }
+    public func peekAsync(_ x: Int) async -> Int {
+        await Task.yield()
+        return total + x
+    }
     public func describe(_ prefix: String) -> String { "\(prefix): \(total)" }
     public static func zero() -> Accumulator { Accumulator(total: 0) }
     public static func summing(_ a: Int, _ b: Int) -> Int { a + b }
+    public static func sumStaticAsync(_ a: Int, _ b: Int) async -> Int {
+        await Task.yield()
+        return a + b
+    }
 }
 
 public enum FixtureError: Error {
@@ -603,6 +611,87 @@ public func computeAsync(_ x: Int) async -> Int {
 }
 
 final class AsyncResultBox: @unchecked Sendable { var value = 0 }
+
+public final class AsyncBox: @unchecked Sendable {
+    public var value = 0
+    public init() {}
+}
+public func makeAsyncBox() -> AsyncBox { AsyncBox() }
+public func readAsyncBox(_ box: AsyncBox) -> Int { box.value }
+public func storeDoubleAsync(_ box: AsyncBox, _ n: Int) async {
+    await Task.yield()
+    box.value = n * 2
+}
+public func storeDoubleNow(_ box: AsyncBox, _ n: Int) async {
+    box.value = n * 2
+}
+public final class AsyncCalc {
+    public let base: Int
+    public init(base: Int) { self.base = base }
+    public func addAsync(_ n: Int) async -> Int {
+        await Task.yield()
+        return base + n
+    }
+    public func divideBaseBy(_ d: Int) async throws -> Int {
+        await Task.yield()
+        if d == 0 { throw AsyncDivideError.divideByZero }
+        return base / d
+    }
+    public func scaleAsync(_ x: Double) async -> Double {
+        await Task.yield()
+        return Double(base) * x
+    }
+    public func quadAsync() async -> AsyncQuad {
+        await Task.yield()
+        return AsyncQuad(a: base, b: base + 1, c: base + 2, d: base + 3, e: base + 4)
+    }
+    public func echoAsync<T>(_ x: T) async -> T {
+        await Task.yield()
+        return x
+    }
+    public func pickLargerAsync<T: Comparable>(_ a: T, _ b: T) async -> T {
+        await Task.yield()
+        return a >= b ? a : b
+    }
+    public static func combineAsync(_ a: Int, _ b: Int) async -> Int {
+        await Task.yield()
+        return a * 10 + b
+    }
+}
+public func makeAsyncCalc(_ base: Int) -> AsyncCalc { AsyncCalc(base: base) }
+
+public enum AsyncDivideError: Error { case divideByZero }
+public func divideAsync(_ a: Int, _ b: Int) async throws -> Int {
+    await Task.yield()
+    if b == 0 { throw AsyncDivideError.divideByZero }
+    return a / b
+}
+
+public struct AsyncPair { public let a: Int; public let b: Int }
+public func makePairAsync(_ a: Int, _ b: Int) async -> AsyncPair {
+    await Task.yield()
+    return AsyncPair(a: a, b: b)
+}
+
+public func computeDoubleAsync(_ x: Double) async -> Double {
+    await Task.yield()
+    return x * 2
+}
+public func addViaDoubleAsync(_ x: Double) async -> Double {
+    return await computeDoubleAsync(x) + 1
+}
+
+public struct AsyncQuad {
+    public let a: Int; public let b: Int; public let c: Int; public let d: Int; public let e: Int
+}
+public func makeQuadAsync(_ n: Int) async -> AsyncQuad {
+    await Task.yield()
+    return AsyncQuad(a: n, b: n + 1, c: n + 2, d: n + 3, e: n + 4)
+}
+public func sumQuadAsync(_ n: Int) async -> Int {
+    let q = await makeQuadAsync(n)
+    return q.a + q.b + q.c + q.d + q.e
+}
 
 public func driveComputeAsync(_ x: Int) -> Int {
     let sem = DispatchSemaphore(value: 0)

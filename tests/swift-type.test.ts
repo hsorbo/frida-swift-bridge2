@@ -110,8 +110,8 @@ describe("type wrappers", () => {
   test("methods() static option splits instance from static keys", () => {
     loadFixture();
     const t = Swift.typeOf(Swift.metadataFor("fixture.Accumulator")!) as StructType;
-    expect(t.methods().sort()).toEqual(["add(_:)", "describe(_:)", "peek(_:)"]);
-    expect(t.methods({ static: true }).sort()).toEqual(["summing(_:_:)", "zero()"]);
+    expect(t.methods().sort()).toEqual(["add(_:)", "describe(_:)", "peek(_:)", "peekAsync(_:)"]);
+    expect(t.methods({ static: true }).sort()).toEqual(["sumStaticAsync(_:_:)", "summing(_:_:)", "zero()"]);
     expect(t.fields).toEqual([{ name: "total", type: t.fields[0].type, isVar: true }]);
   });
 

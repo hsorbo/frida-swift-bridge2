@@ -7,7 +7,9 @@ import { getSwiftCoreApi } from "../runtime/api.js";
 import { SwiftType, typeOf } from "../runtime/swift-type.js";
 import {
   BoundMethod,
+  BoundAsyncMethod,
   GenericBoundMethod,
+  GenericBoundAsyncMethod,
   ResolvedMethod,
   resolveMethod,
   bindGenericMethod,
@@ -124,14 +126,17 @@ export class ClassInstance implements RawInstance {
     return readObject(this.handle);
   }
 
-  method(name: string, options: MethodResolveOptions = {}): BoundMethod | GenericBoundMethod {
+  method(name: string, options: MethodResolveOptions = {}): BoundMethod | GenericBoundMethod | GenericBoundAsyncMethod | BoundAsyncMethod {
     if (options.typeArguments !== undefined) {
       return bindGenericMethod(this.typeName, name, this.handle, { ...options, static: false });
     }
     if (this.metadata.description.isGeneric) {
       return bindGenericTypeClassMethod(this.dynamicType, this.handle, name, options);
     }
-    return new BoundMethod(resolveMethod(this.typeName, name, { ...options, static: false }), this.handle);
+    const resolved = resolveMethod(this.typeName, name, { ...options, static: false });
+    return resolved.async === true
+      ? new BoundAsyncMethod(resolved, this.handle)
+      : new BoundMethod(resolved, this.handle);
   }
 
   get vtable(): VTableEntry[] {
@@ -155,7 +160,7 @@ export class ClassInstance implements RawInstance {
     return new BoundMethod(resolved, this.handle);
   }
 
-  call(name: string, ...args: CallArg[]): CallResult {
+  call(name: string, ...args: CallArg[]): CallResult | Promise<CallResult> {
     return this.method(name).call(...args);
   }
 

@@ -16,6 +16,7 @@ import { parseSwiftSignature, resolveType } from "./symbolication.js";
 import {
   BoundMethod,
   BoundStaticMethod,
+  BoundAsyncMethod,
   BoundValueInitializer,
   CallArg,
   CallResult,
@@ -82,11 +83,11 @@ export class SwiftType {
 }
 
 export class ValueType extends SwiftType {
-  method(name: string, options: MethodResolveOptions = {}): BoundStaticMethod {
+  method(name: string, options: MethodResolveOptions = {}): BoundStaticMethod | BoundAsyncMethod {
     return bindStaticMethod(this.metadata, name, options);
   }
 
-  call(name: string, ...args: SwiftValue[]): CallResult {
+  call(name: string, ...args: SwiftValue[]): CallResult | Promise<CallResult> {
     return this.method(name).call(...args);
   }
 
@@ -183,14 +184,14 @@ export class ClassType extends SwiftType {
     return createObject(ClassInstance.adopt(object));
   }
 
-  method(name: string, options: MethodResolveOptions = {}): BoundMethod {
-    return new BoundMethod(
-      resolveMethod(this.fullName, name, { ...options, static: true }),
-      this.metadata.handle
-    );
+  method(name: string, options: MethodResolveOptions = {}): BoundMethod | BoundAsyncMethod {
+    const resolved = resolveMethod(this.fullName, name, { ...options, static: true });
+    return resolved.async === true
+      ? new BoundAsyncMethod(resolved, this.metadata.handle)
+      : new BoundMethod(resolved, this.metadata.handle);
   }
 
-  call(name: string, ...args: SwiftValue[]): CallResult {
+  call(name: string, ...args: SwiftValue[]): CallResult | Promise<CallResult> {
     return this.method(name).call(...args);
   }
 
