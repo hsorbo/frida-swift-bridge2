@@ -8,6 +8,7 @@ export enum MetadataKind {
   Optional = 0x202,
   Existential = 0x303,
   Metatype = 0x304,
+  ObjCClassWrapper = 0x305,
   Tuple = 0x301,
   Function = 0x302,
   FixedArray = 0x308,

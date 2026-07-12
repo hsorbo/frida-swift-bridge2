@@ -158,6 +158,7 @@ export {
   TupleType,
   MetatypeType,
   FunctionType,
+  ObjCClassWrapperType,
   TypeMember,
   NativeFunctionType,
   typeOf,

@@ -62,6 +62,8 @@ function typeKindName(metadata: Metadata): string {
       return "metatype";
     case MetadataKind.Function:
       return "function";
+    case MetadataKind.ObjCClassWrapper:
+      return "objc-class";
     default:
       return "type";
   }
@@ -162,6 +164,12 @@ export class EnumType extends ValueType {
       type: f.mangledTypeName !== null ? fieldTypeIn(this.metadata, f) : null,
       isVar: f.isVar,
     }));
+  }
+}
+
+export class ObjCClassWrapperType extends SwiftType {
+  get objcClass(): NativePointer {
+    return this.metadata.handle.add(Process.pointerSize).readPointer().strip();
   }
 }
 
@@ -340,6 +348,8 @@ export function typeOf(metadata: Metadata): SwiftType {
       return new MetatypeType(metadata);
     case MetadataKind.Function:
       return new FunctionType(metadata);
+    case MetadataKind.ObjCClassWrapper:
+      return new ObjCClassWrapperType(metadata);
     case MetadataKind.FixedArray:
     case MetadataKind.Borrow:
       throw new Error(`unsupported metadata kind ${MetadataKind[metadata.kind]}`);
