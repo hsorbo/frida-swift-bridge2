@@ -222,6 +222,10 @@ public func storeGreeter(_ p: UnsafeMutableRawPointer) {
     p.assumingMemoryBound(to: (any Greeter).self).initialize(to: PoliteGreeter(name: "Ada"))
 }
 
+public func makeOpaqueGreeter() -> some Greeter {
+    PoliteGreeter(name: "Ada")
+}
+
 public struct Pair<T> {
     public var first: T
     public var second: T

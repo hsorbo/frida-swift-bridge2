@@ -1,4 +1,5 @@
 import { test, expect, describe } from "@frida/injest/agent";
+import { loadFixture } from "./fixtures/load.js";
 
 import { ContextDescriptor, ContextDescriptorKind } from "../src/abi/context-descriptor.js";
 import { GenericRequirementKind } from "../src/abi/generic-requirement-descriptor.js";
@@ -7,6 +8,8 @@ import {
   underlyingTypeArgumentMangledName,
   opaqueTypeRequirements,
 } from "../src/abi/opaque-type-descriptor.js";
+
+const MAKE_OPAQUE_GREETER_DESCRIPTOR = "$s7fixture17makeOpaqueGreeterQryFQOMQ";
 
 const FLAG_IS_GENERIC = 0x80;
 const FLAG_HAS_TYPE_PACKS = 0x1;
@@ -137,5 +140,25 @@ describe("opaque type descriptor", () => {
     expect(numUnderlyingTypeArguments(ctx)).toBe(1);
     const underlying = underlyingTypeArgumentMangledName(ctx, 0);
     expect(underlying.address.equals(underlyingName)).toBeTruthy();
+  });
+
+  test("reads a real compiled `some Greeter` opaque type descriptor", () => {
+    const module = loadFixture();
+    const ctx = new ContextDescriptor(module.getExportByName(MAKE_OPAQUE_GREETER_DESCRIPTOR));
+
+    expect(ctx.kind).toBe(ContextDescriptorKind.OpaqueType);
+    expect(ctx.isGeneric).toBeTruthy();
+
+    const reqs = opaqueTypeRequirements(ctx);
+    expect(reqs.length).toBe(1);
+    expect(reqs[0].kind).toBe(GenericRequirementKind.Protocol);
+    expect(reqs[0].protocol?.name).toBe("Greeter");
+
+    expect(numUnderlyingTypeArguments(ctx)).toBe(2);
+    for (let i = 0; i < 2; i++) {
+      const arg = underlyingTypeArgumentMangledName(ctx, i);
+      expect(arg.address.isNull()).toBeFalsy();
+      expect(arg.length).toBeGreaterThan(0);
+    }
   });
 });
