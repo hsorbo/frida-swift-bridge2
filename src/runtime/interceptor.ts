@@ -5,6 +5,7 @@ import { ClassInstance } from "../abi/heap-object.js";
 import { projectErrorExistential } from "../abi/existential.js";
 import { shouldPassIndirectly, floatLayout } from "./calling-convention.js";
 import { AsyncFunctionPointer, isAsyncFunctionPointerSymbol } from "../abi/async-function-pointer.js";
+import { AsyncContext } from "../abi/async-context.js";
 import { symbolicate, parseSwiftSignature, resolveType, resolveTypeExpr } from "./symbolication.js";
 import { typeName } from "./type-name.js";
 import { createObject } from "./object-facade.js";
@@ -165,9 +166,10 @@ interface MaterializedArgs {
 function materializeArgs(
   context: Arm64CpuContext,
   args: TypePlan[],
-  genericParams: string[]
+  genericParams: string[],
+  startReg = 0
 ): MaterializedArgs {
-  let ngrn = 0;
+  let ngrn = startReg;
   let nsrn = 0;
   const slots: { plan: TypePlan; address: NativePointer }[] = [];
 
@@ -353,6 +355,7 @@ export interface SwiftAsyncCallbacks {
   onEnter?: (this: InvocationContext, args: SwiftValue[], context: NativePointer) => void;
   // The entry partial function returning: reached the first suspension, not logical completion.
   onFirstSuspend?: (this: InvocationContext) => void;
+  onComplete?: (this: InvocationContext, retval: CallResult, error?: SwiftValue) => void;
 }
 
 function resolveAsyncEntry(target: NativePointer): NativePointer {
@@ -364,32 +367,87 @@ function resolveAsyncEntry(target: NativePointer): NativePointer {
 }
 
 function attachAsync(target: NativePointer, callbacks: SwiftAsyncCallbacks): InvocationListener {
-  if (callbacks.onEnter === undefined && callbacks.onFirstSuspend === undefined) {
-    throw new Error("attachAsync requires onEnter or onFirstSuspend");
+  if (callbacks.onEnter === undefined && callbacks.onFirstSuspend === undefined && callbacks.onComplete === undefined) {
+    throw new Error("attachAsync requires onEnter, onFirstSuspend, or onComplete");
   }
   const code = resolveAsyncEntry(target);
-  const { args, genericParams } = callShape(code);
+  const { args, ret, genericParams, throws } = callShape(code);
+
+  const wantsCompletion = callbacks.onComplete !== undefined;
+  const indirectReturn = returnIsIndirect(ret);
+  const argRegBase = indirectReturn ? 1 : 0; // an @out result takes x0
+  const returnNeedsGenerics = wantsCompletion && ret !== null && isIndirectPlan(ret) && genericParams.length > 0;
+  const wantsArgs = callbacks.onEnter !== undefined || returnNeedsGenerics;
+  const pendingCompletions = new Set<InvocationListener>();
+
+  const armCompletion = (context: Arm64CpuContext, generics: Metadata[]): void => {
+    const taskContext = context.x22;
+    const outBuffer = indirectReturn ? context.x0 : null;
+    const resumeParent = new AsyncContext(taskContext).resumeParent;
+    const listener = Interceptor.attach(resumeParent, {
+      onEnter(this: InvocationContext) {
+        const cc = this.context as Arm64CpuContext;
+        const completingContext = cc.x22; // callee reenters ResumeParent with its own context
+        if (!completingContext.equals(taskContext)) {
+          return;
+        }
+        listener.detach();
+        pendingCompletions.delete(listener);
+        const swiftError = cc.x20; // swiftcc async returns a thrown error here
+        if (throws && !swiftError.isNull()) {
+          callbacks.onComplete!.call(this, null, decodeThrownError(swiftError));
+          return;
+        }
+        callbacks.onComplete!.call(this, materializeReturn(cc, ret, outBuffer, generics, genericParams));
+      },
+    });
+    pendingCompletions.add(listener);
+  };
 
   const onEnter =
-    callbacks.onEnter !== undefined
+    wantsArgs || wantsCompletion
       ? function (this: InvocationContext) {
           const context = this.context as Arm64CpuContext;
-          const { values } = materializeArgs(context, args, genericParams);
-          callbacks.onEnter!.call(this, values, context.x22);
+          let generics: Metadata[] = [];
+          if (wantsArgs) {
+            const materialized = materializeArgs(context, args, genericParams, argRegBase);
+            generics = materialized.generics;
+            if (callbacks.onEnter !== undefined) {
+              callbacks.onEnter.call(this, materialized.values, context.x22);
+            }
+          }
+          if (wantsCompletion) {
+            armCompletion(context, generics);
+          }
         }
       : undefined;
 
+  let entryListener: InvocationListener;
   if (callbacks.onFirstSuspend !== undefined) {
     const onFirstSuspend = callbacks.onFirstSuspend;
-    return Interceptor.attach(code, {
+    entryListener = Interceptor.attach(code, {
       onEnter,
       onLeave: function (this: InvocationContext) {
         onFirstSuspend.call(this);
       },
     });
+  } else {
+    // onEnter-only: a bare function is a probe listener, which never traps the return.
+    entryListener = Interceptor.attach(code, onEnter!);
   }
-  // onEnter-only: a bare function is a probe listener, which never traps the return.
-  return Interceptor.attach(code, onEnter!);
+
+  if (!wantsCompletion) {
+    return entryListener;
+  }
+  return {
+    detach() {
+      entryListener.detach();
+      for (const listener of pendingCompletions) {
+        listener.detach();
+      }
+      pendingCompletions.clear();
+    },
+  };
 }
 
 export interface SwiftInterceptorApi {
