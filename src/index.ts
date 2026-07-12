@@ -232,6 +232,8 @@ export {
   resolveMethod,
   enumerateMethods,
   enumerateProperties,
+  getProperty,
+  setProperty,
   bindValueMethod,
   bindStaticMethod,
   bindValueInitializer,
