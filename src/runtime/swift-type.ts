@@ -65,6 +65,9 @@ function typeKindName(metadata: Metadata): string {
       return "function";
     case MetadataKind.ObjCClassWrapper:
       return "objc-class";
+    case MetadataKind.Existential:
+    case MetadataKind.ExtendedExistential:
+      return "existential";
     case MetadataKind.ForeignClass:
       return "foreign-class";
     case MetadataKind.ForeignReferenceType:

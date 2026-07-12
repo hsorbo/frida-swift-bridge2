@@ -1,4 +1,4 @@
-import { Metadata } from "./metadata.js";
+import { Metadata, MetadataKind } from "./metadata.js";
 import { ContextDescriptor } from "./context-descriptor.js";
 import { dynamicTypeOf } from "./class-metadata.js";
 import { getSwiftCoreApi } from "../runtime/api.js";
@@ -35,7 +35,29 @@ export function projectClassExistential(container: NativePointer): OpaqueExisten
   return { type: dynamicTypeOf(value), value };
 }
 
+export enum ExtendedExistentialSpecialKind {
+  None = 0,
+  Class = 1,
+  Metatype = 2,
+  ExplicitLayout = 3,
+}
+
+export function extendedExistentialSpecialKind(metadata: Metadata): ExtendedExistentialSpecialKind {
+  const shape = metadata.handle.add(Process.pointerSize).readPointer().strip();
+  return shape.readU32() & 0xff;
+}
+
 export function projectExistentialValue(metadata: Metadata, container: NativePointer): OpaqueExistential {
+  if (metadata.kind === MetadataKind.ExtendedExistential) {
+    switch (extendedExistentialSpecialKind(metadata)) {
+      case ExtendedExistentialSpecialKind.None:
+        return projectOpaqueExistential(container);
+      case ExtendedExistentialSpecialKind.Class:
+        return projectClassExistential(container);
+      default:
+        throw new Error("projectExistentialValue: only opaque and class extended existentials are supported");
+    }
+  }
   const representation = existentialRepresentation(metadata);
   if (representation === "class") {
     return projectClassExistential(container);

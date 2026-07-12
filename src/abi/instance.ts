@@ -5,6 +5,8 @@ import { enumerateTupleElements } from "./tuple.js";
 import { readString, writeString } from "./string.js";
 import {
   existentialRepresentation,
+  extendedExistentialSpecialKind,
+  ExtendedExistentialSpecialKind,
   projectOpaqueExistential,
   projectErrorExistential,
 } from "./existential.js";
@@ -150,6 +152,8 @@ export function readValue(metadata: Metadata, address: NativePointer): SwiftValu
       return address.readPointer(); // reference; decode with readObject()
     case MetadataKind.Existential:
       return readExistential(metadata, address);
+    case MetadataKind.ExtendedExistential:
+      return readExtendedExistential(metadata, address);
     case MetadataKind.Tuple: {
       const elements: SwiftValue[] = [];
       for (const element of enumerateTupleElements(metadata)) {
@@ -236,6 +240,19 @@ function readExistential(metadata: Metadata, address: NativePointer): SwiftValue
       ? projectErrorExistential(address)
       : projectOpaqueExistential(address);
   return readValue(type, value);
+}
+
+function readExtendedExistential(metadata: Metadata, address: NativePointer): SwiftValue {
+  switch (extendedExistentialSpecialKind(metadata)) {
+    case ExtendedExistentialSpecialKind.Class:
+      return address.readPointer(); // reference; decode with readObject()
+    case ExtendedExistentialSpecialKind.None: {
+      const { type, value } = projectOpaqueExistential(address);
+      return readValue(type, value);
+    }
+    default:
+      throw new Error("ExtendedExistential: only opaque and class special kinds are supported");
+  }
 }
 
 export function* enumerateClassInstanceFields(object: NativePointer): Generator<InstanceField> {

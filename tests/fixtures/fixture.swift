@@ -454,6 +454,32 @@ import CoreGraphics
 public func foreignClassType() -> UnsafeRawPointer { unsafeBitCast(CGColor.self, to: UnsafeRawPointer.self) }
 #endif
 
+public protocol Holder<Item> {
+    associatedtype Item
+    var item: Item { get }
+}
+public struct IntHolder: Holder {
+    public var item: Int
+    public init(item: Int) { self.item = item }
+}
+public func holderIntType() -> UnsafeRawPointer { unsafeBitCast((any Holder<Int>).self, to: UnsafeRawPointer.self) }
+public func storeHolderInt(_ p: UnsafeMutableRawPointer) {
+    p.assumingMemoryBound(to: (any Holder<Int>).self).initialize(to: IntHolder(item: 42))
+}
+
+public protocol Ref<T>: AnyObject {
+    associatedtype T
+    var value: T { get }
+}
+public final class IntRef: Ref {
+    public let value: Int
+    public init(_ value: Int) { self.value = value }
+}
+public func refIntType() -> UnsafeRawPointer { unsafeBitCast((any Ref<Int>).self, to: UnsafeRawPointer.self) }
+public func storeRefInt(_ p: UnsafeMutableRawPointer) {
+    p.assumingMemoryBound(to: (any Ref<Int>).self).initialize(to: IntRef(7))
+}
+
 // Method-name rendering: an operator and a generic return.
 public struct Selectors {
     public var n: Int

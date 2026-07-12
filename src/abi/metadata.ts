@@ -9,6 +9,7 @@ export enum MetadataKind {
   ForeignClass = 0x203,
   ForeignReferenceType = 0x204,
   Existential = 0x303,
+  ExtendedExistential = 0x307,
   Metatype = 0x304,
   ObjCClassWrapper = 0x305,
   Tuple = 0x301,
