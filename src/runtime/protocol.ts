@@ -70,6 +70,15 @@ export class Protocol {
     return protocolClassConstraint(this.descriptor) === 0;
   }
 
+  toJSON(): { kind: "protocol"; name: string; isClassOnly: boolean; numRequirements: number } {
+    return {
+      kind: "protocol",
+      name: this.name,
+      isClassOnly: this.isClassOnly,
+      numRequirements: this.numRequirements,
+    };
+  }
+
   conformanceFor(type: Metadata): WitnessTable | null {
     const table = conformsToProtocol(type, this.descriptor);
     return table === null ? null : new WitnessTable(table, type);

@@ -47,6 +47,26 @@ export interface MethodQuery {
   inherited?: boolean;
 }
 
+function typeKindName(metadata: Metadata): string {
+  switch (metadata.kind) {
+    case MetadataKind.Class:
+      return "class";
+    case MetadataKind.Struct:
+      return "struct";
+    case MetadataKind.Enum:
+    case MetadataKind.Optional:
+      return "enum";
+    case MetadataKind.Tuple:
+      return "tuple";
+    case MetadataKind.Metatype:
+      return "metatype";
+    case MetadataKind.Function:
+      return "function";
+    default:
+      return "type";
+  }
+}
+
 export class SwiftType {
   constructor(readonly metadata: Metadata) {}
 
@@ -60,6 +80,23 @@ export class SwiftType {
 
   get moduleName(): string | null {
     return Process.findModuleByAddress(this.descriptorHandle)?.path ?? null;
+  }
+
+  toJSON(): { kind: string; name: string; module: string | null } {
+    return { kind: typeKindName(this.metadata), name: this.name, module: this.jsonModule() };
+  }
+
+  private jsonModule(): string | null {
+    const kind = this.metadata.kind;
+    if (
+      kind !== MetadataKind.Class &&
+      kind !== MetadataKind.Struct &&
+      kind !== MetadataKind.Enum &&
+      kind !== MetadataKind.Optional
+    ) {
+      return null;
+    }
+    return Process.findModuleByAddress(this.descriptorHandle)?.name ?? null;
   }
 
   methods(options: MethodQuery = {}): string[] {

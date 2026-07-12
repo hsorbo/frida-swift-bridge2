@@ -5,6 +5,7 @@ import { enumerateClassInstanceFields, readObject, SwiftValue } from "./instance
 import { ValueInstance } from "./value.js";
 import { getSwiftCoreApi } from "../runtime/api.js";
 import { SwiftType, typeOf } from "../runtime/swift-type.js";
+import { typeName } from "../runtime/type-name.js";
 import {
   BoundMethod,
   BoundAsyncMethod,
@@ -78,6 +79,10 @@ export class ClassInstance implements RawInstance {
 
   equals(other: ClassInstance | NativePointer): boolean {
     return this.handle.equals(other instanceof NativePointer ? other : other.handle);
+  }
+
+  toJSON(): { kind: "object"; type: string; handle: string } {
+    return { kind: "object", type: typeName(this.dynamicType), handle: this.handle.toString() };
   }
 
   get retainCount(): number {

@@ -157,6 +157,14 @@ export class ValueInstance implements RawInstance {
     return swiftValueEquals(a, b);
   }
 
+  toJSON(): { kind: "value"; type: string; value?: SwiftValue; disposed?: true } {
+    const type = typeName(this.metadata);
+    if (this.state !== null && this.state.disposed) {
+      return { kind: "value", type, disposed: true };
+    }
+    return { kind: "value", type, value: this.read() };
+  }
+
   copy(): ValueInstance {
     this.checkLive();
     return ValueInstance.fromCopy(this.metadata, this.handle);

@@ -22,6 +22,7 @@ import { ClosureSpec } from "./closure.js";
 const RESERVED = new Set([
   "toString",
   "valueOf",
+  "toJSON",
   "equals",
   "hasOwnProperty",
   "$kind",
@@ -195,6 +196,8 @@ export function createObject(source: NativePointer | ClassInstance | ValueInstan
           };
         case "$dispose":
           return () => target.dispose();
+        case "toJSON":
+          return () => target.toJSON();
         case "equals":
           return (other: SwiftObject | ClassInstance | ValueInstance | NativePointer) =>
             handle().equals(handleOf(other));
