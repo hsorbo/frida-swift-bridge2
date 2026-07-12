@@ -41,4 +41,12 @@ describe("readValue extended existential", () => {
     expect(ref.isNull()).toBe(false);
     expect(readObject(ref)).toEqual({ value: 7 });
   });
+
+  test("decodes the stored type behind a parameterized-protocol existential metatype (any P.Type)", () => {
+    requireSwift();
+    const M = existentialMetadata("fixture.holderMetatypeType");
+    expect(M.kind).toBe(MetadataKind.ExtendedExistential);
+    expect(extendedExistentialSpecialKind(M)).toBe(ExtendedExistentialSpecialKind.Metatype);
+    expect(readValue(M, store("fixture.storeHolderMetatype", M))).toBe("fixture.IntHolder");
+  });
 });

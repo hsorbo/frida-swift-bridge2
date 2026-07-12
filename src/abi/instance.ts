@@ -11,6 +11,7 @@ import {
   projectErrorExistential,
 } from "./existential.js";
 import { ClassMetadata, classMetadataOf, enumerateClassFields } from "./class-metadata.js";
+import { typeName } from "../runtime/type-name.js";
 
 const STRUCT_DESC_FIELD_OFFSET_VECTOR_OFFSET = 0x18;
 
@@ -250,8 +251,10 @@ function readExtendedExistential(metadata: Metadata, address: NativePointer): Sw
       const { type, value } = projectOpaqueExistential(address);
       return readValue(type, value);
     }
+    case ExtendedExistentialSpecialKind.Metatype:
+      return typeName(new Metadata(address.readPointer())); // inline word is the stored Metadata*
     default:
-      throw new Error("ExtendedExistential: only opaque and class special kinds are supported");
+      throw new Error("ExtendedExistential: only opaque, class, and metatype special kinds are supported");
   }
 }
 
