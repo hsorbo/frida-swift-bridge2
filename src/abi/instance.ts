@@ -199,7 +199,9 @@ export function embedsManagedReference(metadata: Metadata): boolean {
 function readExistential(metadata: Metadata, address: NativePointer): SwiftValue {
   const representation = existentialRepresentation(metadata);
   if (representation === "class") {
-    return address.readPointer(); // reference; decode with readObject()
+    // reference; decode with readObject(). Snapshot-only for a by-value existential return: the
+    // return's non-POD destroy releases the container, so the pointer is valid only at read time.
+    return address.readPointer();
   }
   const { type, value } =
     representation === "error"
