@@ -1,4 +1,5 @@
 import { AsyncFunctionPointer } from "../abi/async-function-pointer.js";
+import { AsyncTask } from "../abi/async-task.js";
 import { projectErrorExistential } from "../abi/existential.js";
 import { readValue, SwiftValue } from "../abi/instance.js";
 import { LIBSWIFT_CORE_NAME, SWIFT_HOST_SUPPORTED } from "./platform.js";
@@ -67,6 +68,19 @@ function moduleExport(moduleName: string, symbol: string): NativePointer {
 
 function concExport(name: string): NativePointer {
   return moduleExport(CONCURRENCY_MODULE, name);
+}
+
+// swift_task_getCurrent is SWIFT_CC(swift) with no formal args, so plain C ABI reaches it.
+let getCurrentTask: (() => NativePointer) | null = null;
+export function currentAsyncTask(): AsyncTask | null {
+  if (!SWIFT_HOST_SUPPORTED) {
+    throw new Error(`async introspection needs an arm64 Swift host, got ${Process.arch}/${Process.platform}`);
+  }
+  if (getCurrentTask === null) {
+    getCurrentTask = new NativeFunction(concExport("swift_task_getCurrent"), "pointer", []) as unknown as () => NativePointer;
+  }
+  const task = getCurrentTask();
+  return task.isNull() ? null : new AsyncTask(task);
 }
 
 function fpReg(cls: FloatClass, i: number): Arm64Register {
