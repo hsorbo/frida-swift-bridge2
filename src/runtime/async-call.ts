@@ -265,10 +265,21 @@ function reapAbandoned(): void {
   }
 }
 
+// The continuation runs a few more instructions (frame dealloc + resume-parent branch) after it sets
+// `done` and wakes us, so its page must not be freed the instant the call resolves — Frida recycling
+// it under the still-running worker branches through rewritten code and segfaults. Root recent calls
+// so a page outlives its worker by many generations.
+const RETAINED_CALLS = 128;
+const retained: SynthesizedCall[] = [];
+
 function startCall(afp: AsyncFunctionPointer, args: NativePointer[], options: AsyncCallOptions, signalSemaphore: NativePointer | null): SynthesizedCall {
   const api = getDriveApi();
   reapAbandoned();
   const call = synthesizeAsyncCall(afp, args, options, signalSemaphore);
+  retained.push(call);
+  if (retained.length > RETAINED_CALLS) {
+    retained.shift();
+  }
   const task = api.create(ENQUEUE_JOB | COPY_TASK_LOCALS, NULL, NULL, call.operation, NULL, OPERATION_CONTEXT_SIZE)[0];
   if (task.isNull()) {
     throw new Error("swift_task_create_common failed");
