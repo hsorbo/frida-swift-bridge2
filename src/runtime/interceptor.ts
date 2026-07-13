@@ -373,8 +373,8 @@ interface CompletionEntry {
   genericParams: string[];
   outBuffer: NativePointer | null;
   throws: boolean;
-  cancelled: boolean;
   owner: Set<CompletionEntry>;
+  slot: CompletionSlot;
 }
 
 interface CompletionSlot {
@@ -382,9 +382,8 @@ interface CompletionSlot {
   entries: CompletionEntry[];
 }
 
-// Completions are observed by redirecting the frame's ResumeParent (a data pointer) at one persistent
-// capture trampoline, never by patching the live resumeParent page: patching code a completing worker
-// is already about to execute on another core races its I-cache and silently drops the hook.
+// Completion is observed by redirecting the frame's ResumeParent (a data pointer) at a persistent
+// trampoline; patching the live resumeParent page instead races the completing worker's I-cache.
 const pending = new Map<string, CompletionSlot>();
 const COMPLETION_TRAMPOLINE_SIZE = 0x200;
 let completionTrampoline: NativePointer | null = null;
@@ -416,8 +415,7 @@ function fireCompletion(entry: CompletionEntry, spillPtr: NativePointer, invocat
   );
 }
 
-// x22 (context) and x20 (error) are AAPCS callee-saved, so the bridge call preserves them for the tail
-// branch; x0..x7/d0..d7 hold the result and are caller-saved, so spill them for readback afterwards.
+// x22/x20 are callee-saved so the bridge preserves them; the caller-saved result regs are spilled.
 function getCompletionTrampoline(): NativePointer {
   if (completionTrampoline !== null) {
     return completionTrampoline;
@@ -429,9 +427,7 @@ function getCompletionTrampoline(): NativePointer {
     const invocationThis = this as unknown as InvocationContext;
     for (const entry of slot.entries) {
       entry.owner.delete(entry);
-      if (!entry.cancelled) {
-        fireCompletion(entry, spillPtr, invocationThis);
-      }
+      fireCompletion(entry, spillPtr, invocationThis);
     }
     return slot.original;
   }, "pointer", ["pointer", "pointer"]);
@@ -500,8 +496,8 @@ function attachAsync(target: NativePointer, callbacks: SwiftAsyncCallbacks): Inv
       genericParams,
       outBuffer: indirectReturn ? context.x0 : null,
       throws,
-      cancelled: false,
       owner: liveEntries,
+      slot,
     };
     slot.entries.push(entry);
     liveEntries.add(entry);
@@ -545,8 +541,13 @@ function attachAsync(target: NativePointer, callbacks: SwiftAsyncCallbacks): Inv
   return {
     detach() {
       entryListener.detach();
+      // Only the bridge may delete a slot; a completing worker may already be dereferencing pending[key].
       for (const entry of liveEntries) {
-        entry.cancelled = true;
+        const entries = entry.slot.entries;
+        const i = entries.indexOf(entry);
+        if (i !== -1) {
+          entries.splice(i, 1);
+        }
       }
       liveEntries.clear();
     },
