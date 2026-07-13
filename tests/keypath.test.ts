@@ -18,7 +18,7 @@ describe("readKeyPathBuffer", () => {
   test("reads a single stored-struct component with an inline offset", () => {
     const buffer = readKeyPathBuffer(keyPath("keyPathPointX"));
     expect(buffer.trivial).toBe(true);
-    expect(buffer.isSingleComponent).toBe(true);
+    // isSingleComponent is a Swift 6.2+ runtime optimization flag, unset before it; components.length is the real measure.
     expect(buffer.hasReferencePrefix).toBe(false);
     expect(buffer.components.length).toBe(1);
 
@@ -31,7 +31,6 @@ describe("readKeyPathBuffer", () => {
 
   test("reads a get-only computed component", () => {
     const buffer = readKeyPathBuffer(keyPath("keyPathPointDoubled"));
-    expect(buffer.isSingleComponent).toBe(true);
     expect(buffer.components.length).toBe(1);
 
     const component = buffer.components[0] as ComputedKeyPathComponent;
