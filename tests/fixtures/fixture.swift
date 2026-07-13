@@ -254,6 +254,8 @@ public struct ConstrainedBox<T: Scalable> {
     public var value: T
     public func scaledStored(by k: Int) -> Int { value.scaled(by: k) }
     public func stored() -> T { value }
+    public func scaledStoredAsync(by k: Int) async -> Int { value.scaled(by: k) }
+    public func storedAsync() async -> T { value }
 }
 
 public func makeScaleGeneric() -> Int {
@@ -481,6 +483,8 @@ public class GenericHolder<T: Scalable> {
     public init(value: T) { self.value = value }
     public func stored() -> T { value }
     public func scaledStored(by k: Int) -> Int { value.scaled(by: k) }
+    public func storedAsync() async -> T { value }
+    public func scaledStoredAsync(by k: Int) async -> Int { value.scaled(by: k) }
 }
 public func makeHolder(_ n: Int) -> GenericHolder<Int> { GenericHolder(value: n) }
 

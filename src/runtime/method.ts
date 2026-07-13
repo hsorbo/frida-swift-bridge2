@@ -1293,20 +1293,26 @@ function planGenericTypeMethod(receiver: Metadata, methodName: string, options: 
     const overloads = candidates.map((c) => c.signature.selector).join(", ");
     throw new Error(`ambiguous method ${methodName} on ${unboundName}: ${overloads} (disambiguate with { arity }, { labels }, or { argTypes })`);
   }
-  const { address, signature } = candidates[0];
-  if (signature.async) {
-    throw new Error(`${signature.selector}: async methods on a generic type (self-recovered metadata) are not yet supported`);
-  }
+  const { address, signature, mangled } = candidates[0];
   const argPlans = signature.argTypeNames.map((n) => planTypeMemberArg(n, typeParams, typeArguments));
   const returnPlan =
     signature.returnTypeName === null ? null : planTypeMemberArg(signature.returnTypeName, typeParams, typeArguments);
+  let asyncFunctionPointer: AsyncFunctionPointer | undefined;
+  if (signature.async) {
+    const module = Process.findModuleByAddress(address);
+    asyncFunctionPointer = module === null ? undefined : findAsyncFunctionPointer(module, mangled) ?? undefined;
+    if (asyncFunctionPointer === undefined) {
+      throw new Error(`cannot resolve async function pointer for ${signature.selector}`);
+    }
+  }
   return {
     address,
     selector: signature.selector,
     argPlans,
     returnPlan,
     throws: signature.throws,
-    async: false,
+    async: signature.async,
+    asyncFunctionPointer,
     typeArguments: trailsSelfMetadata ? [receiver] : [],
     witnessTables: [],
   };
@@ -1317,8 +1323,11 @@ export function bindGenericTypeValueMethod(
   self: NativePointer,
   methodName: string,
   options: MethodResolveOptions = {}
-): GenericBoundMethod {
-  return new GenericBoundMethod(planGenericTypeMethod(receiver, methodName, options, true), self, { indirect: true });
+): GenericBoundMethod | GenericBoundAsyncMethod {
+  const plan = planGenericTypeMethod(receiver, methodName, options, true);
+  return plan.async
+    ? new GenericBoundAsyncMethod(plan, self, { indirect: true })
+    : new GenericBoundMethod(plan, self, { indirect: true });
 }
 
 export function bindGenericTypeClassMethod(
@@ -1326,8 +1335,11 @@ export function bindGenericTypeClassMethod(
   self: NativePointer,
   methodName: string,
   options: MethodResolveOptions = {}
-): GenericBoundMethod {
-  return new GenericBoundMethod(planGenericTypeMethod(receiver, methodName, options, false), self, { indirect: true });
+): GenericBoundMethod | GenericBoundAsyncMethod {
+  const plan = planGenericTypeMethod(receiver, methodName, options, false);
+  return plan.async
+    ? new GenericBoundAsyncMethod(plan, self, { indirect: true })
+    : new GenericBoundMethod(plan, self, { indirect: true });
 }
 
 interface ResolvedAccessor {
