@@ -31,12 +31,18 @@ export interface AsyncFloatArg {
   cls: FloatClass;
 }
 
+export interface SerialExecutorRef {
+  identity: NativePointer;
+  implementation: NativePointer;
+}
+
 export interface AsyncCallOptions {
   receiver?: NativePointer;
   throws?: boolean;
   floatArgs?: AsyncFloatArg[];
   result?: AsyncResultShape;
   timeoutMs?: number; // 0 waits forever
+  onActor?: SerialExecutorRef;
 }
 
 export class SwiftAsyncThrow extends Error {
@@ -103,6 +109,18 @@ function resultBufferSize(shape: AsyncResultShape): number {
   }
 }
 
+const TASK_OPTION_INITIAL_SERIAL_EXECUTOR = 0;
+
+// InitialSerialExecutorTaskOptionRecord: [Flags(kind), Parent, Identity, Impl] — 4 words per TaskOptions.h.
+function buildActorTaskOption(executor: SerialExecutorRef): NativePointer {
+  const record = Memory.alloc(4 * Process.pointerSize);
+  record.writePointer(ptr(TASK_OPTION_INITIAL_SERIAL_EXECUTOR));
+  record.add(1 * Process.pointerSize).writePointer(NULL);
+  record.add(2 * Process.pointerSize).writePointer(executor.identity);
+  record.add(3 * Process.pointerSize).writePointer(executor.implementation);
+  return record;
+}
+
 // Held for the task's lifetime so Frida keeps the trampoline pages and result buffers alive.
 interface SynthesizedCall {
   operation: NativePointer;
@@ -110,6 +128,7 @@ interface SynthesizedCall {
   result: NativePointer;
   error: NativePointer;
   done: NativePointer;
+  option: NativePointer | null;
 }
 
 // Two swiftasync trampolines (PAC stripped): `operation` allocates foo's frame, wires Parent/
@@ -209,7 +228,9 @@ function synthesizeAsyncCall(afp: AsyncFunctionPointer, args: NativePointer[], o
     w.flush();
   });
 
-  return { operation, continuation, result, error, done };
+  const option = options.onActor !== undefined ? buildActorTaskOption(options.onActor) : null;
+
+  return { operation, continuation, result, error, done, option };
 }
 
 type CreateTask = (
@@ -280,7 +301,7 @@ function startCall(afp: AsyncFunctionPointer, args: NativePointer[], options: As
   if (retained.length > RETAINED_CALLS) {
     retained.shift();
   }
-  const task = api.create(ENQUEUE_JOB | COPY_TASK_LOCALS, NULL, NULL, call.operation, NULL, OPERATION_CONTEXT_SIZE)[0];
+  const task = api.create(ENQUEUE_JOB | COPY_TASK_LOCALS, call.option ?? NULL, NULL, call.operation, NULL, OPERATION_CONTEXT_SIZE)[0];
   if (task.isNull()) {
     throw new Error("swift_task_create_common failed");
   }
