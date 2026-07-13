@@ -12,7 +12,7 @@ function holder(n: number): ClassInstance {
   const mod = loadFixture();
   const Int = Swift.metadataFor("Swift.Int")!;
   const Holder = Swift.metadataFor("fixture.GenericHolder", [Int])!;
-  const fn = [...mod.enumerateExports()].find((e) => Swift.demangle(e.name)?.includes("fixture.makeHolder"))!;
+  const fn = [...mod.enumerateExports()].find((e) => Swift.demangle(e.name)?.includes("fixture.makeHolder("))!;
   const cell = Memory.alloc(Process.pointerSize);
   cell.writeS64(n);
   return new ClassInstance(makeSwiftNativeFunction(fn.address, Holder, [Int])(cell)!.readPointer());
