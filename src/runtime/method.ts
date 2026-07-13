@@ -27,7 +27,7 @@ import {
   floatLayout,
 } from "./calling-convention.js";
 import { AsyncFunctionPointer, findAsyncFunctionPointer } from "../abi/async-function-pointer.js";
-import { callAsync, AsyncCallOptions, AsyncResultShape, AsyncFloatArg } from "./async-call.js";
+import { callAsync, AsyncCallOptions, AsyncResultShape, AsyncFloatArg, SerialExecutorRef } from "./async-call.js";
 import { SwiftClosure, ClosureSpec, ClosureBody, LoadableClosureBody, SwiftThrow } from "./closure.js";
 import { typeName } from "./type-name.js";
 import { readString, createString } from "../abi/string.js";
@@ -543,7 +543,8 @@ export class BoundAsyncMethod {
   constructor(
     readonly resolved: ResolvedMethod,
     private readonly self: NativePointer | null,
-    private readonly selfRouting: SelfRouting = { indirect: true }
+    private readonly selfRouting: SelfRouting = { indirect: true },
+    private readonly executor: SerialExecutorRef | null = null
   ) {
     if (resolved.asyncFunctionPointer === undefined) {
       throw new Error(`${resolved.selector} is not async`);
@@ -572,6 +573,9 @@ export class BoundAsyncMethod {
     };
     const { gp, fp } = lowerAsyncArgs(argTypes, buffers);
     const options: AsyncCallOptions = { throws };
+    if (this.executor !== null) {
+      options.onActor = this.executor;
+    }
     if (this.self !== null) {
       if (this.selfRouting.indirect) {
         options.receiver = this.self;
@@ -1621,6 +1625,45 @@ export function witnessGetProperty(table: WitnessTable, self: NativePointer, nam
 export function witnessSetProperty(table: WitnessTable, self: NativePointer, name: string, value: CallArg): void {
   const accessor = resolveWitnessAccessor(table, name, "setter");
   invokerForWitnessAccessor(accessor)(self, marshalArg(accessor.type, value));
+}
+
+let actorProtocol: ContextDescriptor | null | undefined;
+let unownedSerialExecutorType: Metadata | null | undefined;
+
+// Reads the actor's Actor.unownedExecutor: {actor, 0} for a default actor, {executor, witness-table} for a custom one.
+export function actorSerialExecutor(actorType: Metadata, self: NativePointer): SerialExecutorRef | null {
+  if (actorProtocol === undefined) {
+    actorProtocol = findProtocol("Swift.Actor");
+  }
+  if (actorProtocol === null) {
+    return null;
+  }
+  const tableAddr = conformsToProtocol(actorType, actorProtocol);
+  if (tableAddr === null) {
+    return null;
+  }
+  const getter = readProtocolRequirements(actorProtocol).find((r) => r.kind === ProtocolRequirementKind.Getter);
+  if (getter === undefined) {
+    return null;
+  }
+  if (unownedSerialExecutorType === undefined) {
+    unownedSerialExecutorType = resolveType("Swift.UnownedSerialExecutor");
+  }
+  if (unownedSerialExecutorType === null) {
+    return null;
+  }
+  const address = new WitnessTable(tableAddr, actorType).requirement(getter.witnessIndex);
+  const key = `actor-executor:${address}`;
+  let fn = invokerCache.get(key);
+  if (fn === undefined) {
+    fn = makeSwiftNativeFunction(address, unownedSerialExecutorType, [], { hasSelf: true });
+    invokerCache.set(key, fn);
+  }
+  const ref = fn(self);
+  if (ref === null) {
+    return null;
+  }
+  return { identity: ref.readPointer(), implementation: ref.add(Process.pointerSize).readPointer() };
 }
 
 const DIRECT_BRANCH_MNEMONICS: Partial<Record<Architecture, ReadonlySet<string>>> = {

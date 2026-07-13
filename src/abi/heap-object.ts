@@ -1,6 +1,6 @@
 import { Metadata } from "./metadata.js";
 import { ClassMetadata, classMetadataOf, dynamicTypeOf } from "./class-metadata.js";
-import { readVTableChain, VTableEntry } from "./class-descriptor.js";
+import { isActor, isDefaultActor, readVTableChain, VTableEntry } from "./class-descriptor.js";
 import { enumerateClassInstanceFields, readObject, SwiftValue } from "./instance.js";
 import { ValueInstance } from "./value.js";
 import { getSwiftCoreApi } from "../runtime/api.js";
@@ -13,6 +13,7 @@ import {
   GenericBoundAsyncMethod,
   ResolvedMethod,
   resolveMethod,
+  actorSerialExecutor,
   bindGenericMethod,
   bindGenericTypeClassMethod,
   MethodResolveOptions,
@@ -143,9 +144,15 @@ export class ClassInstance implements RawInstance {
       return bindGenericTypeClassMethod(this.dynamicType, this.handle, name, options);
     }
     const resolved = resolveMethod(this.typeName, name, { ...options, static: false });
-    return resolved.async === true
-      ? new BoundAsyncMethod(resolved, this.handle)
-      : new BoundMethod(resolved, this.handle);
+    if (resolved.async === true) {
+      let executor = null;
+      if (isActor(this.metadata.description)) {
+        executor = actorSerialExecutor(this.dynamicType, this.handle)
+          ?? (isDefaultActor(this.metadata.description) ? { identity: this.handle, implementation: NULL } : null);
+      }
+      return new BoundAsyncMethod(resolved, this.handle, { indirect: true }, executor);
+    }
+    return new BoundMethod(resolved, this.handle);
   }
 
   get vtable(): VTableEntry[] {

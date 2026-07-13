@@ -716,7 +716,54 @@ public func genericCapturingContext() -> UnsafeMutableRawPointer {
 
 public actor Ticker {
     public var count = 0
+    public init() {}
     public func tick() { count += 1 }
+    public func advance() async -> Int {
+        count += 1
+        return count
+    }
+    public func advance(by n: Int) async -> Int {
+        count += n
+        return count
+    }
+    public func scaledCountAsync(_ factor: Double) async -> Double {
+        return Double(count) * factor
+    }
+    public func labelAsync() async -> String {
+        return "tick-\(count)"
+    }
+    public func advanceOrThrowAsync(by n: Int) async throws -> Int {
+        if n == 0 { throw TickError.zero }
+        count += n
+        return count
+    }
+}
+
+enum TickError: Error { case zero }
+
+final class TickerSerialExecutor: SerialExecutor {
+    private let queue = DispatchQueue(label: "fixture.custom-ticker")
+    func enqueue(_ job: consuming ExecutorJob) {
+        let unowned = UnownedJob(job)
+        let executor = asUnownedSerialExecutor()
+        queue.async { unowned.runSynchronously(on: executor) }
+    }
+    func asUnownedSerialExecutor() -> UnownedSerialExecutor {
+        UnownedSerialExecutor(ordinary: self)
+    }
+}
+
+public actor CustomExecutorTicker {
+    public var count = 0
+    private let executor = TickerSerialExecutor()
+    public init() {}
+    public nonisolated var unownedExecutor: UnownedSerialExecutor {
+        executor.asUnownedSerialExecutor()
+    }
+    public func advance() async -> Int {
+        count += 1
+        return count
+    }
 }
 
 public func computeAsync(_ x: Int) async -> Int {
