@@ -396,6 +396,16 @@ public final class Robot {
     }
 }
 
+// Members named exactly like the facade's own raw spellings. The facade reserves its surface under
+// $-prefixes ($handle/$get/$call/$field), so these bare Swift members stay reachable, not shadowed.
+public final class Clash {
+    public var handle: Int
+    public init(handle: Int) { self.handle = handle }
+    public func get() -> String { "got \(handle)" }
+    public func call() -> Int { handle * 2 }
+    public func field() -> Int { handle + 100 }
+}
+
 // Non-final so pub/hidden get vtable slots; hidden is internal (absent from the export trie).
 public class Dispatcher {
     public init() {}

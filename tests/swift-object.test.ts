@@ -110,3 +110,35 @@ describe("Swift.Object intrinsics", () => {
     expect(o.toString()).toBe(`<fixture.Robot: ${o.$handle}>`);
   });
 });
+
+function clash(handle: number) {
+  return (Swift.typeOf(Swift.metadataFor("fixture.Clash")!) as ClassType).init(handle);
+}
+
+describe("Swift.Object collision-proofing", () => {
+  beforeEach(() => { loadFixture(); });
+
+  test("bare names reach Swift members that clash with the facade's raw spellings", () => {
+    const c = clash(7);
+    expect(c.handle).toBe(7);      // stored property, not the native pointer
+    expect(c.get()).toBe("got 7"); // method named get, not a property reader
+    expect(c.call()).toBe(14);     // method named call, not the bridge invoker
+    expect(c.field()).toBe(107);   // method named field, not the bridge field accessor
+  });
+
+  test("$-prefixed intrinsics stay available alongside the clashing members", () => {
+    const c = clash(7);
+    expect(c.$handle.isNull()).toBe(false);
+    expect(c.$get("handle")).toBe(7);
+    expect(c.$call("get")).toBe("got 7");
+    expect(c.$field("handle").read()).toBe(7);
+  });
+
+  test("raw spellings are not leaked when no Swift member shadows them", () => {
+    const o = robot("R2") as unknown as Record<string, unknown>;
+    expect(o.handle).toBeUndefined();
+    expect(o.get).toBeUndefined();
+    expect(o.call).toBeUndefined();
+    expect(o.field).toBeUndefined();
+  });
+});
