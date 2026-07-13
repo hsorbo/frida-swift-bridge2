@@ -366,6 +366,112 @@ function resolveAsyncEntry(target: NativePointer): NativePointer {
   return target;
 }
 
+interface CompletionEntry {
+  callbacks: SwiftAsyncCallbacks;
+  ret: TypePlan | null;
+  generics: Metadata[];
+  genericParams: string[];
+  outBuffer: NativePointer | null;
+  throws: boolean;
+  owner: Set<CompletionEntry>;
+  slot: CompletionSlot;
+}
+
+interface CompletionSlot {
+  original: NativePointer;
+  entries: CompletionEntry[];
+}
+
+// Completion is observed by redirecting the frame's ResumeParent (a data pointer) at a persistent
+// trampoline; patching the live resumeParent page instead races the completing worker's I-cache.
+const pending = new Map<string, CompletionSlot>();
+const COMPLETION_TRAMPOLINE_SIZE = 0x200;
+let completionTrampoline: NativePointer | null = null;
+let completionBridge: NativeCallback<"pointer", ["pointer", "pointer"]> | null = null;
+
+function spillContext(spillPtr: NativePointer, asyncContext: NativePointer): Arm64CpuContext {
+  const ctx: Record<string, NativePointer | number> = {};
+  for (let i = 0; i < 8; i++) {
+    ctx[`x${i}`] = spillPtr.add(i * 8).readPointer();
+  }
+  for (let i = 0; i < 8; i++) {
+    const at = spillPtr.add(0x40 + i * 8);
+    ctx[`d${i}`] = at.readDouble();
+    ctx[`s${i}`] = at.readFloat();
+  }
+  ctx.x20 = spillPtr.add(0x80).readPointer();
+  ctx.x22 = asyncContext;
+  return ctx as unknown as Arm64CpuContext;
+}
+
+function fireCompletion(entry: CompletionEntry, context: Arm64CpuContext, self: InvocationContext): void {
+  if (entry.throws && !context.x20.isNull()) {
+    entry.callbacks.onComplete!.call(self, null, decodeThrownError(context.x20));
+    return;
+  }
+  entry.callbacks.onComplete!.call(
+    self,
+    materializeReturn(context, entry.ret, entry.outBuffer, entry.generics, entry.genericParams)
+  );
+}
+
+// x22/x20 are callee-saved so the bridge preserves them; the caller-saved result regs are spilled.
+function getCompletionTrampoline(): NativePointer {
+  if (completionTrampoline !== null) {
+    return completionTrampoline;
+  }
+  completionBridge = new NativeCallback(function (this: CallbackContext, context: NativePointer, spillPtr: NativePointer): NativePointer {
+    const key = context.toString();
+    const slot = pending.get(key)!;
+    pending.delete(key);
+    const completion = spillContext(spillPtr, context);
+    const self = { context: completion, returnAddress: this.returnAddress, threadId: Process.getCurrentThreadId() } as unknown as InvocationContext;
+    for (const entry of slot.entries) {
+      entry.owner.delete(entry);
+      // a throwing onComplete must not divert the native resume; isolate it and re-surface next tick
+      try {
+        fireCompletion(entry, completion, self);
+      } catch (e) {
+        setImmediate(() => {
+          throw e;
+        });
+      }
+    }
+    return slot.original;
+  }, "pointer", ["pointer", "pointer"]);
+
+  const page = Memory.alloc(Process.pageSize);
+  Memory.patchCode(page, COMPLETION_TRAMPOLINE_SIZE, (slot) => {
+    const w = new Arm64Writer(slot, { pc: page });
+    w.putPushRegReg("x29", "x30");
+    w.putSubRegRegImm("sp", "sp", 0x90);
+    for (let i = 0; i < 8; i++) {
+      w.putStrRegRegOffset(`x${i}` as Arm64Register, "sp", i * 8);
+    }
+    for (let i = 0; i < 8; i++) {
+      w.putStrRegRegOffset(`d${i}` as Arm64Register, "sp", 0x40 + i * 8);
+    }
+    w.putStrRegRegOffset("x20", "sp", 0x80);
+    w.putMovRegReg("x0", "x22");
+    w.putAddRegRegImm("x1", "sp", 0);
+    w.putLdrRegAddress("x14", completionBridge!);
+    w.putBlrRegNoAuth("x14");
+    w.putMovRegReg("x9", "x0");
+    for (let i = 0; i < 8; i++) {
+      w.putLdrRegRegOffset(`x${i}` as Arm64Register, "sp", i * 8);
+    }
+    for (let i = 0; i < 8; i++) {
+      w.putLdrRegRegOffset(`d${i}` as Arm64Register, "sp", 0x40 + i * 8);
+    }
+    w.putAddRegRegImm("sp", "sp", 0x90);
+    w.putPopRegReg("x29", "x30");
+    w.putBrRegNoAuth("x9");
+    w.flush();
+  });
+  completionTrampoline = page;
+  return page;
+}
+
 function attachAsync(target: NativePointer, callbacks: SwiftAsyncCallbacks): InvocationListener {
   if (callbacks.onEnter === undefined && callbacks.onFirstSuspend === undefined && callbacks.onComplete === undefined) {
     throw new Error("attachAsync requires onEnter, onFirstSuspend, or onComplete");
@@ -378,30 +484,31 @@ function attachAsync(target: NativePointer, callbacks: SwiftAsyncCallbacks): Inv
   const argRegBase = indirectReturn ? 1 : 0; // an @out result takes x0
   const returnNeedsGenerics = wantsCompletion && ret !== null && isIndirectPlan(ret) && genericParams.length > 0;
   const wantsArgs = callbacks.onEnter !== undefined || returnNeedsGenerics;
-  const pendingCompletions = new Set<InvocationListener>();
+  const liveEntries = new Set<CompletionEntry>();
 
   const armCompletion = (context: Arm64CpuContext, generics: Metadata[]): void => {
+    const trampoline = getCompletionTrampoline();
     const taskContext = context.x22;
-    const outBuffer = indirectReturn ? context.x0 : null;
-    const resumeParent = new AsyncContext(taskContext).resumeParent;
-    const listener = Interceptor.attach(resumeParent, {
-      onEnter(this: InvocationContext) {
-        const cc = this.context as Arm64CpuContext;
-        const completingContext = cc.x22; // callee reenters ResumeParent with its own context
-        if (!completingContext.equals(taskContext)) {
-          return;
-        }
-        listener.detach();
-        pendingCompletions.delete(listener);
-        const swiftError = cc.x20; // swiftcc async returns a thrown error here
-        if (throws && !swiftError.isNull()) {
-          callbacks.onComplete!.call(this, null, decodeThrownError(swiftError));
-          return;
-        }
-        callbacks.onComplete!.call(this, materializeReturn(cc, ret, outBuffer, generics, genericParams));
-      },
-    });
-    pendingCompletions.add(listener);
+    const ctx = new AsyncContext(taskContext);
+    const key = taskContext.toString();
+    let slot = pending.get(key);
+    if (slot === undefined) {
+      slot = { original: ctx.resumeParent, entries: [] };
+      pending.set(key, slot);
+      ctx.setResumeParent(trampoline);
+    }
+    const entry: CompletionEntry = {
+      callbacks,
+      ret,
+      generics,
+      genericParams,
+      outBuffer: indirectReturn ? context.x0 : null,
+      throws,
+      owner: liveEntries,
+      slot,
+    };
+    slot.entries.push(entry);
+    liveEntries.add(entry);
   };
 
   const onEnter =
@@ -442,10 +549,15 @@ function attachAsync(target: NativePointer, callbacks: SwiftAsyncCallbacks): Inv
   return {
     detach() {
       entryListener.detach();
-      for (const listener of pendingCompletions) {
-        listener.detach();
+      // Only the bridge may delete a slot; a completing worker may already be dereferencing pending[key].
+      for (const entry of liveEntries) {
+        const entries = entry.slot.entries;
+        const i = entries.indexOf(entry);
+        if (i !== -1) {
+          entries.splice(i, 1);
+        }
       }
-      pendingCompletions.clear();
+      liveEntries.clear();
     },
   };
 }

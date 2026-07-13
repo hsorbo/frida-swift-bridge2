@@ -13,6 +13,10 @@ export class AsyncContext {
     return this.handle.add(OFFSETOF_RESUME_PARENT).readPointer().strip();
   }
 
+  setResumeParent(fn: NativePointer): void {
+    this.handle.add(OFFSETOF_RESUME_PARENT).writePointer(fn);
+  }
+
   *ancestors(): Generator<AsyncContext> {
     let ctx = this.parent;
     while (ctx !== null) {
