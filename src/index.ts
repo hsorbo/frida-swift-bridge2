@@ -174,6 +174,15 @@ export {
 } from "./abi/tuple.js";
 export { metatypeInstanceType } from "./abi/metatype.js";
 export {
+  KeyPathBuffer,
+  KeyPathComponent,
+  StoredKeyPathComponent,
+  OptionalKeyPathComponent,
+  ComputedKeyPathComponent,
+  KeyPathComputedArguments,
+  readKeyPathBuffer,
+} from "./abi/keypath.js";
+export {
   FunctionType as FunctionSignature,
   FunctionParameter,
   FunctionMetadataConvention,

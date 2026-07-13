@@ -109,6 +109,36 @@ public struct Point {
     public var doubled: Int { x * 2 }
 }
 
+public struct Rect {
+    public var width: Int
+    public var scaled: Int {
+        get { width * 2 }
+        set { width = newValue / 2 }
+    }
+}
+
+public final class Gadget {
+    public var value: Int
+    public init(value: Int) { self.value = value }
+}
+
+public struct Line {
+    public var start: Point
+    public var end: Point
+}
+
+private let keyPathPointXValue: AnyKeyPath = \Point.x
+private let keyPathPointDoubledValue: AnyKeyPath = \Point.doubled
+private let keyPathRectScaledValue: AnyKeyPath = \Rect.scaled
+private let keyPathGadgetValueValue: AnyKeyPath = \Gadget.value
+private let keyPathLineEndXValue: AnyKeyPath = \Line.end.x
+
+public func keyPathPointX() -> UnsafeRawPointer { unsafeBitCast(keyPathPointXValue, to: UnsafeRawPointer.self) }
+public func keyPathPointDoubled() -> UnsafeRawPointer { unsafeBitCast(keyPathPointDoubledValue, to: UnsafeRawPointer.self) }
+public func keyPathRectScaled() -> UnsafeRawPointer { unsafeBitCast(keyPathRectScaledValue, to: UnsafeRawPointer.self) }
+public func keyPathGadgetValue() -> UnsafeRawPointer { unsafeBitCast(keyPathGadgetValueValue, to: UnsafeRawPointer.self) }
+public func keyPathLineEndX() -> UnsafeRawPointer { unsafeBitCast(keyPathLineEndXValue, to: UnsafeRawPointer.self) }
+
 // Generic value args pass indirectly; wrappers drive them so the hook side can observe a call.
 @inline(never)
 public func genericIdentity<T>(_ x: T) -> T {
