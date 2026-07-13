@@ -108,7 +108,11 @@ describe("async interceptor", () => {
     });
     try {
       expect(drive(9)).toBe(18);
-      expect(seen).toEqual(["enter", "suspend", "complete"]);
+      // onFirstSuspend fires on the suspending worker, onComplete on the resuming worker; their
+      // order across those threads is a race, so only enter-first is guaranteed.
+      expect(seen[0]).toBe("enter");
+      expect(seen).toContain("suspend");
+      expect(seen).toContain("complete");
       expect(result).toBe(18);
     } finally {
       listener.detach();
