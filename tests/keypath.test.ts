@@ -1,7 +1,12 @@
 import { test, expect, describe, beforeEach } from "@frida/injest/agent";
 import { requireSwift } from "./swift.js";
 import { fixtureExport, loadFixture } from "./fixtures/load.js";
-import { readKeyPathBuffer, resolveKeyPathNames } from "../src/abi/keypath.js";
+import {
+  readKeyPathBuffer,
+  resolveKeyPathNames,
+  hashKeyPathArguments,
+  keyPathArgumentsEqual,
+} from "../src/abi/keypath.js";
 import type { StoredKeyPathComponent, ComputedKeyPathComponent } from "../src/abi/keypath.js";
 import { typeName } from "../src/runtime/type-name.js";
 import { Swift } from "../src/index.js";
@@ -55,6 +60,35 @@ describe("readKeyPathBuffer", () => {
     expect(component.setter).not.toBeNull();
     expect(component.setter!.isNull()).toBe(false);
     expect(component.getter.equals(component.setter!)).toBe(false);
+  });
+
+  test("decodes a subscript keypath's computed-argument buffer and witnesses", () => {
+    const component = readKeyPathBuffer(keyPath("keyPathArrayIndex2"))
+      .components[0] as ComputedKeyPathComponent;
+    expect(component.kind).toBe("computed");
+
+    const args = component.arguments;
+    expect(args).not.toBeNull();
+    expect(args!.size).toBeGreaterThan(0);
+    expect(args!.data.isNull()).toBe(false);
+    expect(args!.witnesses.copy.isNull()).toBe(false);
+    expect(args!.witnesses.equals.isNull()).toBe(false);
+    expect(args!.witnesses.hash.isNull()).toBe(false);
+  });
+
+  test("identifies subscript-argument buffers through the equals and hash witnesses", () => {
+    const two = readKeyPathBuffer(keyPath("keyPathArrayIndex2"))
+      .components[0] as ComputedKeyPathComponent;
+    const twoAgain = readKeyPathBuffer(keyPath("keyPathArrayIndex2Again"))
+      .components[0] as ComputedKeyPathComponent;
+    const five = readKeyPathBuffer(keyPath("keyPathArrayIndex5"))
+      .components[0] as ComputedKeyPathComponent;
+
+    expect(keyPathArgumentsEqual(two.arguments!, twoAgain.arguments!)).toBe(true);
+    expect(keyPathArgumentsEqual(two.arguments!, five.arguments!)).toBe(false);
+
+    expect(hashKeyPathArguments(two.arguments!).equals(hashKeyPathArguments(twoAgain.arguments!))).toBe(true);
+    expect(hashKeyPathArguments(two.arguments!).equals(hashKeyPathArguments(five.arguments!))).toBe(false);
   });
 
   test("reads a stored-class component with the field byte offset", () => {

@@ -180,8 +180,11 @@ export {
   OptionalKeyPathComponent,
   ComputedKeyPathComponent,
   KeyPathComputedArguments,
+  KeyPathComputedArgumentWitnesses,
   readKeyPathBuffer,
   resolveKeyPathNames,
+  hashKeyPathArguments,
+  keyPathArgumentsEqual,
 } from "./abi/keypath.js";
 export {
   FunctionType as FunctionSignature,

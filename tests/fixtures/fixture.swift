@@ -161,6 +161,15 @@ public final class Sink {
 private let keyPathSinkOnEventValue: AnyKeyPath = \Sink.onEvent
 public func keyPathSinkOnEvent() -> UnsafeRawPointer { unsafeBitCast(keyPathSinkOnEventValue, to: UnsafeRawPointer.self) }
 
+// A subscript keypath captures its index into the computed component's argument buffer; two paths
+// with the same index compare equal through the argument witnesses, a different index does not.
+private let keyPathArrayIndex2Value: AnyKeyPath = \Array<Int>[2]
+private let keyPathArrayIndex2AgainValue: AnyKeyPath = \Array<Int>[2]
+private let keyPathArrayIndex5Value: AnyKeyPath = \Array<Int>[5]
+public func keyPathArrayIndex2() -> UnsafeRawPointer { unsafeBitCast(keyPathArrayIndex2Value, to: UnsafeRawPointer.self) }
+public func keyPathArrayIndex2Again() -> UnsafeRawPointer { unsafeBitCast(keyPathArrayIndex2AgainValue, to: UnsafeRawPointer.self) }
+public func keyPathArrayIndex5() -> UnsafeRawPointer { unsafeBitCast(keyPathArrayIndex5Value, to: UnsafeRawPointer.self) }
+
 // Generic value args pass indirectly; wrappers drive them so the hook side can observe a call.
 @inline(never)
 public func genericIdentity<T>(_ x: T) -> T {

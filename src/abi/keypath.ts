@@ -60,9 +60,17 @@ export interface OptionalKeyPathComponent extends KeyPathComponentBase {
   kind: "optionalChain" | "optionalWrap" | "optionalForce";
 }
 
+export interface KeyPathComputedArgumentWitnesses {
+  destroy: NativePointer | null;
+  copy: NativePointer;
+  equals: NativePointer;
+  hash: NativePointer;
+}
+
 export interface KeyPathComputedArguments {
   size: number;
-  witnesses: NativePointer;
+  data: NativePointer;
+  witnesses: KeyPathComputedArgumentWitnesses;
 }
 
 export interface ComputedKeyPathComponent extends KeyPathComponentBase {
@@ -146,10 +154,54 @@ function bodySize(header: number, body: NativePointer): number {
   }
 }
 
-function computedArgumentSize(argumentHeader: NativePointer): number {
+function readArgumentSizeWord(argumentHeader: NativePointer): { argumentSize: number; padding: number } {
   const raw = argumentHeader.readU64();
-  const padding = raw.and(ARGUMENT_PADDING_MASK).equals(0) ? 0 : Process.pointerSize;
-  return raw.and(ARGUMENT_SIZE_MASK).toNumber() + padding;
+  return {
+    argumentSize: raw.and(ARGUMENT_SIZE_MASK).toNumber(),
+    padding: raw.and(ARGUMENT_PADDING_MASK).equals(0) ? 0 : Process.pointerSize,
+  };
+}
+
+function computedArgumentSize(argumentHeader: NativePointer): number {
+  const { argumentSize, padding } = readArgumentSizeWord(argumentHeader);
+  return argumentSize + padding;
+}
+
+function decodeComputedArguments(argumentHeader: NativePointer, external: boolean): KeyPathComputedArguments {
+  const { argumentSize, padding } = readArgumentSizeWord(argumentHeader);
+  const witnessTable = argumentHeader.add(Process.pointerSize).readPointer().strip();
+  const data = argumentHeader.add(Process.pointerSize * (external ? 3 : 2)).add(padding);
+  const destroy = witnessTable.readPointer().strip();
+  return {
+    size: argumentSize,
+    data,
+    witnesses: {
+      destroy: destroy.isNull() ? null : destroy,
+      copy: witnessTable.add(Process.pointerSize).readPointer().strip(),
+      equals: witnessTable.add(Process.pointerSize * 2).readPointer().strip(),
+      hash: witnessTable.add(Process.pointerSize * 3).readPointer().strip(),
+    },
+  };
+}
+
+export function hashKeyPathArguments(args: KeyPathComputedArguments): Int64 {
+  const hash = new NativeFunction(args.witnesses.hash, "int64", ["pointer", "int64"]) as unknown as (
+    data: NativePointer,
+    size: number
+  ) => Int64;
+  return hash(args.data, args.size);
+}
+
+export function keyPathArgumentsEqual(a: KeyPathComputedArguments, b: KeyPathComputedArguments): boolean {
+  if (a.size !== b.size) {
+    return false;
+  }
+  const equals = new NativeFunction(a.witnesses.equals, "bool", ["pointer", "pointer", "int64"]) as unknown as (
+    x: NativePointer,
+    y: NativePointer,
+    size: number
+  ) => number;
+  return !!equals(a.data, b.data, a.size);
 }
 
 function decodeComponent(
@@ -196,6 +248,7 @@ function decodeComponent(
   const getterField = idField.add(Process.pointerSize);
   const setterField = getterField.add(Process.pointerSize);
   const hasArguments = (header & COMPUTED_HAS_ARGUMENTS_FLAG) !== 0;
+  const external = (header & COMPUTED_INSTANTIATED_FROM_EXTERNAL_WITH_ARGUMENTS_FLAG) !== 0;
   const argumentHeader = (settable ? setterField : getterField).add(Process.pointerSize);
 
   return {
@@ -212,9 +265,7 @@ function decodeComponent(
     id: idField.readPointer(),
     getter: getterField.readPointer().strip(),
     setter: settable ? setterField.readPointer().strip() : null,
-    arguments: hasArguments
-      ? { size: computedArgumentSize(argumentHeader), witnesses: argumentHeader.add(Process.pointerSize).readPointer().strip() }
-      : null,
+    arguments: hasArguments ? decodeComputedArguments(argumentHeader, external) : null,
     endOfReferencePrefix,
     nextType,
   };
