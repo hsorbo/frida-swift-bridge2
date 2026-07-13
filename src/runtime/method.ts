@@ -1378,13 +1378,11 @@ function protocolOf(table: WitnessTable): ContextDescriptor {
 }
 
 function stripWitnessWrapper(demangled: string): string | null {
-  const asyncPtr = "async function pointer to "; // an async witness slot holds the …Tu record, not code
-  const s = demangled.startsWith(asyncPtr) ? demangled.slice(asyncPtr.length) : demangled;
   const prefix = "protocol witness for ";
-  if (!s.startsWith(prefix)) {
+  if (!demangled.startsWith(prefix)) {
     return null;
   }
-  const rest = s.slice(prefix.length);
+  const rest = demangled.slice(prefix.length);
   const at = rest.indexOf(" in conformance ");
   return at === -1 ? rest : rest.slice(0, at);
 }
@@ -1465,7 +1463,8 @@ export function namedProtocolRequirements(protocol: ContextDescriptor): NamedReq
       if (found.has(requirement.witnessIndex)) {
         continue;
       }
-      const demangled = symbolicateLocal(table.requirement(requirement.witnessIndex));
+      const slot = table.requirement(requirement.witnessIndex);
+      const demangled = symbolicateLocal(requirement.isAsync ? new AsyncFunctionPointer(slot).code : slot);
       if (demangled === null) {
         continue;
       }

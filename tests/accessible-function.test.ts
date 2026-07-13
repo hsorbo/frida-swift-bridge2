@@ -27,7 +27,7 @@ describe("accessible functions", () => {
       expect(record instanceof AccessibleFunctionRecord).toBe(true);
       expect(record.isDistributed).toBe(true);
       expect(record.name.startsWith("$s7fixture10Calculator")).toBe(true);
-      expect(within(module, record.functionPointer)).toBe(true);
+      expect(within(module, record.asyncFunctionPointer.code)).toBe(true);
     }
     const demangled = records.map((r) => r.demangledName);
     expect(demangled).toContain(ADD_DEMANGLED);
