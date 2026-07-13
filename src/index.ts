@@ -181,6 +181,7 @@ export {
   ComputedKeyPathComponent,
   KeyPathComputedArguments,
   readKeyPathBuffer,
+  resolveKeyPathNames,
 } from "./abi/keypath.js";
 export {
   FunctionType as FunctionSignature,

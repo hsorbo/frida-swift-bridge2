@@ -1,5 +1,6 @@
-import { Metadata } from "./metadata.js";
-import { classMetadataOf } from "./class-metadata.js";
+import { Metadata, MetadataKind } from "./metadata.js";
+import { ClassMetadata, classMetadataOf, enumerateClassFields } from "./class-metadata.js";
+import { enumerateFields } from "./field-descriptor.js";
 
 const BUFFER_SIZE_MASK = 0x00ffffff;
 const BUFFER_TRIVIAL_FLAG = 0x80000000;
@@ -31,6 +32,8 @@ const COMPUTED_ID_BY_VTABLE_OFFSET_FLAG = 0x00100000;
 const COMPUTED_HAS_ARGUMENTS_FLAG = 0x00080000;
 const COMPUTED_INSTANTIATED_FROM_EXTERNAL_WITH_ARGUMENTS_FLAG = 0x00000010;
 const COMPUTED_ID_RESOLUTION_MASK = 0x0000000f;
+
+const STRUCT_DESC_FIELD_OFFSET_VECTOR_OFFSET = 0x18;
 
 const HEADER_WORD_SIZE = Process.pointerSize;
 const POINTER_ALIGNMENT_SKEW = Process.pointerSize - 4;
@@ -228,4 +231,84 @@ function idResolution(header: number): ComputedKeyPathComponent["idResolution"] 
     default:
       return "functionCall";
   }
+}
+
+// Names each component with the property it steps through, given the keypath's root type. A
+// `pointer`-id computed component (plain getter) and a `vtableOffset`-id one (protocol requirement)
+// stay null — neither carries a name recoverable from the root type alone.
+export function resolveKeyPathNames(
+  components: KeyPathComponent[],
+  root: Metadata
+): (string | null)[] {
+  const names: (string | null)[] = [];
+  let container: Metadata | null = root;
+  for (const component of components) {
+    names.push(container === null ? null : nameForComponent(component, container));
+    container = component.nextType;
+  }
+  return names;
+}
+
+function nameForComponent(component: KeyPathComponent, container: Metadata): string | null {
+  switch (component.kind) {
+    case "struct":
+    case "class":
+      return component.offset === null ? null : fieldNameByOffset(container, component.offset);
+    case "computed":
+      return component.idKind === "storedPropertyIndex"
+        ? fieldNameByIndex(container, component.id.toUInt32())
+        : null;
+    default:
+      return null;
+  }
+}
+
+function fieldNameByOffset(container: Metadata, offset: number): string | null {
+  if (container.kind === MetadataKind.Class) {
+    let cls: ClassMetadata | null = new ClassMetadata(container.handle);
+    while (cls !== null && cls.isTypeMetadata) {
+      for (const { field, offset: fieldOffset } of enumerateClassFields(cls)) {
+        if (fieldOffset === offset) {
+          return field.name;
+        }
+      }
+      cls = cls.superclass;
+    }
+    return null;
+  }
+
+  const descriptor = container.description;
+  const vectorOffset = descriptor.handle.add(STRUCT_DESC_FIELD_OFFSET_VECTOR_OFFSET).readU32();
+  if (vectorOffset === 0) {
+    return null;
+  }
+  const offsets = container.handle.add(vectorOffset * Process.pointerSize);
+  let index = 0;
+  for (const field of enumerateFields(descriptor)) {
+    if (offsets.add(index * 4).readU32() === offset) {
+      return field.name;
+    }
+    index++;
+  }
+  return null;
+}
+
+function fieldNameByIndex(container: Metadata, index: number): string | null {
+  const names =
+    container.kind === MetadataKind.Class
+      ? classFieldNames(new ClassMetadata(container.handle))
+      : [...enumerateFields(container.description)].map((f) => f.name);
+  return index < names.length ? names[index] : null;
+}
+
+// Root-first, matching IRGen's getClassFieldIndex, which counts stored properties from the Swift
+// native root down through the subclasses.
+function classFieldNames(metadata: ClassMetadata): string[] {
+  const perClass: string[][] = [];
+  let cls: ClassMetadata | null = metadata;
+  while (cls !== null && cls.isTypeMetadata) {
+    perClass.push([...enumerateFields(cls.description)].map((f) => f.name));
+    cls = cls.superclass;
+  }
+  return perClass.reverse().flat();
 }

@@ -139,6 +139,28 @@ public func keyPathRectScaled() -> UnsafeRawPointer { unsafeBitCast(keyPathRectS
 public func keyPathGadgetValue() -> UnsafeRawPointer { unsafeBitCast(keyPathGadgetValueValue, to: UnsafeRawPointer.self) }
 public func keyPathLineEndX() -> UnsafeRawPointer { unsafeBitCast(keyPathLineEndXValue, to: UnsafeRawPointer.self) }
 
+// A reabstracted (function-typed) stored property can't be a direct-offset component, so it lowers
+// to a computed component keyed by stored-property index (idKind storedPropertyIndex); label stays a
+// plain byte-offset stored component.
+public struct Handler {
+    public var action: () -> Int
+    public var label: String
+}
+private let keyPathHandlerActionValue: AnyKeyPath = \Handler.action
+private let keyPathHandlerLabelValue: AnyKeyPath = \Handler.label
+public func keyPathHandlerAction() -> UnsafeRawPointer { unsafeBitCast(keyPathHandlerActionValue, to: UnsafeRawPointer.self) }
+public func keyPathHandlerLabel() -> UnsafeRawPointer { unsafeBitCast(keyPathHandlerLabelValue, to: UnsafeRawPointer.self) }
+
+// Class analogue of Handler: a reabstracted stored property on a class also lowers to a
+// storedPropertyIndex computed component, this time with a class container.
+public final class Sink {
+    public var onEvent: () -> Int
+    public var count: Int
+    public init(onEvent: @escaping () -> Int, count: Int) { self.onEvent = onEvent; self.count = count }
+}
+private let keyPathSinkOnEventValue: AnyKeyPath = \Sink.onEvent
+public func keyPathSinkOnEvent() -> UnsafeRawPointer { unsafeBitCast(keyPathSinkOnEventValue, to: UnsafeRawPointer.self) }
+
 // Generic value args pass indirectly; wrappers drive them so the hook side can observe a call.
 @inline(never)
 public func genericIdentity<T>(_ x: T) -> T {
