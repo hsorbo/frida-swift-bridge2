@@ -15,8 +15,8 @@ const COPY_TASK_LOCALS = 1 << 10;
 const ENQUEUE_JOB = 1 << 12;
 const OPERATION_CONTEXT_SIZE = 512;
 const TRAMPOLINE_SIZE = 0x100;
-const WAIT_SLICE_NS = 25_000_000;
-const MAX_WAIT_SLICES = 200;
+const DEFAULT_TIMEOUT_MS = 1000;
+const DISPATCH_TIME_FOREVER = uint64("0xffffffffffffffff");
 const POLL_INTERVAL_MS = 5;
 
 export type FloatClass = "double" | "float";
@@ -36,6 +36,7 @@ export interface AsyncCallOptions {
   throws?: boolean;
   floatArgs?: AsyncFloatArg[];
   result?: AsyncResultShape;
+  timeoutMs?: number; // 0 waits forever
 }
 
 export class SwiftAsyncThrow extends Error {
@@ -114,7 +115,7 @@ interface SynthesizedCall {
 // Two swiftasync trampolines (PAC stripped): `operation` allocates foo's frame, wires Parent/
 // ResumeParent, loads args + self, and tail-calls foo; `continuation` captures the result/error, frees
 // the frame, sets `done`, and returns through ourCtx.ResumeParent.
-function synthesizeAsyncCall(afp: AsyncFunctionPointer, args: NativePointer[], options: AsyncCallOptions): SynthesizedCall {
+function synthesizeAsyncCall(afp: AsyncFunctionPointer, args: NativePointer[], options: AsyncCallOptions, signalSemaphore: NativePointer | null): SynthesizedCall {
   const shape: AsyncResultShape = options.result ?? { kind: "gp", words: 1 };
   const floatArgs = options.floatArgs ?? [];
   const gpBase = shape.kind === "indirect" ? 1 : 0;
@@ -129,6 +130,7 @@ function synthesizeAsyncCall(afp: AsyncFunctionPointer, args: NativePointer[], o
   }
   const swift_task_alloc = concExport("swift_task_alloc");
   const swift_task_dealloc = concExport("swift_task_dealloc");
+  const dispatch_semaphore_signal = signalSemaphore !== null ? moduleExport(DISPATCH_MODULE, "dispatch_semaphore_signal") : null;
   const result = Memory.alloc(resultBufferSize(shape));
   const error = Memory.alloc(Process.pointerSize).writePointer(NULL);
   const done = Memory.alloc(Process.pointerSize);
@@ -163,6 +165,13 @@ function synthesizeAsyncCall(afp: AsyncFunctionPointer, args: NativePointer[], o
     w.putLdrRegU64("x9", 1);
     w.putLdrRegAddress("x14", done);
     w.putStrRegRegOffset("x9", "x14", 0);
+    if (dispatch_semaphore_signal !== null) {
+      w.putPushRegReg("x22", "x30"); // preserve the async context across the call so ResumeParent survives
+      w.putLdrRegAddress("x0", signalSemaphore!);
+      w.putLdrRegAddress("x14", dispatch_semaphore_signal);
+      w.putBlrRegNoAuth("x14");
+      w.putPopRegReg("x22", "x30");
+    }
     w.putLdrRegRegOffset("x1", "x22", OFFSETOF_RESUME_PARENT);
     w.putBrRegNoAuth("x1");
     w.flush();
@@ -256,10 +265,10 @@ function reapAbandoned(): void {
   }
 }
 
-function startCall(afp: AsyncFunctionPointer, args: NativePointer[], options: AsyncCallOptions): SynthesizedCall {
+function startCall(afp: AsyncFunctionPointer, args: NativePointer[], options: AsyncCallOptions, signalSemaphore: NativePointer | null): SynthesizedCall {
   const api = getDriveApi();
   reapAbandoned();
-  const call = synthesizeAsyncCall(afp, args, options);
+  const call = synthesizeAsyncCall(afp, args, options, signalSemaphore);
   const task = api.create(ENQUEUE_JOB | COPY_TASK_LOCALS, NULL, NULL, call.operation, NULL, OPERATION_CONTEXT_SIZE)[0];
   if (task.isNull()) {
     throw new Error("swift_task_create_common failed");
@@ -268,7 +277,8 @@ function startCall(afp: AsyncFunctionPointer, args: NativePointer[], options: As
   return call;
 }
 
-// Never signaled; a timed-out wait restores the count, so one semaphore is reusable across calls.
+// The continuation trampoline signals this on completion; a timed-out wait restores its own count, so
+// each call consumes exactly one signal and the single semaphore stays balanced across calls.
 let waitSemaphore: NativePointer | null = null;
 function getWaitSemaphore(api: DriveApi): NativePointer {
   if (waitSemaphore === null) {
@@ -285,17 +295,22 @@ function takeResult(call: SynthesizedCall): NativePointer {
   return call.result;
 }
 
-// Block on a dispatch semaphore (not a plain sleep) so libdispatch keeps servicing the executor.
+// Block on a dispatch semaphore (not a plain sleep) so libdispatch keeps servicing the executor; the
+// continuation signals it, so a completed task wakes us the moment it finishes.
 export function driveAsyncCall(afp: AsyncFunctionPointer, args: NativePointer[], options: AsyncCallOptions = {}): NativePointer {
   const api = getDriveApi();
-  const call = startCall(afp, args, options);
   const semaphore = getWaitSemaphore(api);
-  for (let i = 0; i < MAX_WAIT_SLICES && call.done.readU8() === 0; i++) {
-    api.semaphoreWait(semaphore, api.time(uint64(0), int64(WAIT_SLICE_NS))); // dispatch_time is absolute; recompute per slice
-  }
-  if (call.done.readU8() === 0) {
-    abandoned.add(call); // root it: a late task may still run these trampolines
-    throw new Error("async call did not complete");
+  const call = startCall(afp, args, options, semaphore);
+  const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+  const deadline = timeoutMs === 0 ? DISPATCH_TIME_FOREVER : api.time(uint64(0), int64(timeoutMs * 1_000_000));
+  while (call.done.readU8() === 0) {
+    const timedOut = Number(api.semaphoreWait(semaphore, deadline)) !== 0;
+    if (call.done.readU8() !== 0) break;
+    if (timedOut) {
+      abandoned.add(call); // root it: a late task may still run these trampolines
+      throw new Error("async call did not complete");
+    }
+    // a stray signal from a late abandoned task on the shared semaphore woke us early; keep waiting
   }
   return takeResult(call);
 }
@@ -304,7 +319,7 @@ export function callAsync(afp: AsyncFunctionPointer, args: NativePointer[], opti
   return new Promise((resolve, reject) => {
     let call: SynthesizedCall;
     try {
-      call = startCall(afp, args, options);
+      call = startCall(afp, args, options, null);
     } catch (e) {
       reject(e);
       return;
