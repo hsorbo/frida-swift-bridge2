@@ -18,12 +18,24 @@ function writeRelativeDirectPointer(field: NativePointer, target: NativePointer)
 // keeps helper-allocated buffers from being GC'd once their local variable goes out of scope.
 const pinned: NativePointer[] = [];
 
-function makeCaptureDescriptor(mangledNames: NativePointer[], numBindings = 0): NativePointer {
+// A 32-bit relative pointer only reaches ±2GB; a standalone Memory.alloc can land farther
+// from the descriptor and truncate the offset, so place the referent within reach.
+function allocNear(anchor: NativePointer, str: string): NativePointer {
+  const buf = Memory.alloc(Process.pageSize, { near: anchor, maxDistance: 0x40000000 });
+  buf.writeUtf8String(str);
+  return buf;
+}
+
+function makeCaptureDescriptor(mangledNames: string[], numBindings = 0): NativePointer {
   const descriptor = Memory.alloc(0xc + mangledNames.length * 0x4);
   descriptor.writeU32(mangledNames.length);
   descriptor.add(0x4).writeU32(0);
   descriptor.add(0x8).writeU32(numBindings);
-  mangledNames.forEach((name, i) => writeRelativeDirectPointer(descriptor.add(0xc + i * 0x4), name));
+  mangledNames.forEach((name, i) => {
+    const buf = allocNear(descriptor, name);
+    pinned.push(buf);
+    writeRelativeDirectPointer(descriptor.add(0xc + i * 0x4), buf);
+  });
   pinned.push(descriptor);
   return descriptor;
 }
@@ -47,7 +59,7 @@ describe("closure capture layout (synthetic)", () => {
     const intName = Memory.allocUtf8String("Si");
     expect(resolveTypeByMangledName({ address: boolName, length: 2 })).not.toBeNull();
     expect(resolveTypeByMangledName({ address: intName, length: 2 })).not.toBeNull();
-    const context = makeHeapContext(makeCaptureDescriptor([boolName, intName]), 0x10);
+    const context = makeHeapContext(makeCaptureDescriptor(["Sb", "Si"]), 0x10);
     const descriptor = captureDescriptorOf(context);
     expect(descriptor).not.toBeNull();
     expect(descriptor!.numCaptureTypes).toBe(2);
@@ -63,15 +75,13 @@ describe("closure capture layout (synthetic)", () => {
   });
 
   test("returns null for a generic-bound closure without attempting to resolve it", () => {
-    const intName = Memory.allocUtf8String("Si");
-    const context = makeHeapContext(makeCaptureDescriptor([intName], 1), 0x10);
+    const context = makeHeapContext(makeCaptureDescriptor(["Si"], 1), 0x10);
     expect(layoutCaptures(context)).toBeNull();
   });
 
   test("returns null when a capture's mangled name does not resolve", () => {
     requireSwift();
-    const garbage = Memory.allocUtf8String("ZZZ_not_a_real_type");
-    const context = makeHeapContext(makeCaptureDescriptor([garbage]), 0x10);
+    const context = makeHeapContext(makeCaptureDescriptor(["ZZZ_not_a_real_type"]), 0x10);
     context.add(0x10).add(Process.pointerSize).writePointer(ptr(0));
     expect(layoutCaptures(context)).toBeNull();
   });
@@ -89,7 +99,7 @@ describe("closure capture layout (synthetic)", () => {
     instance.writePointer(classMetadata);
     pinned.push(classMetadata, instance);
 
-    const context = makeHeapContext(makeCaptureDescriptor([Memory.allocUtf8String("garbage")]), 0x10);
+    const context = makeHeapContext(makeCaptureDescriptor(["garbage"]), 0x10);
     context.add(0x10).add(Process.pointerSize).writePointer(instance);
 
     const slots = layoutCaptures(context);
@@ -102,8 +112,8 @@ describe("closure capture layout (synthetic)", () => {
 
 describe("reabstraction-thunk unwrap (synthetic)", () => {
   test("finds the inner closure behind a one-capture, zero-binding wrapper", () => {
-    const innerContext = makeHeapContext(makeCaptureDescriptor([Memory.allocUtf8String("Si")]), 0x10);
-    const outerContext = makeHeapContext(makeCaptureDescriptor([Memory.allocUtf8String("garbage")]), 0x10);
+    const innerContext = makeHeapContext(makeCaptureDescriptor(["Si"]), 0x10);
+    const outerContext = makeHeapContext(makeCaptureDescriptor(["garbage"]), 0x10);
     outerContext.add(0x10).add(Process.pointerSize).writePointer(innerContext);
 
     const inner = unwrapReabstractionThunk(outerContext);
@@ -113,7 +123,7 @@ describe("reabstraction-thunk unwrap (synthetic)", () => {
 
   test("returns null for a two-capture descriptor (not wrapper-shaped)", () => {
     const outerContext = makeHeapContext(
-      makeCaptureDescriptor([Memory.allocUtf8String("a"), Memory.allocUtf8String("b")]),
+      makeCaptureDescriptor(["a", "b"]),
       0x10
     );
     expect(unwrapReabstractionThunk(outerContext)).toBeNull();
@@ -125,7 +135,7 @@ describe("reabstraction-thunk unwrap (synthetic)", () => {
     const notAClosureContext = Memory.alloc(Process.pointerSize);
     notAClosureContext.writePointer(notAClosureMetadata);
 
-    const outerContext = makeHeapContext(makeCaptureDescriptor([Memory.allocUtf8String("garbage")]), 0x10);
+    const outerContext = makeHeapContext(makeCaptureDescriptor(["garbage"]), 0x10);
     outerContext.add(0x10).add(Process.pointerSize).writePointer(notAClosureContext);
 
     expect(unwrapReabstractionThunk(outerContext)).toBeNull();

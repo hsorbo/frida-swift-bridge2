@@ -16,6 +16,14 @@ function writeRelativeDirectPointer(field: NativePointer, target: NativePointer)
   field.writeS32(target.sub(field).toInt32());
 }
 
+// A 32-bit relative pointer only reaches ±2GB; a standalone Memory.alloc can land farther
+// from the descriptor and truncate the offset, so place the referent within reach.
+function allocNear(anchor: NativePointer, str: string): NativePointer {
+  const buf = Memory.alloc(Process.pageSize, { near: anchor, maxDistance: 0x40000000 });
+  buf.writeUtf8String(str);
+  return buf;
+}
+
 describe("capture descriptor", () => {
   test("enumerates capture type records", () => {
     const descriptor = Memory.alloc(0x14);
@@ -23,8 +31,8 @@ describe("capture descriptor", () => {
     descriptor.add(0x4).writeU32(0);
     descriptor.add(0x8).writeU32(0);
 
-    const intName = Memory.allocUtf8String("Si");
-    const stringName = Memory.allocUtf8String("SS");
+    const intName = allocNear(descriptor, "Si");
+    const stringName = allocNear(descriptor, "SS");
     writeRelativeDirectPointer(descriptor.add(0xc), intName);
     writeRelativeDirectPointer(descriptor.add(0x10), stringName);
 
@@ -46,11 +54,11 @@ describe("capture descriptor", () => {
     descriptor.add(0x4).writeU32(1);
     descriptor.add(0x8).writeU32(1);
 
-    const captureName = Memory.allocUtf8String("x");
+    const captureName = allocNear(descriptor, "x");
     writeRelativeDirectPointer(descriptor.add(0xc), captureName);
 
-    const sourceTypeName = Memory.allocUtf8String("x");
-    const sourceMangling = Memory.allocUtf8String("A");
+    const sourceTypeName = allocNear(descriptor, "x");
+    const sourceMangling = allocNear(descriptor, "A");
     writeRelativeDirectPointer(descriptor.add(0x10), sourceTypeName);
     writeRelativeDirectPointer(descriptor.add(0x14), sourceMangling);
 
