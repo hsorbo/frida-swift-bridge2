@@ -389,7 +389,7 @@ const COMPLETION_TRAMPOLINE_SIZE = 0x200;
 let completionTrampoline: NativePointer | null = null;
 let completionBridge: NativeCallback<"pointer", ["pointer", "pointer"]> | null = null;
 
-function spillContext(spillPtr: NativePointer): Arm64CpuContext {
+function spillContext(spillPtr: NativePointer, asyncContext: NativePointer): Arm64CpuContext {
   const ctx: Record<string, NativePointer | number> = {};
   for (let i = 0; i < 8; i++) {
     ctx[`x${i}`] = spillPtr.add(i * 8).readPointer();
@@ -400,17 +400,17 @@ function spillContext(spillPtr: NativePointer): Arm64CpuContext {
     ctx[`s${i}`] = at.readFloat();
   }
   ctx.x20 = spillPtr.add(0x80).readPointer();
+  ctx.x22 = asyncContext;
   return ctx as unknown as Arm64CpuContext;
 }
 
-function fireCompletion(entry: CompletionEntry, spillPtr: NativePointer, invocationThis: InvocationContext): void {
-  const context = spillContext(spillPtr);
+function fireCompletion(entry: CompletionEntry, context: Arm64CpuContext, self: InvocationContext): void {
   if (entry.throws && !context.x20.isNull()) {
-    entry.callbacks.onComplete!.call(invocationThis, null, decodeThrownError(context.x20));
+    entry.callbacks.onComplete!.call(self, null, decodeThrownError(context.x20));
     return;
   }
   entry.callbacks.onComplete!.call(
-    invocationThis,
+    self,
     materializeReturn(context, entry.ret, entry.outBuffer, entry.generics, entry.genericParams)
   );
 }
@@ -424,10 +424,18 @@ function getCompletionTrampoline(): NativePointer {
     const key = context.toString();
     const slot = pending.get(key)!;
     pending.delete(key);
-    const invocationThis = this as unknown as InvocationContext;
+    const completion = spillContext(spillPtr, context);
+    const self = { context: completion, returnAddress: this.returnAddress, threadId: Process.getCurrentThreadId() } as unknown as InvocationContext;
     for (const entry of slot.entries) {
       entry.owner.delete(entry);
-      fireCompletion(entry, spillPtr, invocationThis);
+      // a throwing onComplete must not divert the native resume; isolate it and re-surface next tick
+      try {
+        fireCompletion(entry, completion, self);
+      } catch (e) {
+        setImmediate(() => {
+          throw e;
+        });
+      }
     }
     return slot.original;
   }, "pointer", ["pointer", "pointer"]);

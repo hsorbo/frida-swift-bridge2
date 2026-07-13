@@ -157,4 +157,48 @@ describe("async interceptor", () => {
       listener.detach();
     }
   });
+
+  test("a throwing onComplete does not divert the native resume", () => {
+    requireSwift();
+    const module = loadFixture();
+    const drive = driver(module);
+
+    let fired = false;
+    const listener = Swift.Interceptor.attachAsync(module.getExportByName(COMPUTE_ASYNC), {
+      onComplete() {
+        fired = true;
+        throw new Error("boom from onComplete");
+      },
+    });
+    try {
+      expect(drive(21)).toBe(42);
+      expect(fired).toBe(true);
+    } finally {
+      listener.detach();
+    }
+  });
+
+  test("onComplete this.context carries the Swift completion registers", () => {
+    requireSwift();
+    const module = loadFixture();
+    const drive = driver(module);
+
+    let result: NativePointer | undefined;
+    let asyncContext: NativePointer | undefined;
+    const listener = Swift.Interceptor.attachAsync(module.getExportByName(COMPUTE_ASYNC), {
+      onComplete() {
+        const cc = this.context as Arm64CpuContext;
+        result = cc.x0;
+        asyncContext = cc.x22;
+      },
+    });
+    try {
+      expect(drive(21)).toBe(42);
+      expect(result!.toUInt32()).toBe(42);
+      expect(asyncContext).toBeDefined();
+      expect(asyncContext!.isNull()).toBe(false);
+    } finally {
+      listener.detach();
+    }
+  });
 });
