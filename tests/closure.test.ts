@@ -158,6 +158,7 @@ describe("escaping closure context", (ctx) => {
       []
     );
     metadata.sub(16).writePointer(destroy);
+    metadata.writeU64(0x400);
     context = api.swift_allocObject(metadata, 16, 7) as NativePointer;
 
     expect(Number(api.swift_retainCount(context))).toBe(1);
