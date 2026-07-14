@@ -18,11 +18,56 @@ if ! command -v swiftc >/dev/null 2>&1; then
   exit 0
 fi
 
-# fixture/resilient are stripped on both platforms, matching a real release binary; resilient
+case "$(uname -s)" in
+  Darwin) host=macos ;;
+  Linux)  host=linux ;;
+  *)      host="$(uname -s)" ;;
+esac
+platform="${PLATFORM:-$host}"
+
+# fixture/resilient are stripped on every platform, matching a real release binary; resilient
 # stays unstripped until fixture/fixturesyms have linked against it. fixturesyms is the same
 # source, deliberately left unstripped.
-case "$(uname -s)" in
-  Darwin)
+case "$platform" in
+  ios)
+    dep="${IOS_DEPLOYMENT_TARGET:-17.0}"
+    work="$fixtures/.ios"
+    rm -rf "$work"
+
+    fixture_out="$fixtures/fixture.dylib"
+    resilient_out="$fixtures/resilient.dylib"
+    fixturesyms_out="$fixtures/fixturesyms.dylib"
+
+    for arch in arm64 arm64e; do
+      mkdir -p "$work/$arch"
+      xcrun -sdk iphoneos swiftc -target "${arch}-apple-ios${dep}" \
+        -emit-library -emit-module -enable-library-evolution -module-name resilient \
+        "$fixtures/resilient.swift" -o "$work/$arch/resilient.dylib" \
+        -emit-module-path "$work/$arch/resilient.swiftmodule" \
+        -Xlinker -install_name -Xlinker @rpath/resilient.dylib
+
+      for mod in fixture fixturesyms; do
+        xcrun -sdk iphoneos swiftc -target "${arch}-apple-ios${dep}" \
+          -emit-library -module-name "$mod" "$fixtures/fixture.swift" \
+          -I "$work/$arch" "$work/$arch/resilient.dylib" -o "$work/$arch/$mod.dylib" \
+          -Xlinker -rpath -Xlinker @loader_path
+      done
+    done
+
+    lipo -create "$work/arm64/resilient.dylib"   "$work/arm64e/resilient.dylib"   -output "$resilient_out"
+    lipo -create "$work/arm64/fixture.dylib"     "$work/arm64e/fixture.dylib"     -output "$fixture_out"
+    lipo -create "$work/arm64/fixturesyms.dylib" "$work/arm64e/fixturesyms.dylib" -output "$fixturesyms_out"
+    rm -rf "$work"
+
+    xcrun strip -x "$fixture_out" "$resilient_out"
+    codesign -s - -f "$fixture_out"
+    codesign -s - -f "$fixturesyms_out"
+    codesign -s - -f "$resilient_out"
+
+    emit_paths "$fixture_out" "$resilient_out" "$fixturesyms_out"
+    emit_bytes "$fixture_out" "$resilient_out" "$fixturesyms_out"
+    ;;
+  macos)
     fixture_out="$fixtures/fixture.dylib"
     resilient_out="$fixtures/resilient.dylib"
     fixturesyms_out="$fixtures/fixturesyms.dylib"
@@ -43,7 +88,7 @@ case "$(uname -s)" in
 
     emit_paths "$fixture_out" "$resilient_out" "$fixturesyms_out"
     ;;
-  Linux)
+  linux)
     fixture_out="$fixtures/fixture.so"
     resilient_out="$fixtures/resilient.so"
     fixturesyms_out="$fixtures/fixturesyms.so"
@@ -61,7 +106,7 @@ case "$(uname -s)" in
     emit_paths "$fixture_out" "$resilient_out" "$fixturesyms_out"
     ;;
   *)
-    echo "build fixtures: unsupported OS $(uname -s)" >&2
+    echo "build fixtures: unsupported platform $platform" >&2
     exit 1
     ;;
 esac
