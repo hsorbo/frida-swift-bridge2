@@ -23,6 +23,8 @@
     "test": "injest",
     "pretest:v8": "sh tests/fixtures/build.sh",
     "test:v8": "injest --target local-v8",
+    "pretest:ios": "PLATFORM=ios EMBED_FIXTURES=1 sh tests/fixtures/build.sh",
+    "test:ios": "injest --target ios",
     "prepublishOnly": "npm run build"
   },
   "dependencies": {
