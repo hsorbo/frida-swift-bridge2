@@ -4,6 +4,7 @@ docs/
 tests/fixtures/*.dylib
 tests/fixtures/*.so
 tests/fixtures/paths.ts
+tests/fixtures/bytes.ts
 tests/fixtures/*.swiftmodule
 tests/fixtures/*.swiftdoc
 tests/fixtures/*.swiftsourceinfo

@@ -1,5 +1,7 @@
+import { toByteArray } from "base64-js";
 import { requireSwift } from "../swift.js";
 import { FIXTURE_DYLIB, RESILIENT_DYLIB, FIXTURESYMS_DYLIB } from "./paths.js";
+import { FIXTURE_B64, RESILIENT_B64, FIXTURESYMS_B64 } from "./bytes.js";
 import { Swift, Metadata, makeSwiftNativeFunction } from "../../src/index.js";
 
 const EXT = Process.platform === "darwin" ? "dylib" : "so";
@@ -7,28 +9,36 @@ export const FIXTURE_MODULE = `fixture.${EXT}`;
 export const RESILIENT_MODULE = `resilient.${EXT}`;
 export const FIXTURESYMS_MODULE = `fixturesyms.${EXT}`;
 
-function loadModule(path: string, name: string): Module {
+function materialize(name: string, base64: string): string {
+  const path = `${Process.getTmpDir()}/${name}`;
+  File.writeAllBytes(path, toByteArray(base64).buffer as ArrayBuffer);
+  return path;
+}
+
+function loadModule(path: string, name: string, base64: string): Module {
   requireSwift();
   const existing = Process.findModuleByName(name);
   if (existing !== null) {
     return existing;
   }
-  Module.load(path);
+  Module.load(base64.length > 0 ? materialize(name, base64) : path);
   return Process.getModuleByName(name);
 }
 
 export function loadFixture(): Module {
-  return loadModule(FIXTURE_DYLIB, FIXTURE_MODULE);
+  loadResilient();
+  return loadModule(FIXTURE_DYLIB, FIXTURE_MODULE, FIXTURE_B64);
 }
 
 export function loadResilient(): Module {
-  return loadModule(RESILIENT_DYLIB, RESILIENT_MODULE);
+  return loadModule(RESILIENT_DYLIB, RESILIENT_MODULE, RESILIENT_B64);
 }
 
 // fixture.swift compiled under a second module name, left unstripped: same types
 // as fixture but with the value-type init symbols retained in .symtab.
 export function loadFixtureSyms(): Module {
-  return loadModule(FIXTURESYMS_DYLIB, FIXTURESYMS_MODULE);
+  loadResilient();
+  return loadModule(FIXTURESYMS_DYLIB, FIXTURESYMS_MODULE, FIXTURESYMS_B64);
 }
 
 export function fixtureExport(swiftName: string, mod: Module = loadFixture()): NativePointer {
