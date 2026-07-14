@@ -51,3 +51,18 @@ describe("generic global-actor async calling", () => {
     expect(new Set(results)).toEqual(new Set(Array.from({ length: 20 }, (_, i) => i + 1)));
   });
 });
+
+// Known limitation: @MainActor hops to the main dispatch queue, which only the target's main thread can
+// drain. The facade uses the non-blocking callAsync, so this resolves in a live app whose main thread pumps
+// its runloop — but not in the headless test host (main thread never enters a runloop), so it is skipped.
+// Un-skip on a device / live-app run. Blocking driveAsyncCall can never support @MainActor.
+describe("@MainActor async calling (needs a pumping main runloop)", () => {
+  beforeEach(() => {
+    loadFixture();
+  });
+
+  test.skip("resolves a @MainActor method via the facade: mainMethodAsync(1) ⇒ 11", async () => {
+    const h = (Swift.typeOf(Swift.metadataFor("fixture.MainHolder")!) as ClassType).init(10);
+    expect(await h.mainMethodAsync(1)).toBe(11);
+  });
+});

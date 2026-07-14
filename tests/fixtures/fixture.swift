@@ -798,6 +798,14 @@ public final class GAHolder {
     public func bumpAsync(_ x: Int) async -> Int { v += x; return v }
 }
 
+// @MainActor isolation hops to the main dispatch queue, serviceable only by the main thread's runloop;
+// the bridge cannot drive this from a Frida worker thread. See global-actor-async-call.test.ts.
+public final class MainHolder {
+    public var v: Int
+    public init(_ v: Int) { self.v = v }
+    @MainActor public func mainMethodAsync(_ x: Int) async -> Int { v += x; return v }
+}
+
 public func computeAsync(_ x: Int) async -> Int {
     await Task.yield()
     return x * 2
