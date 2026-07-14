@@ -1,5 +1,6 @@
 import { test, expect, describe } from "@frida/injest/agent";
 import { requireSwift } from "./swift.js";
+import { arenaAlloc, arenaString } from "./arena.js";
 
 import { readObject } from "../src/abi/instance.js";
 import { layoutCaptures, readCaptures, unwrapReabstractionThunk, writeCaptures } from "../src/abi/closure-capture.js";
@@ -18,21 +19,13 @@ function writeRelativeDirectPointer(field: NativePointer, target: NativePointer)
 // keeps helper-allocated buffers from being GC'd once their local variable goes out of scope.
 const pinned: NativePointer[] = [];
 
-// A 32-bit relative pointer only reaches ±2GB; a standalone Memory.alloc can land farther
-// from the descriptor and truncate the offset, so place the referent within reach.
-function allocNear(anchor: NativePointer, str: string): NativePointer {
-  const buf = Memory.alloc(Process.pageSize, { near: anchor, maxDistance: 0x40000000 });
-  buf.writeUtf8String(str);
-  return buf;
-}
-
 function makeCaptureDescriptor(mangledNames: string[], numBindings = 0): NativePointer {
-  const descriptor = Memory.alloc(0xc + mangledNames.length * 0x4);
+  const descriptor = arenaAlloc(0xc + mangledNames.length * 0x4);
   descriptor.writeU32(mangledNames.length);
   descriptor.add(0x4).writeU32(0);
   descriptor.add(0x8).writeU32(numBindings);
   mangledNames.forEach((name, i) => {
-    const buf = allocNear(descriptor, name);
+    const buf = arenaString(name);
     pinned.push(buf);
     writeRelativeDirectPointer(descriptor.add(0xc + i * 0x4), buf);
   });

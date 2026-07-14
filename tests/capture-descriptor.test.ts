@@ -1,5 +1,6 @@
 import { test, expect, describe } from "@frida/injest/agent";
 import { requireSwift } from "./swift.js";
+import { arenaAlloc, arenaString } from "./arena.js";
 
 import {
   CaptureDescriptor,
@@ -16,23 +17,15 @@ function writeRelativeDirectPointer(field: NativePointer, target: NativePointer)
   field.writeS32(target.sub(field).toInt32());
 }
 
-// A 32-bit relative pointer only reaches ±2GB; a standalone Memory.alloc can land farther
-// from the descriptor and truncate the offset, so place the referent within reach.
-function allocNear(anchor: NativePointer, str: string): NativePointer {
-  const buf = Memory.alloc(Process.pageSize, { near: anchor, maxDistance: 0x40000000 });
-  buf.writeUtf8String(str);
-  return buf;
-}
-
 describe("capture descriptor", () => {
   test("enumerates capture type records", () => {
-    const descriptor = Memory.alloc(0x14);
+    const descriptor = arenaAlloc(0x14);
     descriptor.writeU32(2);
     descriptor.add(0x4).writeU32(0);
     descriptor.add(0x8).writeU32(0);
 
-    const intName = allocNear(descriptor, "Si");
-    const stringName = allocNear(descriptor, "SS");
+    const intName = arenaString("Si");
+    const stringName = arenaString("SS");
     writeRelativeDirectPointer(descriptor.add(0xc), intName);
     writeRelativeDirectPointer(descriptor.add(0x10), stringName);
 
@@ -49,16 +42,16 @@ describe("capture descriptor", () => {
   });
 
   test("enumerates metadata source records following the capture types", () => {
-    const descriptor = Memory.alloc(0x18);
+    const descriptor = arenaAlloc(0x18);
     descriptor.writeU32(1);
     descriptor.add(0x4).writeU32(1);
     descriptor.add(0x8).writeU32(1);
 
-    const captureName = allocNear(descriptor, "x");
+    const captureName = arenaString("x");
     writeRelativeDirectPointer(descriptor.add(0xc), captureName);
 
-    const sourceTypeName = allocNear(descriptor, "x");
-    const sourceMangling = allocNear(descriptor, "A");
+    const sourceTypeName = arenaString("x");
+    const sourceMangling = arenaString("A");
     writeRelativeDirectPointer(descriptor.add(0x10), sourceTypeName);
     writeRelativeDirectPointer(descriptor.add(0x14), sourceMangling);
 
