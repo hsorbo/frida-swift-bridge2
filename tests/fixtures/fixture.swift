@@ -24,10 +24,12 @@ public struct BigStruct {
 }
 
 // Move-only (SE-0390): its VWT sets IsNonCopyable; copy witnesses are illegal.
+#if compiler(>=5.9)
 public struct NoncopyableStruct: ~Copyable {
     public let a: Int
     public init(a: Int) { self.a = a }
 }
+#endif
 
 extension LoadableStruct {
     public func dot(_ k: Int) -> Int { (a + b + c + d) * k }
@@ -518,11 +520,11 @@ public func makeConcreteSub(_ tag: Int, _ extra: Int) -> ConcreteSub {
 public func metatypeIdentity<T>(_ t: T.Type, _ x: T) -> T { x }
 public func makeMetatypeInt() -> Int { metatypeIdentity(Int.self, 5) }
 
-public func anyType() -> UnsafeRawPointer { unsafeBitCast(Any.self, to: UnsafeRawPointer.self) }
-public func greeterType() -> UnsafeRawPointer { unsafeBitCast((any Greeter).self, to: UnsafeRawPointer.self) }
-public func greeterAgedType() -> UnsafeRawPointer { unsafeBitCast((any Greeter & Aged).self, to: UnsafeRawPointer.self) }
-public func namedType() -> UnsafeRawPointer { unsafeBitCast((any Named).self, to: UnsafeRawPointer.self) }
-public func errorType() -> UnsafeRawPointer { unsafeBitCast((any Error).self, to: UnsafeRawPointer.self) }
+public func anyType() -> UnsafeRawPointer { unsafeBitCast(Any.self as Any.Type, to: UnsafeRawPointer.self) }
+public func greeterType() -> UnsafeRawPointer { unsafeBitCast((any Greeter).self as Any.Type, to: UnsafeRawPointer.self) }
+public func greeterAgedType() -> UnsafeRawPointer { unsafeBitCast((any Greeter & Aged).self as Any.Type, to: UnsafeRawPointer.self) }
+public func namedType() -> UnsafeRawPointer { unsafeBitCast((any Named).self as Any.Type, to: UnsafeRawPointer.self) }
+public func errorType() -> UnsafeRawPointer { unsafeBitCast((any Error).self as Any.Type, to: UnsafeRawPointer.self) }
 
 #if canImport(CoreGraphics)
 import CoreGraphics
@@ -537,13 +539,13 @@ public struct IntHolder: Holder {
     public var item: Int
     public init(item: Int) { self.item = item }
 }
-public func holderIntType() -> UnsafeRawPointer { unsafeBitCast((any Holder<Int>).self, to: UnsafeRawPointer.self) }
+public func holderIntType() -> UnsafeRawPointer { unsafeBitCast((any Holder<Int>).self as Any.Type, to: UnsafeRawPointer.self) }
 public func storeHolderInt(_ p: UnsafeMutableRawPointer) {
     p.assumingMemoryBound(to: (any Holder<Int>).self).initialize(to: IntHolder(item: 42))
 }
 public func makeHolderInt() -> any Holder<Int> { IntHolder(item: 42) }
 public func holderMetatypeType() -> UnsafeRawPointer {
-    unsafeBitCast((any Holder<Int>.Type).self, to: UnsafeRawPointer.self)
+    unsafeBitCast((any Holder<Int>.Type).self as Any.Type, to: UnsafeRawPointer.self)
 }
 public func storeHolderMetatype(_ p: UnsafeMutableRawPointer) {
     let v: any Holder<Int> = IntHolder(item: 42)
@@ -558,7 +560,7 @@ public final class IntRef: Ref {
     public let value: Int
     public init(_ value: Int) { self.value = value }
 }
-public func refIntType() -> UnsafeRawPointer { unsafeBitCast((any Ref<Int>).self, to: UnsafeRawPointer.self) }
+public func refIntType() -> UnsafeRawPointer { unsafeBitCast((any Ref<Int>).self as Any.Type, to: UnsafeRawPointer.self) }
 public func storeRefInt(_ p: UnsafeMutableRawPointer) {
     p.assumingMemoryBound(to: (any Ref<Int>).self).initialize(to: IntRef(7))
 }
@@ -747,11 +749,18 @@ enum TickError: Error { case zero }
 
 final class TickerSerialExecutor: SerialExecutor {
     private let queue = DispatchQueue(label: "fixture.custom-ticker")
+#if compiler(>=5.9)
     func enqueue(_ job: consuming ExecutorJob) {
         let unowned = UnownedJob(job)
         let executor = asUnownedSerialExecutor()
         queue.async { unowned.runSynchronously(on: executor) }
     }
+#else
+    func enqueue(_ job: UnownedJob) {
+        let executor = asUnownedSerialExecutor()
+        queue.async { job._runSynchronously(on: executor) }
+    }
+#endif
     func asUnownedSerialExecutor() -> UnownedSerialExecutor {
         UnownedSerialExecutor(ordinary: self)
     }
@@ -848,7 +857,7 @@ public struct TripleScaler: AsyncScaler {
         return x * factor
     }
 }
-public func asyncScalerType() -> UnsafeRawPointer { unsafeBitCast((any AsyncScaler).self, to: UnsafeRawPointer.self) }
+public func asyncScalerType() -> UnsafeRawPointer { unsafeBitCast((any AsyncScaler).self as Any.Type, to: UnsafeRawPointer.self) }
 public func storeAsyncScaler(_ p: UnsafeMutableRawPointer) {
     p.assumingMemoryBound(to: (any AsyncScaler).self).initialize(to: TripleScaler(factor: 3))
 }

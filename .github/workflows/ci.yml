@@ -33,7 +33,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        swift: ["5.10-noble", "6.0-noble", "6.1-noble", "6.2-noble", "6.3-noble"]
+        swift: ["5.7-jammy", "5.10-noble", "6.0-noble", "6.1-noble", "6.2-noble", "6.3-noble"]
     runs-on: ubuntu-24.04-arm
     container:
       image: swift:${{ matrix.swift }}
