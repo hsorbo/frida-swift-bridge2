@@ -7,14 +7,35 @@ set -e
 
 fixtures="$(cd "$(dirname "$0")" && pwd)"
 paths="$fixtures/paths.ts"
+bytes="$fixtures/bytes.ts"
 
 emit_paths() {
   printf 'export const FIXTURE_DYLIB = "%s";\nexport const RESILIENT_DYLIB = "%s";\nexport const FIXTURESYMS_DYLIB = "%s";\n' "$1" "$2" "$3" >"$paths"
 }
 
+emit_empty_bytes() {
+  printf 'export const FIXTURE_B64 = "";\nexport const RESILIENT_B64 = "";\nexport const FIXTURESYMS_B64 = "";\n' >"$bytes"
+}
+
+# EMBED_FIXTURES base64s the dylibs into bytes.ts for remote targets that lack the
+# host build paths; off by default so the local bundle stays small.
+emit_bytes() {
+  if [ -z "$EMBED_FIXTURES" ]; then
+    emit_empty_bytes
+    return
+  fi
+  {
+    printf 'export const FIXTURE_B64 = "'; base64 <"$1" | tr -d '\n'
+    printf '";\nexport const RESILIENT_B64 = "'; base64 <"$2" | tr -d '\n'
+    printf '";\nexport const FIXTURESYMS_B64 = "'; base64 <"$3" | tr -d '\n'
+    printf '";\n'
+  } >"$bytes"
+}
+
 if ! command -v swiftc >/dev/null 2>&1; then
   echo "build fixtures: swiftc not found; skipping Swift fixture build"
   emit_paths "" "" ""
+  emit_empty_bytes
   exit 0
 fi
 
@@ -87,6 +108,7 @@ case "$platform" in
     codesign -s - -f "$resilient_out"
 
     emit_paths "$fixture_out" "$resilient_out" "$fixturesyms_out"
+    emit_bytes "$fixture_out" "$resilient_out" "$fixturesyms_out"
     ;;
   linux)
     fixture_out="$fixtures/fixture.so"
@@ -104,6 +126,7 @@ case "$platform" in
     strip "$fixture_out" "$resilient_out"
 
     emit_paths "$fixture_out" "$resilient_out" "$fixturesyms_out"
+    emit_bytes "$fixture_out" "$resilient_out" "$fixturesyms_out"
     ;;
   *)
     echo "build fixtures: unsupported platform $platform" >&2
