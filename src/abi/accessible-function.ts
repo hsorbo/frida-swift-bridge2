@@ -1,11 +1,5 @@
 import { RelativeDirectPointer } from "../basic/relative-pointer.js";
 import { AsyncFunctionPointer } from "./async-function-pointer.js";
-import {
-  MangledName,
-  resolveTypeByMangledName,
-  symbolicMangledNameLength,
-} from "./field-descriptor.js";
-import { Metadata } from "./metadata.js";
 import { demangle } from "../runtime/demangle.js";
 import { getSwiftSection } from "../image/sections.js";
 import { enumerateSwiftModules } from "../reflection/registry.js";
@@ -13,7 +7,6 @@ import { enumerateSwiftModules } from "../reflection/registry.js";
 const RECORD_SIZE = 20;
 const OFFSETOF_NAME = 0x0;
 const OFFSETOF_GENERIC_ENVIRONMENT = 0x4;
-const OFFSETOF_FUNCTION_TYPE = 0x8;
 const OFFSETOF_FUNCTION = 0xc;
 const OFFSETOF_FLAGS = 0x10;
 
@@ -32,16 +25,6 @@ export class AccessibleFunctionRecord {
 
   get genericEnvironment(): NativePointer | null {
     return RelativeDirectPointer.resolve(this.handle.add(OFFSETOF_GENERIC_ENVIRONMENT));
-  }
-
-  // Null when the symbolic mangled name references types unresolvable out of context.
-  get functionType(): Metadata | null {
-    const address = RelativeDirectPointer.resolve(this.handle.add(OFFSETOF_FUNCTION_TYPE));
-    if (address === null) {
-      return null;
-    }
-    const mangled: MangledName = { address, length: symbolicMangledNameLength(address) };
-    return resolveTypeByMangledName(mangled);
   }
 
   // An async function pointer record, not code, for async/distributed thunks.

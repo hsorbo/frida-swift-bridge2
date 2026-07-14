@@ -6,7 +6,6 @@ import {
   enumerateAccessibleFunctions,
   findAccessibleFunction,
 } from "../src/index.js";
-import { MetadataKind } from "../src/abi/metadata.js";
 
 const ADD_MANGLED = "$s7fixture10CalculatorC3addyS2i_SitYaKFTE";
 const ADD_DEMANGLED =
@@ -49,14 +48,5 @@ describe("accessible functions", () => {
 
   test("returns null for an unknown name", () => {
     expect(findAccessibleFunction("does.not.Exist")).toBeNull();
-  });
-
-  test("resolves the function type as a Swift function metadata when available", () => {
-    const record = findAccessibleFunction(ADD_MANGLED)!;
-    const functionType = record.functionType;
-    // A distributed thunk's type is often unresolvable out of context; tolerate null.
-    if (functionType !== null) {
-      expect(functionType.kind).toBe(MetadataKind.Function);
-    }
   });
 });
