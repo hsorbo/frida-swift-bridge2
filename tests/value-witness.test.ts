@@ -71,8 +71,10 @@ describe("ValueWitnessTable", () => {
     expect(big.isBitwiseTakable).toBe(true);
   });
 
-  test("noncopyable struct reports isCopyable false and refuses copies", () => {
-    const vwt = Swift.metadataFor("fixture.NoncopyableStruct")!.valueWitnesses;
+  test("noncopyable struct reports isCopyable false and refuses copies", (ctx) => {
+    const metadata = Swift.metadataFor("fixture.NoncopyableStruct");
+    if (metadata === null) ctx.skip("fixture compiled without ~Copyable (Swift < 5.9)");
+    const vwt = metadata!.valueWitnesses;
     expect(vwt.isCopyable).toBe(false);
     const src = Memory.alloc(vwt.stride);
     src.writeU64(7);
