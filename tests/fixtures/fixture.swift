@@ -770,6 +770,25 @@ public actor CustomExecutorTicker {
     }
 }
 
+@globalActor public actor FixtureGA {
+    public static let shared = FixtureGA()
+}
+
+@FixtureGA public func gaFreeAsync(_ x: Int) async -> Int { return x + 1 }
+
+public final class GAHolder {
+    public var v: Int
+    public init(_ v: Int) { self.v = v }
+    @FixtureGA public func gaMethodAsync(_ x: Int) async -> Int { v += x; return v }
+    public func plainMethodAsync(_ x: Int) async -> Int { v += x; return v }
+}
+
+@FixtureGA public final class WholeGAHolder {
+    public var v: Int
+    public init(_ v: Int) { self.v = v }
+    public func bumpAsync(_ x: Int) async -> Int { v += x; return v }
+}
+
 public func computeAsync(_ x: Int) async -> Int {
     await Task.yield()
     return x * 2
