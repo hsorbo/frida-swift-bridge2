@@ -9,15 +9,15 @@ import {
 } from "../src/abi/generic-requirement-descriptor.js";
 import { findProtocol } from "../src/abi/protocol-conformance.js";
 import { loadSwiftCore } from "./swift.js";
+import { arenaAlloc, arenaString, writeRelativeDirectPointer } from "./arena.js";
 
 function writeParamName(at: NativePointer, name: string): void {
-  const str = Memory.allocUtf8String(name);
-  at.writeS32(str.sub(at).toInt32());
+  writeRelativeDirectPointer(at, arenaString(name));
 }
 
 describe("generic requirement descriptor", () => {
   test("reads a Layout requirement's class-constraint kind", () => {
-    const requirement = Memory.alloc(GENERIC_REQUIREMENT_DESCRIPTOR_SIZE);
+    const requirement = arenaAlloc(GENERIC_REQUIREMENT_DESCRIPTOR_SIZE);
     requirement.writeU32(GenericRequirementKind.Layout);
     writeParamName(requirement.add(0x4), "A");
     requirement.add(0x8).writeU32(GenericRequirementLayoutKind.Class);
@@ -30,7 +30,7 @@ describe("generic requirement descriptor", () => {
   });
 
   test("leaves layoutKind null for a SameType requirement", () => {
-    const requirement = Memory.alloc(GENERIC_REQUIREMENT_DESCRIPTOR_SIZE);
+    const requirement = arenaAlloc(GENERIC_REQUIREMENT_DESCRIPTOR_SIZE);
     requirement.writeU32(GenericRequirementKind.SameType);
     writeParamName(requirement.add(0x4), "A");
     writeParamName(requirement.add(0x8), "Si");
@@ -42,7 +42,7 @@ describe("generic requirement descriptor", () => {
   });
 
   test("reads an InvertedProtocols requirement's param index and protocol bitset", () => {
-    const requirement = Memory.alloc(GENERIC_REQUIREMENT_DESCRIPTOR_SIZE);
+    const requirement = arenaAlloc(GENERIC_REQUIREMENT_DESCRIPTOR_SIZE);
     requirement.writeU32(GenericRequirementKind.InvertedProtocols);
     writeParamName(requirement.add(0x4), "A");
     const union = requirement.add(0x8);
@@ -61,16 +61,15 @@ describe("generic requirement descriptor", () => {
     loadSwiftCore();
     const hashable = findProtocol("Swift.Hashable")!;
 
-    const fakeConformance = Memory.alloc(0x14);
-    const protocolSlot = Memory.alloc(Process.pointerSize);
+    const fakeConformance = arenaAlloc(0x14);
+    const protocolSlot = arenaAlloc(Process.pointerSize);
     protocolSlot.writePointer(hashable.handle);
     fakeConformance.writeS32(protocolSlot.sub(fakeConformance).toInt32() | 1);
 
-    const requirement = Memory.alloc(GENERIC_REQUIREMENT_DESCRIPTOR_SIZE);
+    const requirement = arenaAlloc(GENERIC_REQUIREMENT_DESCRIPTOR_SIZE);
     requirement.writeU32(GenericRequirementKind.SameConformance);
     writeParamName(requirement.add(0x4), "A");
-    const union = requirement.add(0x8);
-    union.writeS32(fakeConformance.sub(union).toInt32());
+    writeRelativeDirectPointer(requirement.add(0x8), fakeConformance);
 
     const [entry] = readGenericRequirementDescriptors(requirement, 1);
     expect(entry.kind).toBe(GenericRequirementKind.SameConformance);

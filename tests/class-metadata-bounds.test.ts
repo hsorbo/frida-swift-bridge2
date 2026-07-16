@@ -4,13 +4,10 @@ import { requireDarwin } from "./swift.js";
 import { ContextDescriptor, ContextDescriptorKind } from "../src/abi/context-descriptor.js";
 import { TypeReferenceKind } from "../src/abi/class-descriptor.js";
 import { getClassMetadataBounds } from "../src/abi/class-metadata-bounds.js";
+import { arenaAlloc, arenaString, writeRelativeDirectPointer } from "./arena.js";
 
 const CLASS_HAS_RESILIENT_SUPERCLASS = 1 << 13;
 const CLASS_RESILIENT_SUPERCLASS_REFERENCE_KIND_SHIFT = 9;
-
-function writeRelativeDirectPointer(field: NativePointer, target: NativePointer): void {
-  field.writeS32(target.sub(field).toInt32());
-}
 
 function classDescriptorFlags(referenceKind: TypeReferenceKind): number {
   const kindFlags =
@@ -23,10 +20,10 @@ describe("class metadata bounds", () => {
     requireDarwin(ctx);
 
     const objcAncestor = Memory.alloc(0x30); // Data field left 0: not Swift type metadata
-    const storage = Memory.alloc(Process.pointerSize);
+    const storage = arenaAlloc(Process.pointerSize);
     storage.writePointer(objcAncestor);
 
-    const descriptor = Memory.alloc(0x30);
+    const descriptor = arenaAlloc(0x30);
     descriptor.writeU32(classDescriptorFlags(TypeReferenceKind.IndirectObjCClass));
     writeRelativeDirectPointer(descriptor.add(0x2c), storage);
 
@@ -48,9 +45,9 @@ describe("class metadata bounds", () => {
   test("resilient superclass reference by ObjC class name resolves via objc_lookUpClass", (ctx) => {
     requireDarwin(ctx);
 
-    const descriptor = Memory.alloc(0x30);
+    const descriptor = arenaAlloc(0x30);
     descriptor.writeU32(classDescriptorFlags(TypeReferenceKind.DirectObjCClassName));
-    const className = Memory.allocUtf8String("NSObject");
+    const className = arenaString("NSObject");
     writeRelativeDirectPointer(descriptor.add(0x2c), className);
 
     const bounds = getClassMetadataBounds(new ContextDescriptor(descriptor));
@@ -60,9 +57,9 @@ describe("class metadata bounds", () => {
   test("resilient superclass reference by an unknown ObjC class name throws", (ctx) => {
     requireDarwin(ctx);
 
-    const descriptor = Memory.alloc(0x30);
+    const descriptor = arenaAlloc(0x30);
     descriptor.writeU32(classDescriptorFlags(TypeReferenceKind.DirectObjCClassName));
-    const className = Memory.allocUtf8String("NoSuchClassXYZ");
+    const className = arenaString("NoSuchClassXYZ");
     writeRelativeDirectPointer(descriptor.add(0x2c), className);
 
     expect(() => getClassMetadataBounds(new ContextDescriptor(descriptor))).toThrow();

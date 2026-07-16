@@ -21,3 +21,11 @@ export function arenaString(str: string): NativePointer {
   buf.writeUtf8String(str);
   return buf;
 }
+
+export function writeRelativeDirectPointer(field: NativePointer, target: NativePointer): void {
+  const distance = target.compare(field) >= 0 ? target.sub(field) : field.sub(target);
+  if (distance.compare(0x7fffffff) > 0) {
+    throw new Error("relative-pointer target out of S32 range; allocate both ends from the arena");
+  }
+  field.writeS32(target.sub(field).toInt32());
+}
