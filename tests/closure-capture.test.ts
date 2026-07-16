@@ -1,6 +1,6 @@
 import { test, expect, describe } from "@frida/injest/agent";
 import { requireSwift } from "./swift.js";
-import { arenaAlloc, arenaString } from "./arena.js";
+import { arenaAlloc, arenaString, writeRelativeDirectPointer } from "./arena.js";
 
 import { readObject } from "../src/abi/instance.js";
 import { layoutCaptures, readCaptures, unwrapReabstractionThunk, writeCaptures } from "../src/abi/closure-capture.js";
@@ -11,10 +11,6 @@ import { fixtureExport } from "./fixtures/load.js";
 
 const HEAP_LOCAL_VARIABLE = 0x400;
 const NOT_A_CLOSURE = 0x0;
-
-function writeRelativeDirectPointer(field: NativePointer, target: NativePointer): void {
-  field.writeS32(target.sub(field).toInt32());
-}
 
 // keeps helper-allocated buffers from being GC'd once their local variable goes out of scope.
 const pinned: NativePointer[] = [];
