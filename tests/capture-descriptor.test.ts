@@ -1,6 +1,6 @@
 import { test, expect, describe } from "@frida/injest/agent";
 import { requireSwift } from "./swift.js";
-import { arenaAlloc, arenaString } from "./arena.js";
+import { arenaAlloc, arenaString, writeRelativeDirectPointer } from "./arena.js";
 
 import {
   CaptureDescriptor,
@@ -12,10 +12,6 @@ import { MetadataKind } from "../src/abi/metadata.js";
 import { fixtureExport } from "./fixtures/load.js";
 
 const HEAP_LOCAL_VARIABLE = 0x400;
-
-function writeRelativeDirectPointer(field: NativePointer, target: NativePointer): void {
-  field.writeS32(target.sub(field).toInt32());
-}
 
 describe("capture descriptor", () => {
   test("enumerates capture type records", () => {
