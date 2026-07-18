@@ -28,7 +28,7 @@
     "prepublishOnly": "npm run build"
   },
   "dependencies": {
-    "frida": "^17.15.5",
+    "frida": "^17.16.0",
     "typescript": "^6.0.3"
   },
   "devDependencies": {
