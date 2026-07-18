@@ -23,6 +23,8 @@
     "test": "injest",
     "pretest:v8": "sh tests/fixtures/build.sh",
     "test:v8": "injest --target local-v8",
+    "pretest:macos-arm64e": "ARCH=arm64e sh tests/fixtures/build.sh",
+    "test:macos-arm64e": "injest --target macos-arm64e",
     "pretest:ios": "PLATFORM=ios EMBED_FIXTURES=1 sh tests/fixtures/build.sh",
     "test:ios": "injest --target ios",
     "prepublishOnly": "npm run build"
@@ -32,7 +34,7 @@
     "typescript": "^6.0.3"
   },
   "devDependencies": {
-    "@frida/injest": "^0.1.2",
+    "@frida/injest": "^0.1.3",
     "@types/frida-gum": "^19.4.0",
     "@types/node": "^26.1.0"
   },

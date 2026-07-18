@@ -93,15 +93,22 @@ case "$platform" in
     resilient_out="$fixtures/resilient.dylib"
     fixturesyms_out="$fixtures/fixturesyms.dylib"
 
-    swiftc -emit-library -emit-module -enable-library-evolution -module-name resilient \
+    # ARCH=arm64e pins the arm64e slice so fixtures match an arm64e (PAC) host.
+    if [ -n "$ARCH" ]; then
+      target_flag="-target ${ARCH}-apple-macos$(sw_vers -productVersion | cut -d. -f1).0"
+    else
+      target_flag=""
+    fi
+
+    swiftc $target_flag -emit-library -emit-module -enable-library-evolution -module-name resilient \
       "$fixtures/resilient.swift" -o "$resilient_out" \
       -Xlinker -install_name -Xlinker "$resilient_out"
 
-    swiftc -emit-library -module-name fixture "$fixtures/fixture.swift" -I "$fixtures" "$resilient_out" -o "$fixture_out"
+    swiftc $target_flag -emit-library -module-name fixture "$fixtures/fixture.swift" -I "$fixtures" "$resilient_out" -o "$fixture_out"
     xcrun strip -x "$fixture_out"
     codesign -s - -f "$fixture_out"
 
-    swiftc -emit-library -module-name fixturesyms "$fixtures/fixture.swift" -I "$fixtures" "$resilient_out" -o "$fixturesyms_out"
+    swiftc $target_flag -emit-library -module-name fixturesyms "$fixtures/fixture.swift" -I "$fixtures" "$resilient_out" -o "$fixturesyms_out"
     codesign -s - -f "$fixturesyms_out"
 
     xcrun strip -x "$resilient_out"
@@ -109,6 +116,12 @@ case "$platform" in
 
     emit_paths "$fixture_out" "$resilient_out" "$fixturesyms_out"
     emit_bytes "$fixture_out" "$resilient_out" "$fixturesyms_out"
+
+    if [ "$ARCH" = "arm64e" ]; then
+      host_out="$fixtures/host"
+      clang -arch arm64e -o "$host_out" "$fixtures/host.c"
+      codesign -s - -f --entitlements "$fixtures/host.entitlements" "$host_out"
+    fi
     ;;
   linux)
     fixture_out="$fixtures/fixture.so"
