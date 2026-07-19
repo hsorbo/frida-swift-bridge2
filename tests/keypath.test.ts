@@ -1,6 +1,6 @@
 import { test, expect, describe, beforeEach } from "@frida/injest/agent";
 import { requireSwift } from "./swift.js";
-import { fixtureExport, loadFixture } from "./fixtures/load.js";
+import { fixtureExport, loadFixture, loadFixtureSyms, existentialMetadata } from "./fixtures/load.js";
 import {
   readKeyPathBuffer,
   resolveKeyPathNames,
@@ -11,8 +11,8 @@ import type { StoredKeyPathComponent, ComputedKeyPathComponent } from "../src/ab
 import { typeName } from "../src/runtime/type-name.js";
 import { Swift } from "../src/index.js";
 
-function keyPath(accessor: string): NativePointer {
-  return new NativeFunction(fixtureExport(accessor), "pointer", [])() as NativePointer;
+function keyPath(accessor: string, mod: Module = loadFixture()): NativePointer {
+  return new NativeFunction(fixtureExport(accessor, mod), "pointer", [])() as NativePointer;
 }
 
 describe("readKeyPathBuffer", () => {
@@ -167,5 +167,49 @@ describe("resolveKeyPathNames", () => {
     expect(resolveKeyPathNames(onEvent.components, Swift.metadataFor("fixture.Sink")!)).toEqual([
       "onEvent",
     ]);
+  });
+});
+
+// The requirement name comes from a conformance's witness-thunk symbol, so vtableOffset naming
+// needs the unstripped fixturesyms module.
+describe("resolveKeyPathNames › protocol requirements", () => {
+  beforeEach(() => {
+    requireSwift();
+    loadFixtureSyms();
+  });
+
+  test("names a get/set protocol property past the leading method via its vtableOffset id", () => {
+    const mod = loadFixtureSyms();
+    const speed = readKeyPathBuffer(keyPath("fixturesyms.keyPathVehicleSpeed", mod));
+    expect((speed.components[0] as ComputedKeyPathComponent).idKind).toBe("vtableOffset");
+    const root = existentialMetadata("fixturesyms.vehicleType", mod);
+    expect(resolveKeyPathNames(speed.components, root)).toEqual(["speed"]);
+  });
+
+  test("names a get-only protocol property whose id steps over the interposed setter", () => {
+    const mod = loadFixtureSyms();
+    const wheels = readKeyPathBuffer(keyPath("fixturesyms.keyPathVehicleWheels", mod));
+    const root = existentialMetadata("fixturesyms.vehicleType", mod);
+    expect(resolveKeyPathNames(wheels.components, root)).toEqual(["wheels"]);
+  });
+
+  test("names a property on a class-constrained protocol existential", () => {
+    const mod = loadFixtureSyms();
+    const label = readKeyPathBuffer(keyPath("fixturesyms.keyPathNamedLabel", mod));
+    const root = existentialMetadata("fixturesyms.namedType", mod);
+    expect(resolveKeyPathNames(label.components, root)).toEqual(["label"]);
+  });
+
+  test("leaves the requirement unnamed when the root is a multi-protocol composition", () => {
+    const mod = loadFixtureSyms();
+    const speed = readKeyPathBuffer(keyPath("fixturesyms.keyPathVehicleSpeed", mod));
+    const composition = existentialMetadata("fixturesyms.greeterAgedType", mod);
+    expect(resolveKeyPathNames(speed.components, composition)).toEqual([null]);
+  });
+
+  test("leaves the requirement unnamed when the conformance witness thunks are stripped", () => {
+    const speed = readKeyPathBuffer(keyPath("fixture.keyPathVehicleSpeed"));
+    const root = existentialMetadata("fixture.vehicleType");
+    expect(resolveKeyPathNames(speed.components, root)).toEqual([null]);
   });
 });
