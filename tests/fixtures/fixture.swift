@@ -172,6 +172,27 @@ public func keyPathArrayIndex2() -> UnsafeRawPointer { unsafeBitCast(keyPathArra
 public func keyPathArrayIndex2Again() -> UnsafeRawPointer { unsafeBitCast(keyPathArrayIndex2AgainValue, to: UnsafeRawPointer.self) }
 public func keyPathArrayIndex5() -> UnsafeRawPointer { unsafeBitCast(keyPathArrayIndex5Value, to: UnsafeRawPointer.self) }
 
+// Protocol-requirement keypaths lower to a vtableOffset computed component; start() precedes
+// speed/wheels so their negated-index id is non-zero and steps over the interposed setter.
+public protocol Vehicle {
+    func start()
+    var speed: Int { get set }
+    var wheels: Int { get }
+}
+public struct Car: Vehicle {
+    public var speed: Int
+    public let wheels: Int
+    public init(speed: Int, wheels: Int) { self.speed = speed; self.wheels = wheels }
+    public func start() {}
+}
+private let keyPathVehicleSpeedValue: AnyKeyPath = \Vehicle.speed
+private let keyPathVehicleWheelsValue: AnyKeyPath = \Vehicle.wheels
+private let keyPathNamedLabelValue: AnyKeyPath = \Named.label
+public func keyPathVehicleSpeed() -> UnsafeRawPointer { unsafeBitCast(keyPathVehicleSpeedValue, to: UnsafeRawPointer.self) }
+public func keyPathVehicleWheels() -> UnsafeRawPointer { unsafeBitCast(keyPathVehicleWheelsValue, to: UnsafeRawPointer.self) }
+public func keyPathNamedLabel() -> UnsafeRawPointer { unsafeBitCast(keyPathNamedLabelValue, to: UnsafeRawPointer.self) }
+public func vehicleType() -> UnsafeRawPointer { unsafeBitCast((any Vehicle).self as Any.Type, to: UnsafeRawPointer.self) }
+
 // Generic value args pass indirectly; wrappers drive them so the hook side can observe a call.
 @inline(never)
 public func genericIdentity<T>(_ x: T) -> T {

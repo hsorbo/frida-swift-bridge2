@@ -1,6 +1,9 @@
 import { Metadata, MetadataKind } from "./metadata.js";
 import { ClassMetadata, classMetadataOf, enumerateClassFields } from "./class-metadata.js";
 import { enumerateFields } from "./field-descriptor.js";
+import { existentialProtocols } from "./existential.js";
+import { readProtocolRequirements } from "./protocol-descriptor.js";
+import { namedProtocolRequirements } from "../runtime/method.js";
 import { signCode } from "../basic/pac.js";
 
 const BUFFER_SIZE_MASK = 0x00ffffff;
@@ -286,8 +289,8 @@ function idResolution(header: number): ComputedKeyPathComponent["idResolution"] 
 }
 
 // Names each component with the property it steps through, given the keypath's root type. A
-// `pointer`-id computed component (plain getter) and a `vtableOffset`-id one (protocol requirement)
-// stay null — neither carries a name recoverable from the root type alone.
+// `pointer`-id computed component (plain getter) stays null — its property descriptor address
+// carries no name recoverable from the root type alone.
 export function resolveKeyPathNames(
   components: KeyPathComponent[],
   root: Metadata
@@ -307,12 +310,37 @@ function nameForComponent(component: KeyPathComponent, container: Metadata): str
     case "class":
       return component.offset === null ? null : fieldNameByOffset(container, component.offset);
     case "computed":
-      return component.idKind === "storedPropertyIndex"
-        ? fieldNameByIndex(container, component.id.toUInt32())
-        : null;
+      if (component.idKind === "storedPropertyIndex") {
+        return fieldNameByIndex(container, component.id.toUInt32());
+      }
+      if (component.idKind === "vtableOffset") {
+        return protocolRequirementName(container, component.id);
+      }
+      return null;
     default:
       return null;
   }
+}
+
+function protocolRequirementName(container: Metadata, id: NativePointer): string | null {
+  if (container.kind !== MetadataKind.Existential) {
+    return null;
+  }
+  const protocols = existentialProtocols(container);
+  if (protocols.length !== 1) {
+    return null; // a composition can't say which protocol the index belongs to
+  }
+  const protocol = protocols[0];
+  const entryIndex = -id.toInt32(); // IRGen stores the witness-table entry index negated
+  const requirements = readProtocolRequirements(protocol);
+  if (entryIndex < 0 || entryIndex >= requirements.length) {
+    return null;
+  }
+  const witnessIndex = requirements[entryIndex].witnessIndex;
+  const named = namedProtocolRequirements(protocol).find(
+    (n) => n.requirement.witnessIndex === witnessIndex
+  );
+  return named?.name ?? null;
 }
 
 function fieldNameByOffset(container: Metadata, offset: number): string | null {

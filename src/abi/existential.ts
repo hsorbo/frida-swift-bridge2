@@ -4,11 +4,14 @@ import { dynamicTypeOf } from "./class-metadata.js";
 import { getSwiftCoreApi } from "../runtime/api.js";
 
 const FLAGS_OFFSET = Process.pointerSize;
+const NUM_PROTOCOLS_OFFSET = Process.pointerSize + 4;
 const TYPE_OFFSET = 3 * Process.pointerSize;
 
 const SPECIAL_PROTOCOL_MASK = 0x3f000000;
 const SPECIAL_PROTOCOL_ERROR = 0x01000000;
 const NOT_CLASS_CONSTRAINED = 0x80000000;
+const HAS_SUPERCLASS_CONSTRAINT = 0x40000000;
+const PROTOCOL_DESCRIPTOR_REF_IS_OBJC = 1;
 
 export type ExistentialRepresentation = "opaque" | "class" | "error";
 
@@ -66,6 +69,25 @@ export function projectExistentialValue(metadata: Metadata, container: NativePoi
     return projectOpaqueExistential(container);
   }
   throw new Error("projectExistentialValue: Error existentials are not supported; use projectErrorExistential");
+}
+
+// Swift protocol descriptors of an Existential-kind metadata; ObjC refs (low bit set) are skipped.
+export function existentialProtocols(metadata: Metadata): ContextDescriptor[] {
+  const flags = metadata.handle.add(FLAGS_OFFSET).readU32();
+  const numProtocols = metadata.handle.add(NUM_PROTOCOLS_OFFSET).readU32();
+  let cursor = metadata.handle.add(NUM_PROTOCOLS_OFFSET + 4);
+  if ((flags & HAS_SUPERCLASS_CONSTRAINT) !== 0) {
+    cursor = cursor.add(Process.pointerSize);
+  }
+  const protocols: ContextDescriptor[] = [];
+  for (let i = 0; i < numProtocols; i++) {
+    const ref = cursor.add(i * Process.pointerSize).readPointer();
+    if (!ref.and(PROTOCOL_DESCRIPTOR_REF_IS_OBJC).isNull()) {
+      continue;
+    }
+    protocols.push(new ContextDescriptor(ref));
+  }
+  return protocols;
 }
 
 export function projectErrorExistential(container: NativePointer): OpaqueExistential {
