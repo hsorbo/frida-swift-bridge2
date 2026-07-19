@@ -14,6 +14,11 @@ export class RelativeIndirectablePointer {
       return null;
     }
     const address = at.add(offset & ~1);
-    return (offset & 1) !== 0 ? address.readPointer().strip() : address;
+    if ((offset & 1) === 0) {
+      return address;
+    }
+    // An indirect slot holding 0 is an unbound weak import, not a target.
+    const target = address.readPointer().strip();
+    return target.isNull() ? null : target;
   }
 }

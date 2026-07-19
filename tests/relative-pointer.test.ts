@@ -44,4 +44,16 @@ describe("relative pointers", () => {
 
     expect(RelativeIndirectablePointer.resolve(at)!.equals(target)).toBeTruthy();
   });
+
+  test("indirectable returns null for an unbound (null) indirect slot", () => {
+    const block = Memory.alloc(Process.pointerSize * 2);
+    const slot = block;
+    slot.writePointer(NULL);
+
+    const at = block.add(Process.pointerSize);
+    const offset = slot.sub(at).toInt32() | 1;
+    at.writeS32(offset);
+
+    expect(RelativeIndirectablePointer.resolve(at)).toBeNull();
+  });
 });
