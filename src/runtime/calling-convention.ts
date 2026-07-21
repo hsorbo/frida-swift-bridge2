@@ -15,15 +15,36 @@ export function markResilientModule(name: string): void {
   resilientModules.add(name);
 }
 
-// Resilience isn't recorded in metadata (@frozen leaves no trace), so it's never inferred from a
-// missing signal: positive sources only — the layout-string bit or a caller-declared module.
+const resilientValueCache = new Map<string, boolean>();
+
+// Resilience isn't recorded in metadata (@frozen leaves no trace), so it's inferred from positive
+// signals only: the layout-string bit, a caller-declared module, or an embedded resilient field or
+// payload (Optional<URL> is address-only because URL is, though Swift.Optional carries no signal).
 export function isResilientValueType(metadata: Metadata): boolean {
   const kind = metadata.kind;
   if (kind !== MetadataKind.Struct && kind !== MetadataKind.Enum && kind !== MetadataKind.Optional) {
     return false;
   }
   const description = metadata.description;
-  return description.hasLayoutString || resilientModules.has(description.moduleName ?? "");
+  if (description.hasLayoutString || resilientModules.has(description.moduleName ?? "")) {
+    return true;
+  }
+  const key = metadata.handle.toString();
+  const cached = resilientValueCache.get(key);
+  if (cached !== undefined) {
+    return cached;
+  }
+  resilientValueCache.set(key, false); // break recursive-type cycles
+  let result = false;
+  for (const field of enumerateFields(description)) {
+    const fieldType = fieldTypeIn(metadata, field);
+    if (fieldType !== null && isResilientValueType(fieldType)) {
+      result = true;
+      break;
+    }
+  }
+  resilientValueCache.set(key, result);
+  return result;
 }
 
 // Integer/pointer-class only; floating-point uses the separate v-register budget below.

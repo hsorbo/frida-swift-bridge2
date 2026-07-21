@@ -61,7 +61,7 @@ describe("resilient auto-detection (CryptoKit)", () => {
     sizeBuf.writeU64(256);
 
     const keyType = Swift.typeOf(Swift.metadataFor("CryptoKit.SymmetricKey")!) as StructType;
-    const key = keyType.initializer({ labels: ["size"] }).call(ValueInstance.borrow(sizeMd, sizeBuf));
+    const key = keyType.initializer({ labels: ["size"] }).call(ValueInstance.borrow(sizeMd, sizeBuf))!;
 
     expect(key.$get("bitCount")).toEqual(int64(256));
   });
