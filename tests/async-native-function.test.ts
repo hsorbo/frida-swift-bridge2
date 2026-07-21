@@ -48,6 +48,13 @@ describe("Swift.asyncFunction", () => {
     expect(await makeTupleAsync.call(3, 4)).toEqual([int64(7), "sum"]);
   });
 
+  test("threads a caller-annotated return type, no cast at the call site", async () => {
+    const makeTupleAsync = Swift.asyncFunction<[Int64, string]>(module, MAKE_TUPLE_ASYNC);
+    const [sum, label] = await makeTupleAsync.call(3, 4);
+    expect(sum).toEqual(int64(7));
+    expect(label).toBe("sum");
+  });
+
   test("binds a class receiver for an instance method: calc(100).addAsync(5) ⇒ 105", async () => {
     const calc = (typeOf(metadataFor("fixture.AsyncCalc")!) as ClassType).init(100);
     const addAsync = Swift.asyncFunction(module, ADD_ASYNC).bind(calc);
