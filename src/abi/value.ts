@@ -34,7 +34,7 @@ export class ValueInstance implements RawInstance {
     readonly metadata: Metadata,
     readonly handle: NativePointer,
     private readonly state: OwnedState | null,
-    private readonly keepAlive: unknown
+    private readonly parent: RawInstance | null
   ) {
     if (state !== null) {
       const vwt = metadata.valueWitnesses;
@@ -48,8 +48,8 @@ export class ValueInstance implements RawInstance {
     }
   }
 
-  static borrow(metadata: Metadata, handle: NativePointer, keepAlive: unknown = null): ValueInstance {
-    return new ValueInstance(metadata, handle, null, keepAlive);
+  static borrow(metadata: Metadata, handle: NativePointer, parent: RawInstance | null = null): ValueInstance {
+    return new ValueInstance(metadata, handle, null, parent);
   }
 
   static fromJS(metadata: Metadata, value: SwiftValue): ValueInstance {
@@ -192,9 +192,10 @@ export class ValueInstance implements RawInstance {
     this.dispose();
   }
 
-  private checkLive(): void {
+  checkLive(): void {
     if (this.state !== null && this.state.disposed) {
       throw new Error("ValueInstance has been disposed");
     }
+    this.parent?.checkLive(); // a borrowed field dangles once the instance owning its storage is disposed
   }
 }
