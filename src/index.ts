@@ -28,6 +28,7 @@ import {
 } from "./runtime/protocol.js";
 import type { StableProtocol, StableProtocolComposition } from "./runtime/protocol.js";
 import { markResilientModule } from "./runtime/calling-convention.js";
+import { resolveAsyncFunction } from "./runtime/method.js";
 import { closure } from "./runtime/closure.js";
 import { ContextDescriptor } from "./abi/context-descriptor.js";
 
@@ -86,6 +87,8 @@ export { isSwiftObject } from "./runtime/method.js";
 export type {
   SwiftBoundMethod,
   SwiftBoundInitializer,
+  SwiftAsyncFunction,
+  AsyncReceiver,
   CallResult,
   CallArg,
   MethodInfo,
@@ -160,6 +163,7 @@ export const Swift = {
   },
 
   NativeFunction: swiftFunction,
+  asyncFunction: resolveAsyncFunction,
   Protocol: {
     find: (name: string): StableProtocol | null => ProtocolClass.find(name),
   },

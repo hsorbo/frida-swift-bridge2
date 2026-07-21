@@ -142,6 +142,7 @@ export {
   tupleNumElements,
   tupleLabels,
   enumerateTupleElements,
+  getUnlabelledTupleTypeMetadata,
 } from "./abi/tuple.js";
 export { metatypeInstanceType } from "./abi/metatype.js";
 export {
@@ -205,6 +206,9 @@ export {
   WitnessOrigin,
   classifyWitnessOrigin,
   NamedRequirement,
+  SwiftAsyncFunction,
+  AsyncReceiver,
+  resolveAsyncFunction,
 } from "./runtime/method.js";
 
 // Companion types naming the parameters and returns of the raw exports above.
