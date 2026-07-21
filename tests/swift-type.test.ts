@@ -142,6 +142,18 @@ describe("type wrappers", () => {
     expect(t.methods({ static: true })).toEqual([]);
   });
 
+  test("Swift.class/struct/enum resolve their kind, throw on mismatch, null when absent", () => {
+    expect(Swift.class("fixture.Counter") instanceof ClassType).toBe(true);
+    expect(Swift.struct("fixture.LoadableStruct") instanceof StructType).toBe(true);
+    expect(Swift.enum("fixture.Pick") instanceof EnumType).toBe(true);
+    expect(() => Swift.class("fixture.LoadableStruct")).toThrow(/is struct, not class/);
+    expect(() => Swift.struct("fixture.Pick")).toThrow(/is enum, not struct/);
+    expect(() => Swift.enum("fixture.Counter")).toThrow(/is class, not enum/);
+    expect(Swift.class("fixture.NoSuchType")).toBeNull();
+    expect(Swift.struct("fixture.NoSuchType")).toBeNull();
+    expect(Swift.enum("fixture.NoSuchType")).toBeNull();
+  });
+
   test("typeFromDescriptor dispatches by descriptor kind", () => {
     expect(typeFromDescriptor(findType("fixture.LoadableStruct")!) instanceof StructType).toBe(true);
     expect(typeFromDescriptor(findType("fixture.Pick")!) instanceof EnumType).toBe(true);
