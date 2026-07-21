@@ -52,6 +52,7 @@ export interface SwiftCoreApi {
   >;
   swift_retain: NativeFunction<NativePointer, [NativePointerValue]>;
   swift_release: NativeFunction<void, [NativePointerValue]>;
+  swift_errorRelease: NativeFunction<void, [NativePointerValue]>;
   swift_retainCount: NativeFunction<UInt64, [NativePointerValue]>;
   swift_deallocClassInstance: NativeFunction<
     void,
@@ -136,6 +137,9 @@ export function getSwiftCoreApi(): SwiftCoreApi {
       "pointer",
     ]),
     swift_release: new NativeFunction(lib.getExportByName("swift_release"), "void", [
+      "pointer",
+    ]),
+    swift_errorRelease: new NativeFunction(lib.getExportByName("swift_errorRelease"), "void", [
       "pointer",
     ]),
     swift_retainCount: new NativeFunction(

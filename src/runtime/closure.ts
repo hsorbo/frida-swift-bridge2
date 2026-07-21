@@ -1,4 +1,5 @@
 import { getSwiftCoreApi } from "./api.js";
+import { markScriptOwnedErrorBox } from "./error-box.js";
 
 const ARCH = Process.arch;
 
@@ -61,6 +62,13 @@ interface ClosureResources {
 // pointers baked into the trampoline page and context metadata do not count as references.
 const liveResources = new Set<ClosureResources>();
 
+function routeThrownError(errorSlot: NativePointer, box: NativePointer): void {
+  if (!box.isNull()) {
+    markScriptOwnedErrorBox(box);
+  }
+  errorSlot.writePointer(box);
+}
+
 export class SwiftClosure {
   readonly fnPointer: NativePointer;
   // Heap-object context Swift retains/releases like any closure capture (passed in x20 on invoke,
@@ -101,7 +109,7 @@ export class SwiftClosure {
           },
           resultSlot.readPointer()
         );
-        errorSlot.writePointer(error ?? ptr(0));
+        routeThrownError(errorSlot, error ?? ptr(0));
       },
       "void",
       ["pointer", "pointer"]
@@ -140,7 +148,7 @@ export class SwiftClosure {
     const callback = new NativeCallback(
       ((...args: LoadableValue[]): LoadableValue => {
         const r = body(...args);
-        errorSlot.writePointer(r instanceof SwiftThrow ? r.error : ptr(0));
+        routeThrownError(errorSlot, r instanceof SwiftThrow ? r.error : ptr(0));
         return r instanceof SwiftThrow ? 0 : coerceResult(r);
       }) as never,
       resultType,
@@ -164,7 +172,7 @@ export class SwiftClosure {
     const callback = new NativeCallback(
       ((...args: LoadableValue[]) => {
         const r = body(args, resultSlot.readPointer());
-        errorSlot.writePointer(r instanceof SwiftThrow ? r.error : ptr(0));
+        routeThrownError(errorSlot, r instanceof SwiftThrow ? r.error : ptr(0));
       }) as never,
       "void",
       paramTypes
