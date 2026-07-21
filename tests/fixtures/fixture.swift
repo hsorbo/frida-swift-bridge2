@@ -401,6 +401,15 @@ public class Base { public let kind: Int; public init(kind: Int) { self.kind = k
 public final class Derived: Base { public init() { super.init(kind: 99) } }
 public func makeDerivedAsBase() -> Base { Derived() }
 
+public class Creature {
+    public var legs: Int
+    public init(legs: Int) { self.legs = legs }
+}
+public final class Pup: Creature {
+    public var name: String
+    public init(name: String, legs: Int) { self.name = name; super.init(legs: legs) }
+}
+
 @inline(never)
 public func roundOptional<A>(_ x: A?) -> A? { x }
 public func triggerRoundOptional() -> Int { roundOptional(Optional<Int>.some(9)) ?? -1 }

@@ -217,6 +217,13 @@ describe("ClassInstance computed property", () => {
     const obj = robotType().init("R2");
     expect(() => obj.$get("nope")).toThrow();
   });
+
+  test("gets and sets a property inherited from a superclass", () => {
+    const pup = (Swift.typeOf(Swift.metadataFor("fixture.Pup")!) as ClassType).init("Rex", 4);
+    expect(pup.$get("legs")).toEqual(int64(4));
+    pup.$set("legs", 3);
+    expect(pup.$get("legs")).toEqual(int64(3));
+  });
 });
 
 describe("ClassType static invocation", () => {
