@@ -1499,14 +1499,27 @@ function resolveAccessor(typeName: string, member: string, kind: AccessorKind): 
   throw new Error(`no ${kind} for ${member} on ${fullName}`);
 }
 
-function invokerForAccessor(accessor: ResolvedAccessor): SwiftNativeFunction {
-  const key = accessor.address.toString();
+// A getter borrows self, so a small loadable value receiver rides in registers by value — passed as a
+// trailing loadable arg, not the x20 self-pointer used for classes and large/address-only receivers.
+function getterSelfByValue(receiverTypeName: string): Metadata | null {
+  const receiver = resolveType(receiverTypeName);
+  if (receiver === null || receiver.kind === MetadataKind.Class || shouldPassIndirectly(receiver)) {
+    return null;
+  }
+  return receiver;
+}
+
+function invokerForAccessor(accessor: ResolvedAccessor, selfByValue: Metadata | null): SwiftNativeFunction {
+  const key = `${accessor.address}:${selfByValue === null ? "i" : "v"}`;
   let fn = invokerCache.get(key);
   if (fn === undefined) {
-    fn =
-      accessor.kind === "getter"
-        ? makeSwiftNativeFunction(accessor.address, accessor.type, [], { hasSelf: true })
-        : makeSwiftNativeFunction(accessor.address, null, [accessor.type], { hasSelf: true });
+    if (accessor.kind === "setter") {
+      fn = makeSwiftNativeFunction(accessor.address, null, [accessor.type], { hasSelf: true });
+    } else if (selfByValue !== null) {
+      fn = makeSwiftNativeFunction(accessor.address, accessor.type, [selfByValue], {});
+    } else {
+      fn = makeSwiftNativeFunction(accessor.address, accessor.type, [], { hasSelf: true });
+    }
     invokerCache.set(key, fn);
   }
   return fn;
@@ -1514,13 +1527,14 @@ function invokerForAccessor(accessor: ResolvedAccessor): SwiftNativeFunction {
 
 export function getProperty(self: NativePointer, typeName: string, member: string): CallResult {
   const accessor = resolveAccessor(typeName, member, "getter");
-  return decodeReturn(accessor.type, invokerForAccessor(accessor)(self));
+  return decodeReturn(accessor.type, invokerForAccessor(accessor, getterSelfByValue(typeName))(self));
 }
 
-// Setter newValue is +1/owned: the callee consumes the temp, so it is not destroyed here.
+// Setter self is inout (mutating), so it stays indirect; newValue is +1/owned and the callee consumes
+// the temp, so it is not destroyed here.
 export function setProperty(self: NativePointer, typeName: string, member: string, value: CallArg): void {
   const accessor = resolveAccessor(typeName, member, "setter");
-  invokerForAccessor(accessor)(self, marshalConsumedArgs([accessor.type], [value])[0]);
+  invokerForAccessor(accessor, null)(self, marshalConsumedArgs([accessor.type], [value])[0]);
 }
 
 function protocolOf(table: WitnessTable): ContextDescriptor {
