@@ -144,7 +144,7 @@ export class ValueType extends SwiftType {
   }
 
   init(...args: CallArg[]): SwiftObject {
-    return this.initializer().call(...args);
+    return this.initializer({ arity: args.length }).call(...args);
   }
 }
 
