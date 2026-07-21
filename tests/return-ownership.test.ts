@@ -62,7 +62,7 @@ describe("bridge-object container return", () => {
 
     // +1 buffer survived a premature destroy: it sums back through a [Int] param.
     const box = Swift.typeOf(metadataFor("fixture.Box")) as ClassType;
-    expect(box.init().$method("sumInts").call(owned)).toBe(60);
+    expect(box.init().$method("sumInts").call(owned)).toEqual(int64(60));
 
     owned.$dispose();
   });

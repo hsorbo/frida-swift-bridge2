@@ -34,8 +34,8 @@ describe("SwiftInterceptor.attach", () => {
     });
     makeSwiftNativeFunction(addr, Int, [Int, Int])(intValue(20), intValue(22));
     listener.detach();
-    expect(seenArgs).toEqual([20, 22]);
-    expect(seenRet).toBe(42);
+    expect(seenArgs).toEqual([int64(20), int64(22)]);
+    expect(seenRet).toEqual(int64(42));
   });
 
   test("decodes a direct (register-exploded) struct argument", () => {
@@ -50,7 +50,7 @@ describe("SwiftInterceptor.attach", () => {
     });
     makeSwiftNativeFunction(addr, Int, [Loadable])(structValue(Loadable, [1, 2, 3, 4]));
     listener.detach();
-    expect(seen).toEqual([{ a: 1, b: 2, c: 3, d: 4 }]);
+    expect(seen).toEqual([{ a: int64(1), b: int64(2), c: int64(3), d: int64(4) }]);
   });
 
   test("decodes an indirect struct argument", () => {
@@ -65,7 +65,7 @@ describe("SwiftInterceptor.attach", () => {
     });
     makeSwiftNativeFunction(addr, Int, [Big])(structValue(Big, [1, 2, 3, 4, 5]));
     listener.detach();
-    expect(seen).toEqual([{ a: 1, b: 2, c: 3, d: 4, e: 5 }]);
+    expect(seen).toEqual([{ a: int64(1), b: int64(2), c: int64(3), d: int64(4), e: int64(5) }]);
   });
 
   test("decodes an indirect (x8) struct return", () => {
@@ -79,7 +79,7 @@ describe("SwiftInterceptor.attach", () => {
     });
     makeSwiftNativeFunction(addr, Big, [])();
     listener.detach();
-    expect(seen).toEqual({ a: 1, b: 2, c: 3, d: 4, e: 5 });
+    expect(seen).toEqual({ a: int64(1), b: int64(2), c: int64(3), d: int64(4), e: int64(5) });
   });
 
   test("decodes a direct (multi-register) struct return", () => {
@@ -93,7 +93,7 @@ describe("SwiftInterceptor.attach", () => {
     });
     makeSwiftNativeFunction(addr, Loadable, [])();
     listener.detach();
-    expect(seen).toEqual({ a: 1, b: 2, c: 3, d: 4 });
+    expect(seen).toEqual({ a: int64(1), b: int64(2), c: int64(3), d: int64(4) });
   });
 
   test("recovers a generic scalar argument and return from the implicit metadata", () => {
@@ -112,8 +112,8 @@ describe("SwiftInterceptor.attach", () => {
     });
     makeSwiftNativeFunction(driver, Int, [])();
     listener.detach();
-    expect(seenArgs).toEqual([7]);
-    expect(seenRet).toBe(7);
+    expect(seenArgs).toEqual([int64(7)]);
+    expect(seenRet).toEqual(int64(7));
   });
 
   test("recovers a generic struct argument from the implicit metadata", () => {
@@ -132,8 +132,8 @@ describe("SwiftInterceptor.attach", () => {
     });
     makeSwiftNativeFunction(driver, Loadable, [])();
     listener.detach();
-    expect(seenArgs).toEqual([{ a: 5, b: 6, c: 7, d: 8 }]);
-    expect(seenRet).toEqual({ a: 5, b: 6, c: 7, d: 8 });
+    expect(seenArgs).toEqual([{ a: int64(5), b: int64(6), c: int64(7), d: int64(8) }]);
+    expect(seenRet).toEqual({ a: int64(5), b: int64(6), c: int64(7), d: int64(8) });
   });
 
   test("recovers two generic params of different concrete types", () => {
@@ -152,8 +152,8 @@ describe("SwiftInterceptor.attach", () => {
     });
     makeSwiftNativeFunction(driver, Int, [])();
     listener.detach();
-    expect(seenArgs).toEqual([11, "ignored"]);
-    expect(seenRet).toBe(11);
+    expect(seenArgs).toEqual([int64(11), "ignored"]);
+    expect(seenRet).toEqual(int64(11));
   });
 
   test("decodes a generic function taking a metatype argument", () => {
@@ -172,8 +172,8 @@ describe("SwiftInterceptor.attach", () => {
     });
     makeSwiftNativeFunction(driver, Int, [])();
     listener.detach();
-    expect(seenArgs).toEqual(["Swift.Int", 5]);
-    expect(seenRet).toBe(5);
+    expect(seenArgs).toEqual(["Swift.Int", int64(5)]);
+    expect(seenRet).toEqual(int64(5));
   });
 
   test("decodes a constrained generic arg, ignoring the trailing witness table", () => {
@@ -192,8 +192,8 @@ describe("SwiftInterceptor.attach", () => {
     });
     makeSwiftNativeFunction(driver, Int, [])();
     listener.detach();
-    expect(seenArgs).toEqual([6, 7]);
-    expect(seenRet).toBe(42);
+    expect(seenArgs).toEqual([int64(6), int64(7)]);
+    expect(seenRet).toEqual(int64(42));
   });
 
   test("decodes a Double argument and return from the FP registers", (ctx) => {
@@ -231,7 +231,7 @@ describe("SwiftInterceptor.attach", () => {
     call(intValue(0));
     expect(() => call(intValue(1))).toThrow();
     listener.detach();
-    expect(seen[0]).toEqual({ retval: 99, error: undefined });
+    expect(seen[0]).toEqual({ retval: int64(99), error: undefined });
     expect(seen[1]).toEqual({ retval: null, error: "boom" });
   });
 
@@ -273,7 +273,7 @@ describe("SwiftInterceptor.attach", () => {
     });
     makeSwiftNativeFunction(addr, String_, [GreeterAged])(v);
     listener.detach();
-    expect(seenArgs).toEqual([{ name: "Cy", age: 9 }]);
+    expect(seenArgs).toEqual([{ name: "Cy", age: int64(9) }]);
     expect(seenRet).toBe("Hi, Cy (9)");
   });
 
@@ -291,7 +291,7 @@ describe("SwiftInterceptor.attach", () => {
     listener.detach();
     const counter = seen as unknown as SwiftObject;
     expect(counter.$className).toBe("fixture.Counter");
-    expect(counter.$get("count")).toBe(7);
+    expect(counter.$get("count")).toEqual(int64(7));
   });
 
   // The borrowed value facade aliases the caller's result storage, so it is read inside onLeave; the field
@@ -316,7 +316,7 @@ describe("SwiftInterceptor.attach", () => {
     makeSwiftNativeFunction(addr, Wrapper, [Token])(tokenBuf);
     listener.detach();
     expect(isValue).toBe(true);
-    expect(a).toBe(1);
+    expect(a).toEqual(int64(1));
     expect(tokenMatches).toBe(true);
   });
 });

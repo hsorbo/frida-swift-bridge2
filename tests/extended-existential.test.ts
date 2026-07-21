@@ -29,7 +29,7 @@ describe("readValue extended existential", () => {
     const Holder = existentialMetadata("fixture.holderIntType");
     expect(Holder.kind).toBe(MetadataKind.ExtendedExistential);
     expect(extendedExistentialSpecialKind(Holder)).toBe(ExtendedExistentialSpecialKind.None);
-    expect(readValue(Holder, store("fixture.storeHolderInt", Holder))).toEqual({ item: 42 });
+    expect(readValue(Holder, store("fixture.storeHolderInt", Holder))).toEqual({ item: int64(42) });
   });
 
   test("decodes a class reference behind a class-constrained parameterized existential", () => {
@@ -39,7 +39,7 @@ describe("readValue extended existential", () => {
     expect(extendedExistentialSpecialKind(Ref)).toBe(ExtendedExistentialSpecialKind.Class);
     const ref = readValue(Ref, store("fixture.storeRefInt", Ref)) as NativePointer;
     expect(ref.isNull()).toBe(false);
-    expect(readObject(ref)).toEqual({ value: 7 });
+    expect(readObject(ref)).toEqual({ value: int64(7) });
   });
 
   test("decodes the stored type behind a parameterized-protocol existential metatype (any P.Type)", () => {

@@ -24,37 +24,37 @@ describe("methods on a generic value type", () => {
   test("small receiver: Self metadata trails, the callee derives the (T: Scalable) witness from it", () => {
     const Int = Swift.metadataFor("Swift.Int")!;
     // 3.scaled(by: 7) = 21, dispatched through the witness the callee reads off Self metadata.
-    expect(constrainedBox(Int, 3).method("scaledStored").call(7)).toBe(21);
+    expect(constrainedBox(Int, 3).method("scaledStored").call(7)).toEqual(int64(21));
   });
 
   test("large receiver: self in x20, Self metadata still the lone trailing arg", () => {
     const Wide = Swift.metadataFor("fixture.WideScalar")!;
     // (1+2+3+4+5).scaled(by: 7) = 105.
-    expect(constrainedBox(Wide, { a: 1, b: 2, c: 3, d: 4, e: 5 }).method("scaledStored").call(7)).toBe(105);
+    expect(constrainedBox(Wide, { a: 1, b: 2, c: 3, d: 4, e: 5 }).method("scaledStored").call(7)).toEqual(int64(105));
   });
 
   test("a return of the type parameter T decodes via Self metadata's type argument", () => {
     const Int = Swift.metadataFor("Swift.Int")!;
-    expect(constrainedBox(Int, 9).method("stored").call()).toBe(9);
+    expect(constrainedBox(Int, 9).method("stored").call()).toEqual(int64(9));
   });
 });
 
 describe("methods on a generic class", () => {
   test("self in x20, Self metadata + (T: Scalable) witness recovered from the object isa", () => {
     // 3.scaled(by: 7) = 21, with no trailing type args.
-    expect(holder(3).method("scaledStored").call(7)).toBe(21);
+    expect(holder(3).method("scaledStored").call(7)).toEqual(int64(21));
   });
 
   test("a return of the type parameter T decodes via the concrete type argument", () => {
-    expect(holder(9).method("stored").call()).toBe(9);
+    expect(holder(9).method("stored").call()).toEqual(int64(9));
   });
 
   test("an async method drives via the AFP: scaledStoredAsync(by: 7) ⇒ 21", async () => {
-    expect(await holder(3).method("scaledStoredAsync").call(7)).toBe(21);
+    expect(await holder(3).method("scaledStoredAsync").call(7)).toEqual(int64(21));
   });
 
   test("an async return of the type parameter T decodes via the concrete argument", async () => {
-    expect(await holder(9).method("storedAsync").call()).toBe(9);
+    expect(await holder(9).method("storedAsync").call()).toEqual(int64(9));
   });
 });
 
@@ -63,16 +63,16 @@ describe("async methods on a generic value type", () => {
 
   test("small receiver: Self metadata trails, the async callee derives the witness from it", async () => {
     const Int = Swift.metadataFor("Swift.Int")!;
-    expect(await constrainedBox(Int, 3).method("scaledStoredAsync").call(7)).toBe(21);
+    expect(await constrainedBox(Int, 3).method("scaledStoredAsync").call(7)).toEqual(int64(21));
   });
 
   test("large receiver: self indirect, Self metadata the lone trailing arg", async () => {
     const Wide = Swift.metadataFor("fixture.WideScalar")!;
-    expect(await constrainedBox(Wide, { a: 1, b: 2, c: 3, d: 4, e: 5 }).method("scaledStoredAsync").call(7)).toBe(105);
+    expect(await constrainedBox(Wide, { a: 1, b: 2, c: 3, d: 4, e: 5 }).method("scaledStoredAsync").call(7)).toEqual(int64(105));
   });
 
   test("an async return of the type parameter T decodes via Self metadata's type argument", async () => {
     const Int = Swift.metadataFor("Swift.Int")!;
-    expect(await constrainedBox(Int, 9).method("storedAsync").call()).toBe(9);
+    expect(await constrainedBox(Int, 9).method("storedAsync").call()).toEqual(int64(9));
   });
 });

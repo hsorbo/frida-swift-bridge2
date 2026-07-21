@@ -32,7 +32,7 @@ describe("associated type / associated conformance resolution", () => {
     const intBox = Swift.metadataFor("fixturesyms.IntBox")!;
     const table = container.conformanceFor(intBox)!;
     const value = ValueInstance.fromJS(intBox, { item: 5 });
-    expect(table.get(value.handle, "item")).toBe(5);
+    expect(table.get(value.handle, "item")).toEqual(int64(5));
   });
 
   test("a stripped conformance's witness thunk is unrecoverable, so the named getter throws", () => {
@@ -73,6 +73,6 @@ describe("associated type / associated conformance resolution", () => {
 
     const item = ValueInstance.fromJS(itemType, { a: 2, b: 3, c: 5, d: 7, e: 11 });
     // (2+3+5+7+11) * 3 = 84
-    expect(nested.method(item.handle, "scaled").call(3)).toBe(84);
+    expect(nested.method(item.handle, "scaled").call(3)).toEqual(int64(84));
   });
 });

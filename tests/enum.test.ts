@@ -40,7 +40,7 @@ describe("enum instances", () => {
     // projectBox recomputes the value address from the box object, matching the
     // pointer an indirect enum case stores after projectEnumData.
     expect(projectBox(object).equals(buffer)).toBeTruthy();
-    expect(readValue(int, projectBox(object))).toBe(99);
+    expect(readValue(int, projectBox(object))).toEqual(int64(99));
   });
 
   test("decodes a payload case and reads its associated value", () => {
@@ -49,7 +49,7 @@ describe("enum instances", () => {
     const storage = Memory.alloc(optionalInt.typeLayout.stride);
     storage.writeS64(42);
     injectEnumTag(optionalInt, storage, 0);
-    expect(readValue(optionalInt, storage)).toEqual({ some: 42 });
+    expect(readValue(optionalInt, storage)).toEqual({ some: int64(42) });
   });
 
   test("decodes a no-payload case to its name", () => {
@@ -68,7 +68,7 @@ describe("enum instances", () => {
     const storage = Memory.alloc(optionalInt.typeLayout.stride);
     storage.writeS64(7);
     injectEnumTag(optionalInt, storage, 0);
-    expect(readValue(optionalInt, storage)).toEqual({ some: 7 });
+    expect(readValue(optionalInt, storage)).toEqual({ some: int64(7) });
   });
 
   test("discriminates a class optional via the extra-inhabitant (nil-pointer) layout", () => {
@@ -107,7 +107,7 @@ describe("enum instances", () => {
     const storage = Memory.alloc(optOptInt.typeLayout.stride);
 
     writeValue(optOptInt, storage, { some: { some: 5 } });
-    expect(readValue(optOptInt, storage)).toEqual({ some: { some: 5 } });
+    expect(readValue(optOptInt, storage)).toEqual({ some: { some: int64(5) } });
     writeValue(optOptInt, storage, { some: "none" });
     expect(readValue(optOptInt, storage)).toEqual({ some: "none" });
     writeValue(optOptInt, storage, "none");

@@ -17,7 +17,7 @@ describe("existential by-value calling convention", () => {
     const Any_ = existentialMetadata("fixture.anyType");
     const box = makeSwiftNativeFunction(fixtureExport("fixture.boxAnyInt"), Any_, [Int]);
     const any = box(intArg(42))!;
-    expect(readValue(Any_, any)).toBe(42);
+    expect(readValue(Any_, any)).toEqual(int64(42));
     const unbox = makeSwiftNativeFunction(fixtureExport("fixture.unboxAnyInt"), Int, [Any_]);
     expect(unbox(any)!.readS64().toNumber()).toBe(42);
   });
@@ -36,6 +36,6 @@ describe("existential by-value calling convention", () => {
     const Holder = existentialMetadata("fixture.holderIntType");
     expect(shouldPassIndirectly(Holder)).toBe(true);
     const make = makeSwiftNativeFunction(fixtureExport("fixture.makeHolderInt"), Holder, []);
-    expect(readValue(Holder, make()!)).toEqual({ item: 42 });
+    expect(readValue(Holder, make()!)).toEqual({ item: int64(42) });
   });
 });

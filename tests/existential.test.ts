@@ -27,17 +27,17 @@ describe("readValue existential", () => {
   test("decodes an inline value type from an Any container", () => {
     const Any_ = existentialMetadata("fixture.anyType");
     expect(existentialRepresentation(Any_)).toBe("opaque");
-    expect(readValue(Any_, store("fixture.storeAnyInt", Any_))).toBe(42);
+    expect(readValue(Any_, store("fixture.storeAnyInt", Any_))).toEqual(int64(42));
   });
 
   test("decodes an out-of-line (boxed) value type from an Any container", () => {
     const Any_ = existentialMetadata("fixture.anyType");
     expect(readValue(Any_, store("fixture.storeAnyBig", Any_))).toEqual({
-      a: 1,
-      b: 2,
-      c: 3,
-      d: 4,
-      e: 5,
+      a: int64(1),
+      b: int64(2),
+      c: int64(3),
+      d: int64(4),
+      e: int64(5),
     });
   });
 
@@ -60,6 +60,6 @@ describe("readValue existential", () => {
   test("decodes the boxed value behind an Error existential", () => {
     const Error_ = existentialMetadata("fixture.errorType");
     expect(existentialRepresentation(Error_)).toBe("error");
-    expect(readValue(Error_, store("fixture.storeError", Error_))).toEqual({ code: 7 });
+    expect(readValue(Error_, store("fixture.storeError", Error_))).toEqual({ code: int64(7) });
   });
 });

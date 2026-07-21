@@ -23,6 +23,8 @@ export interface InstanceField {
 
 export type SwiftValue =
   | number
+  | Int64
+  | UInt64
   | boolean
   | string
   | NativePointer
@@ -31,10 +33,10 @@ export type SwiftValue =
   | null;
 
 const PRIMITIVE_READERS: { [typeName: string]: (p: NativePointer) => SwiftValue } = {
-  "Swift.Int": (p) => p.readS64().toNumber(),
-  "Swift.UInt": (p) => p.readU64().toNumber(),
-  "Swift.Int64": (p) => p.readS64().toNumber(),
-  "Swift.UInt64": (p) => p.readU64().toNumber(),
+  "Swift.Int": (p) => p.readS64(),
+  "Swift.UInt": (p) => p.readU64(),
+  "Swift.Int64": (p) => p.readS64(),
+  "Swift.UInt64": (p) => p.readU64(),
   "Swift.Int32": (p) => p.readS32(),
   "Swift.UInt32": (p) => p.readU32(),
   "Swift.Int16": (p) => p.readS16(),
@@ -51,10 +53,10 @@ const PRIMITIVE_READERS: { [typeName: string]: (p: NativePointer) => SwiftValue 
 };
 
 const PRIMITIVE_WRITERS: { [typeName: string]: (p: NativePointer, v: SwiftValue) => void } = {
-  "Swift.Int": (p, v) => p.writeS64(v as number),
-  "Swift.UInt": (p, v) => p.writeU64(v as number),
-  "Swift.Int64": (p, v) => p.writeS64(v as number),
-  "Swift.UInt64": (p, v) => p.writeU64(v as number),
+  "Swift.Int": (p, v) => p.writeS64(v as number | Int64),
+  "Swift.UInt": (p, v) => p.writeU64(v as number | UInt64),
+  "Swift.Int64": (p, v) => p.writeS64(v as number | Int64),
+  "Swift.UInt64": (p, v) => p.writeU64(v as number | UInt64),
   "Swift.Int32": (p, v) => p.writeS32(v as number),
   "Swift.UInt32": (p, v) => p.writeU32(v as number),
   "Swift.Int16": (p, v) => p.writeS16(v as number),
@@ -173,6 +175,12 @@ export function swiftValueEquals(a: SwiftValue, b: SwiftValue): boolean {
   }
   if (a instanceof NativePointer || b instanceof NativePointer) {
     return a instanceof NativePointer && b instanceof NativePointer && a.equals(b);
+  }
+  if (a instanceof Int64 || b instanceof Int64) {
+    return a instanceof Int64 && b instanceof Int64 && a.equals(b);
+  }
+  if (a instanceof UInt64 || b instanceof UInt64) {
+    return a instanceof UInt64 && b instanceof UInt64 && a.equals(b);
   }
   if (Array.isArray(a) || Array.isArray(b)) {
     return (

@@ -157,14 +157,14 @@ describe("ClassInstance method invocation", () => {
 
   test("disambiguates an overload by arity", () => {
     const obj = robotType().init("R2");
-    expect(obj.$method("at", { arity: 1 }).call(5)).toBe(5);
-    expect(obj.$method("at", { arity: 2 }).call(5, 6)).toBe(11);
+    expect(obj.$method("at", { arity: 1 }).call(5)).toEqual(int64(5));
+    expect(obj.$method("at", { arity: 2 }).call(5, 6)).toEqual(int64(11));
   });
 
   test("disambiguates a same-arity overload by labels", () => {
     const obj = robotType().init("R2");
-    expect(obj.$method("move", { labels: ["to"] }).call(5)).toBe(5);
-    expect(obj.$method("move", { labels: ["by"] }).call(5)).toBe(50);
+    expect(obj.$method("move", { labels: ["to"] }).call(5)).toEqual(int64(5));
+    expect(obj.$method("move", { labels: ["by"] }).call(5)).toEqual(int64(50));
   });
 
   test("disambiguates a same-arity, same-label overload by argTypes", () => {

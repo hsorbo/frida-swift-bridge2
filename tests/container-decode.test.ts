@@ -18,7 +18,7 @@ describe("bridged container decode", () => {
 
   test("Array<Int> projects to a JS array of numbers", () => {
     using arr = decoded("ints");
-    expect(arr.$container()).toEqual([10, 20, 30]);
+    expect(arr.$container()).toEqual([int64(10), int64(20), int64(30)]);
   });
 
   test("Array<String> recurses into element decode", () => {
@@ -34,7 +34,7 @@ describe("bridged container decode", () => {
   test("Set<Int> projects to its elements", () => {
     using set = decoded("intSet");
     const elements = (set.$container() as number[]).slice().sort((a, b) => a - b);
-    expect(elements).toEqual([1, 2, 3]);
+    expect(elements).toEqual([int64(1), int64(2), int64(3)]);
   });
 
   test("Dictionary<Int, Int> projects to key/value entries", () => {
@@ -43,8 +43,8 @@ describe("bridged container decode", () => {
       .slice()
       .sort((a, b) => a.key - b.key);
     expect(entries).toEqual([
-      { key: 1, value: 100 },
-      { key: 2, value: 200 },
+      { key: int64(1), value: int64(100) },
+      { key: int64(2), value: int64(200) },
     ]);
   });
 });

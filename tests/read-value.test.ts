@@ -20,7 +20,7 @@ function mangledType(mangled: string) {
 describe("readValue", () => {
   test("decodes integer primitives", () => {
     requireSwift();
-    expect(readValue(Swift.metadataFor("Swift.Int")!, box((p) => p.writeS64(-42)))).toBe(-42);
+    expect(readValue(Swift.metadataFor("Swift.Int")!, box((p) => p.writeS64(-42)))).toEqual(int64(-42));
     expect(readValue(Swift.metadataFor("Swift.UInt8")!, box((p) => p.writeU8(200)))).toBe(200);
     expect(readValue(Swift.metadataFor("Swift.Int32")!, box((p) => p.writeS32(-7)))).toBe(-7);
   });
@@ -38,7 +38,7 @@ describe("readValue", () => {
     const storage = Memory.alloc(rangeInt.typeLayout.stride);
     storage.writeU64(10);
     storage.add(8).writeU64(20);
-    expect(readValue(rangeInt, storage)).toEqual({ lowerBound: 10, upperBound: 20 });
+    expect(readValue(rangeInt, storage)).toEqual({ lowerBound: int64(10), upperBound: int64(20) });
   });
 
   test("decodes a tuple as a positional array", () => {
@@ -47,7 +47,7 @@ describe("readValue", () => {
     const storage = Memory.alloc(tuple.typeLayout.stride);
     storage.writeU64(7);
     storage.add(8).writeU64(11);
-    expect(readValue(tuple, storage)).toEqual([7, 11]);
+    expect(readValue(tuple, storage)).toEqual([int64(7), int64(11)]);
   });
 
   test("returns a class-typed field as its reference pointer", () => {

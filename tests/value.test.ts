@@ -14,14 +14,14 @@ describe("ValueInstance", () => {
       d: 4,
     });
     expect(v.owned).toBe(true);
-    expect(v.read()).toEqual({ a: 1, b: 2, c: 3, d: 4 });
+    expect(v.read()).toEqual({ a: int64(1), b: int64(2), c: int64(3), d: int64(4) });
     v.dispose();
   });
 
   test("set overwrites a primitive in place", () => {
     const v = ValueInstance.fromJS(Swift.metadataFor("Swift.Int")!, 1);
     v.write(7);
-    expect(v.read()).toBe(7);
+    expect(v.read()).toEqual(int64(7));
     v.dispose();
   });
 
@@ -35,8 +35,8 @@ describe("ValueInstance", () => {
     const b = v.field("b");
     expect(b.owned).toBe(false);
     b.write(99);
-    expect(b.read()).toBe(99);
-    expect(v.read()).toEqual({ a: 1, b: 99, c: 3, d: 4 });
+    expect(b.read()).toEqual(int64(99));
+    expect(v.read()).toEqual({ a: int64(1), b: int64(99), c: int64(3), d: int64(4) });
     v.dispose();
   });
 
@@ -45,8 +45,8 @@ describe("ValueInstance", () => {
     const v = ValueInstance.fromJS(Loadable, { a: 1, b: 2, c: 3, d: 4 });
     const c = v.copy();
     c.field("a").write(100);
-    expect(c.read()).toEqual({ a: 100, b: 2, c: 3, d: 4 });
-    expect(v.read()).toEqual({ a: 1, b: 2, c: 3, d: 4 });
+    expect(c.read()).toEqual({ a: int64(100), b: int64(2), c: int64(3), d: int64(4) });
+    expect(v.read()).toEqual({ a: int64(1), b: int64(2), c: int64(3), d: int64(4) });
     v.dispose();
     c.dispose();
   });
@@ -121,8 +121,8 @@ describe("ValueInstance", () => {
     writeValue(Int, buffer, 5);
     const v = ValueInstance.borrow(Int, buffer);
     expect(v.owned).toBe(false);
-    expect(v.read()).toBe(5);
+    expect(v.read()).toEqual(int64(5));
     v.dispose();
-    expect(v.read()).toBe(5);
+    expect(v.read()).toEqual(int64(5));
   });
 });

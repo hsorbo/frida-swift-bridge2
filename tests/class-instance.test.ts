@@ -35,7 +35,7 @@ describe("class instances", () => {
     expect(fields[0].name).toBe("_count");
     expect(fields[0].address.equals(object.add(16))).toBeTruthy();
 
-    expect(readObject(object)._count).toBe(42);
+    expect(readObject(object)._count).toEqual(int64(42));
   });
 
   test("includes fields inherited from a Swift superclass", () => {
@@ -58,6 +58,6 @@ describe("class instances", () => {
 
     const allNames = [...enumerateClassInstanceFields(object)].map((f) => f.name);
     expect(allNames).toContain("_count");
-    expect(readObject(object)._count).toBe(7);
+    expect(readObject(object)._count).toEqual(int64(7));
   });
 });
