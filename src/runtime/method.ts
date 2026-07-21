@@ -539,9 +539,20 @@ function lowerAsyncArgs(argTypes: Metadata[], buffers: NativePointer[]): Lowered
   return { gp, fp };
 }
 
+// The settle reactions root the binder, so a keepalive stored here keeps the receiver's owning
+// instance reachable for the whole flight — its GC release would free the object while a job
+// referencing it sits queued on an executor thread.
+export function rootAsyncReceiver<T>(binder: T, receiver: unknown): T {
+  if (binder instanceof BoundAsyncMethod || binder instanceof GenericBoundAsyncMethod) {
+    binder.receiverKeepalive = receiver;
+  }
+  return binder;
+}
+
 // Arg temps are borrowed for the whole async call, so they are destroyed on settle, not synchronously.
 export class BoundAsyncMethod {
   readonly asyncFunctionPointer: AsyncFunctionPointer;
+  receiverKeepalive: unknown = null;
   private readonly result: AsyncResultShape | null;
 
   constructor(
@@ -1046,6 +1057,7 @@ export class GenericBoundAsyncMethod {
   readonly address: NativePointer;
   readonly selector: string;
   readonly asyncFunctionPointer: AsyncFunctionPointer;
+  receiverKeepalive: unknown = null;
   private readonly result: AsyncResultShape | null;
 
   constructor(

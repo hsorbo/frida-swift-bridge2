@@ -3,6 +3,8 @@ import { loadFixture } from "./fixtures/load.js";
 
 import { Swift, ClassType, SwiftAsyncThrow } from "../src/index.js";
 
+declare function gc(): void;
+
 function ticker() {
   return (Swift.typeOf(Swift.metadataFor("fixture.Ticker")!) as ClassType).init();
 }
@@ -14,6 +16,15 @@ describe("actor-isolated async calling", () => {
 
   test("drives an actor-isolated async method: advance() ⇒ 1", async () => {
     expect(await ticker().advance()).toEqual(int64(1));
+  });
+
+  test("an unreferenced receiver survives GC while the call is in flight", async () => {
+    const pending = ticker().advance();
+    if (typeof gc === "function") {
+      gc();
+      gc();
+    }
+    expect(await pending).toEqual(int64(1));
   });
 
   test("actor state persists across calls: advance() twice ⇒ 1, 2", async () => {
