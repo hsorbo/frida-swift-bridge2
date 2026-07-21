@@ -145,6 +145,21 @@ function rawArg(value: CallArg): CallArg | ClassInstance {
     : value;
 }
 
+// The marshalled path borrows every argument; a consuming (__owned) or inout parameter would
+// double-free or desync self.
+const NON_BORROWING_ARG = /^(?:__owned|inout)\s/;
+
+function assertBorrowingArgs(argTypeNames: string[], selector: string): void {
+  const offending = argTypeNames.find((n) => NON_BORROWING_ARG.test(n));
+  if (offending !== undefined) {
+    throw new Error(
+      `${selector} has a non-borrowing parameter (${offending}); its calling convention is unsupported ` +
+        `by the marshalled API. Bind it through makeSwiftNativeFunction, supplying the ABI signature and ` +
+        `consumedArgs by hand.`
+    );
+  }
+}
+
 function assertClassAssignable(arg: ClassInstance, declared: Metadata): void {
   for (let cls: ClassMetadata | null = arg.metadata; cls !== null; cls = cls.superclass) {
     if (cls.handle.equals(declared.handle)) {
@@ -478,6 +493,7 @@ export function resolveMethod(
     }
 
     const { isStatic, signature, mangled } = candidates[0];
+    assertBorrowingArgs(signature.argTypeNames, signature.selector);
     const address = candidates[0].address.strip();
     const argTypes = signature.argTypeNames.map((name) => {
       const metadata = resolveTypeExpr(name, () => null);
@@ -1293,6 +1309,7 @@ function planGenericMethod(typeNameArg: string, methodName: string, options: Met
   if (resolvedTypeArguments.length !== signature.genericParams.length) {
     throw new Error(`${signature.selector} needs ${signature.genericParams.length} type argument(s), got ${typeArguments.length}`);
   }
+  assertBorrowingArgs(signature.argTypeNames, signature.selector);
   const argPlans = signature.argTypeNames.map((n) => planGenericType(n, signature.genericParams, resolvedTypeArguments));
   const returnPlan =
     signature.returnTypeName === null
@@ -1380,6 +1397,7 @@ function planGenericTypeMethod(receiver: Metadata, methodName: string, options: 
     throw new Error(`ambiguous method ${methodName} on ${unboundName}: ${overloads} (disambiguate with { arity }, { labels }, or { argTypes })`);
   }
   const { address, signature, mangled } = candidates[0];
+  assertBorrowingArgs(signature.argTypeNames, signature.selector);
   const argPlans = signature.argTypeNames.map((n) => planTypeMemberArg(n, typeParams, typeArguments));
   const returnPlan =
     signature.returnTypeName === null ? null : planTypeMemberArg(signature.returnTypeName, typeParams, typeArguments);
@@ -1622,6 +1640,7 @@ export function resolveWitnessMethod(table: WitnessTable, methodName: string): R
     throw new Error(`ambiguous requirement ${methodName} on ${protocolName}: ${overloads}`);
   }
   const { requirement, signature } = matches[0];
+  assertBorrowingArgs(signature.argTypeNames, signature.selector);
   const argTypes = signature.argTypeNames.map((name) => {
     const metadata = resolveTypeExpr(name, (n) => resolveWitnessSelfOrAssociatedType(table, n));
     if (metadata === null) {

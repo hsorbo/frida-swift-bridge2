@@ -52,6 +52,12 @@ describe("resolveMethod", () => {
     expect(Swift.typeName(m.returnType!)).toBe("fixture.Robot");
   });
 
+  test("rejects a consuming parameter, directing to the raw ABI binder", () => {
+    expect(() => resolveMethod("fixture.Robot", "absorb")).toThrow(
+      /non-borrowing parameter.*unsupported.*makeSwiftNativeFunction/s
+    );
+  });
+
   test("throws on an ambiguous overload, resolves by arity", () => {
     expect(() => resolveMethod("fixture.Robot", "at")).toThrow();
     expect(resolveMethod("fixture.Robot", "at", { arity: 1 }).argTypes.length).toBe(1);
