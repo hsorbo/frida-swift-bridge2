@@ -145,6 +145,15 @@ function rawArg(value: CallArg): CallArg | ClassInstance {
     : value;
 }
 
+function assertClassAssignable(arg: ClassInstance, declared: Metadata): void {
+  for (let cls: ClassMetadata | null = arg.metadata; cls !== null; cls = cls.superclass) {
+    if (cls.handle.equals(declared.handle)) {
+      return;
+    }
+  }
+  throw new Error(`argument is a ${typeName(arg.dynamicType)}, expected ${typeName(declared)}`);
+}
+
 function marshalArg(metadata: Metadata, value: CallArg): NativePointer {
   const arg = rawArg(value);
   const buffer = Memory.alloc(metadata.typeLayout.stride);
@@ -154,6 +163,10 @@ function marshalArg(metadata: Metadata, value: CallArg): NativePointer {
     }
     arg.copyInto(buffer);
   } else if (arg instanceof ClassInstance) {
+    if (metadata.kind !== MetadataKind.Class) {
+      throw new Error(`argument is a class instance, expected ${typeName(metadata)}`);
+    }
+    assertClassAssignable(arg, metadata);
     buffer.writePointer(arg.handle);
   } else if (metadata.kind === MetadataKind.Class) {
     buffer.writePointer(arg as NativePointer);

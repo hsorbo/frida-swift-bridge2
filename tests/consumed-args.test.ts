@@ -45,6 +45,35 @@ describe("consumed (+1) indirect arguments", () => {
     expect(token.retainCount).toBe(before);
   });
 
+  test("rejects consuming a directly-passed argument", () => {
+    const Int = Swift.metadataFor("Swift.Int")!;
+    expect(() =>
+      makeSwiftNativeFunction(fixtureExport("fixture.addInts"), Int, [Int, Int], {
+        consumedArgs: [0],
+      })
+    ).toThrow(/not a concrete indirectly-passed parameter/);
+  });
+
+  test("rejects an out-of-range consumed index", () => {
+    const Int = Swift.metadataFor("Swift.Int")!;
+    const Wrapper = Swift.metadataFor("fixture.Wrapper")!;
+    expect(() =>
+      makeSwiftNativeFunction(fixtureExport("fixture.consumeWrapper"), Int, [Wrapper], {
+        consumedArgs: [1],
+      })
+    ).toThrow(/invalid argument index 1/);
+  });
+
+  test("rejects a duplicate consumed index", () => {
+    const Int = Swift.metadataFor("Swift.Int")!;
+    const Wrapper = Swift.metadataFor("fixture.Wrapper")!;
+    expect(() =>
+      makeSwiftNativeFunction(fixtureExport("fixture.consumeWrapper"), Int, [Wrapper], {
+        consumedArgs: [0, 0],
+      })
+    ).toThrow(/duplicate argument index 0/);
+  });
+
   test("without consumedArgs the callee consumes the caller's value", () => {
     const Int = Swift.metadataFor("Swift.Int")!;
     const Wrapper = Swift.metadataFor("fixture.Wrapper")!;
