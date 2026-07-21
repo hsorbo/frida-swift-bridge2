@@ -779,7 +779,7 @@ export function bindValueInitializer(
   return new BoundValueInitializer(resolveMethod(typeName(receiver), "init", options));
 }
 
-type SelfRouting = { indirect: true } | { indirect: false; receiver: Metadata };
+export type SelfRouting = { indirect: true } | { indirect: false; receiver: Metadata };
 
 // Value-type self is indirect (x20) when mutating/inout or large/non-POD; else it rides as a trailing arg.
 function valueSelfRouting(receiver: Metadata, mutating: boolean): SelfRouting {
@@ -1049,7 +1049,7 @@ function autoWitnessTables(
   });
 }
 
-interface GenericMethodPlan {
+export interface GenericMethodPlan {
   address: NativePointer;
   selector: string;
   argPlans: ArgPlan[];
