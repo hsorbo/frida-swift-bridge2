@@ -91,7 +91,9 @@ export class Protocol {
 
 export function* swiftProtocols(module?: Module): Generator<Protocol> {
   for (const descriptor of protocolDescriptors(module)) {
-    yield new Protocol(descriptor);
+    if (descriptor.fullTypeName !== null) {
+      yield new Protocol(descriptor);
+    }
   }
 }
 

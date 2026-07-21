@@ -14,6 +14,24 @@ public struct LoadableStruct {
     public let d: Int
 }
 
+// Nested type; full name fixture.Outer.Inner.
+public struct Outer {
+    public var tag: Int
+    public struct Inner {
+        public var value: Int
+        public func doubled() -> Int { value * 2 }
+    }
+}
+// Nested type declared in an extension; full name fixture.Outer.FromExt.
+extension Outer {
+    public struct FromExt {
+        public var mark: Int
+        public func tripled() -> Int { mark * 3 }
+    }
+}
+// Nested in a generic-extension context whose mangling the bridge does not resolve: unnameable.
+extension Optional { public struct ExtensionProbe { public var x: Int } }
+
 // A heap-backed String ahead of a narrow int: writing an out-of-range level must be rejected
 // before the String is materialized.
 public struct Badge {
