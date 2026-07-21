@@ -222,6 +222,17 @@ function marshalArgsOrCleanup(argTypes: Metadata[], args: CallArg[]): NativePoin
   return buffers;
 }
 
+// A class arg marshals as a bare borrowed pointer, so a +1/consumed callee needs its own retain.
+export function marshalConsumedArgs(argTypes: Metadata[], args: CallArg[]): NativePointer[] {
+  const buffers = marshalArgsOrCleanup(argTypes, args);
+  for (let i = 0; i < argTypes.length; i++) {
+    if (argTypes[i].kind === MetadataKind.Class) {
+      new ClassInstance(buffers[i].readPointer()).retain();
+    }
+  }
+  return buffers;
+}
+
 // +0/guaranteed args: the callee borrows, so each non-POD value temp is ours to destroy post-call
 // (try/finally covers a throwing callee). An explicitly-__owned param would double-free — known gap.
 function callBorrowingArgs(
@@ -723,7 +734,8 @@ export class BoundValueInitializer {
     if (args.length !== argTypes.length) {
       throw new Error(`${selector} expects ${argTypes.length} argument(s), got ${args.length}`);
     }
-    const ret = this.fn(...args.map((value, i) => marshalArg(argTypes[i], value)));
+    const buffers = marshalConsumedArgs(argTypes, args);
+    const ret = this.fn(...buffers);
     if (ret === null) {
       throw new Error(`${selector} returned no value`);
     }
@@ -1443,7 +1455,7 @@ export function getProperty(self: NativePointer, typeName: string, member: strin
 // Setter newValue is +1/owned: the callee consumes the temp, so it is not destroyed here.
 export function setProperty(self: NativePointer, typeName: string, member: string, value: CallArg): void {
   const accessor = resolveAccessor(typeName, member, "setter");
-  invokerForAccessor(accessor)(self, marshalArg(accessor.type, value));
+  invokerForAccessor(accessor)(self, marshalConsumedArgs([accessor.type], [value])[0]);
 }
 
 function protocolOf(table: WitnessTable): ContextDescriptor {
@@ -1703,7 +1715,7 @@ export function witnessGetProperty(table: WitnessTable, self: NativePointer, nam
 
 export function witnessSetProperty(table: WitnessTable, self: NativePointer, name: string, value: CallArg): void {
   const accessor = resolveWitnessAccessor(table, name, "setter");
-  invokerForWitnessAccessor(accessor)(self, marshalArg(accessor.type, value));
+  invokerForWitnessAccessor(accessor)(self, marshalConsumedArgs([accessor.type], [value])[0]);
 }
 
 let actorProtocol: ContextDescriptor | null | undefined;
