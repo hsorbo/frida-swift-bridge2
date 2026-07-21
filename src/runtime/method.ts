@@ -201,6 +201,27 @@ function decodeReturn(returnType: Metadata | null, ret: NativePointer | null): C
   return value;
 }
 
+// A borrowed non-POD arg temp is ours to destroy; a class arg is a bare borrowed pointer and a POD
+// value owns nothing, so neither is destroyed here.
+function destroyArgTemp(metadata: Metadata, ptr: NativePointer): void {
+  if (metadata.kind !== MetadataKind.Class && !metadata.valueWitnesses.isPOD) {
+    metadata.valueWitnesses.destroy(ptr);
+  }
+}
+
+function marshalArgsOrCleanup(argTypes: Metadata[], args: CallArg[]): NativePointer[] {
+  const buffers: NativePointer[] = [];
+  try {
+    for (let i = 0; i < argTypes.length; i++) {
+      buffers.push(marshalArg(argTypes[i], args[i]));
+    }
+  } catch (e) {
+    buffers.forEach((ptr, i) => destroyArgTemp(argTypes[i], ptr));
+    throw e;
+  }
+  return buffers;
+}
+
 // +0/guaranteed args: the callee borrows, so each non-POD value temp is ours to destroy post-call
 // (try/finally covers a throwing callee). An explicitly-__owned param would double-free — known gap.
 function callBorrowingArgs(
@@ -209,16 +230,14 @@ function callBorrowingArgs(
   returnType: Metadata | null,
   invoke: (argPtrs: NativePointer[]) => NativePointer | null
 ): CallResult {
-  const argPtrs = args.map((value, i) => marshalArg(argTypes[i], value));
+  if (args.length !== argTypes.length) {
+    throw new Error(`expected ${argTypes.length} argument(s), got ${args.length}`);
+  }
+  const argPtrs = marshalArgsOrCleanup(argTypes, args);
   try {
     return decodeReturn(returnType, invoke(argPtrs));
   } finally {
-    for (let i = 0; i < argTypes.length; i++) {
-      const metadata = argTypes[i];
-      if (metadata.kind !== MetadataKind.Class && !metadata.valueWitnesses.isPOD) {
-        metadata.valueWitnesses.destroy(argPtrs[i]);
-      }
-    }
+    argPtrs.forEach((ptr, i) => destroyArgTemp(argTypes[i], ptr));
   }
 }
 
@@ -602,14 +621,9 @@ export class BoundAsyncMethod {
     if (args.length !== argTypes.length) {
       throw new Error(`${this.resolved.selector} expects ${argTypes.length} argument(s), got ${args.length}`);
     }
-    const buffers = args.map((value, i) => marshalArg(argTypes[i], value));
+    const buffers = marshalArgsOrCleanup(argTypes, args);
     const cleanup = (): void => {
-      for (let i = 0; i < argTypes.length; i++) {
-        const metadata = argTypes[i];
-        if (metadata.kind !== MetadataKind.Class && !metadata.valueWitnesses.isPOD) {
-          metadata.valueWitnesses.destroy(buffers[i]);
-        }
-      }
+      buffers.forEach((ptr, i) => destroyArgTemp(argTypes[i], ptr));
     };
     const { gp, fp } = lowerAsyncArgs(argTypes, buffers);
     const options: AsyncCallOptions = { throws };
@@ -1038,19 +1052,24 @@ export class GenericBoundMethod {
     const closures: SwiftClosure[] = []; // in scope through the call: Swift invokes them in-flight
     const argPtrs: NativePointer[] = [];
     const borrowed: { metadata: Metadata; ptr: NativePointer }[] = [];
-    for (let i = 0; i < plans.length; i++) {
-      const plan = plans[i];
-      if (plan.kind === "closure") {
-        const closure = marshalClosure(plan, args[i]);
-        closures.push(closure);
-        argPtrs.push(closure.value());
-        continue;
+    try {
+      for (let i = 0; i < plans.length; i++) {
+        const plan = plans[i];
+        if (plan.kind === "closure") {
+          const closure = marshalClosure(plan, args[i]);
+          closures.push(closure);
+          argPtrs.push(closure.value());
+          continue;
+        }
+        const ptr = marshalArg(plan.metadata, args[i]);
+        argPtrs.push(ptr);
+        if (plan.metadata.kind !== MetadataKind.Class && !plan.metadata.valueWitnesses.isPOD) {
+          borrowed.push({ metadata: plan.metadata, ptr });
+        }
       }
-      const ptr = marshalArg(plan.metadata, args[i]);
-      argPtrs.push(ptr);
-      if (plan.metadata.kind !== MetadataKind.Class && !plan.metadata.valueWitnesses.isPOD) {
-        borrowed.push({ metadata: plan.metadata, ptr });
-      }
+    } catch (e) {
+      for (const b of borrowed) destroyArgTemp(b.metadata, b.ptr);
+      throw e;
     }
     const returnType = this.plan.returnPlan === null ? null : planMetadata(this.plan.returnPlan);
     try {
@@ -1111,13 +1130,9 @@ export class GenericBoundAsyncMethod {
       throw new Error(`${this.selector}: closure arguments are unsupported for async generic methods`);
     }
     const metas = plans.map(planMetadata);
-    const buffers = plans.map((p, i) => marshalArg(metas[i], args[i]));
+    const buffers = marshalArgsOrCleanup(metas, args);
     const cleanup = (): void => {
-      for (let i = 0; i < metas.length; i++) {
-        if (metas[i].kind !== MetadataKind.Class && !metas[i].valueWitnesses.isPOD) {
-          metas[i].valueWitnesses.destroy(buffers[i]);
-        }
-      }
+      buffers.forEach((ptr, i) => destroyArgTemp(metas[i], ptr));
     };
     const gp: NativePointer[] = [];
     const fp: AsyncFloatArg[] = [];
