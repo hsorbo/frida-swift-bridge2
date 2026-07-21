@@ -374,6 +374,22 @@ public final class Counter {
 
 public func makeCounter(_ n: Int) -> Counter { Counter(count: n) }
 
+public final class ThrowingGadget {
+    public let id: Int
+    public init(_ id: Int) throws {
+        if id < 0 { throw FixtureError.boom }
+        self.id = id
+    }
+}
+
+public final class FailableGadget {
+    public let id: Int
+    public init?(_ id: Int) {
+        if id < 0 { return nil }
+        self.id = id
+    }
+}
+
 public class Base { public let kind: Int; public init(kind: Int) { self.kind = kind } }
 public final class Derived: Base { public init() { super.init(kind: 99) } }
 public func makeDerivedAsBase() -> Base { Derived() }

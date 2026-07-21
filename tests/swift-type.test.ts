@@ -11,6 +11,7 @@ import {
   FunctionType,
   Metadata,
   MetadataKind,
+  SwiftThrownError,
   resolveTypeByMangledName,
 } from "../src/index.js";
 
@@ -57,6 +58,25 @@ describe("type wrappers", () => {
     const obj = t.init(9);
     expect(obj.$field("count").read()).toEqual(int64(9));
     expect(obj.$fields).toEqual({ count: int64(9) });
+  });
+
+  test("ClassType.init surfaces a throwing initializer's error", () => {
+    const t = Swift.typeOf(Swift.metadataFor("fixture.ThrowingGadget")!) as ClassType;
+    expect(t.init(7).$fields).toEqual({ id: int64(7) });
+    let thrown: unknown = null;
+    try {
+      t.init(-1);
+    } catch (e) {
+      thrown = e;
+    }
+    expect(thrown instanceof SwiftThrownError).toBe(true);
+    expect((thrown as SwiftThrownError).error.isNull()).toBe(false);
+  });
+
+  test("ClassType.init throws on a failable initializer's nil instead of adopting NULL", () => {
+    const t = Swift.typeOf(Swift.metadataFor("fixture.FailableGadget")!) as ClassType;
+    expect(t.init(7).$fields).toEqual({ id: int64(7) });
+    expect(() => t.init(-1)).toThrow(/returned nil/);
   });
 
   test("ClassType.alloc returns raw storage we can write", () => {
