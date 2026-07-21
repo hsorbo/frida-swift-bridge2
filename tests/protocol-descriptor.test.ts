@@ -1,7 +1,7 @@
 import { test, expect, describe, beforeEach } from "@frida/injest/agent";
 import { loadFixture } from "./fixtures/load.js";
 
-import { Protocol, ProtocolRequirementKind, readProtocolRequirements } from "../src/index.js";
+import { Protocol, ProtocolRequirementKind, readProtocolRequirements } from "../src/abi.js";
 
 describe("readProtocolRequirements", () => {
   beforeEach(() => { loadFixture(); });

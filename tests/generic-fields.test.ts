@@ -6,16 +6,17 @@ import { findType } from "../src/reflection/registry.js";
 import { MetadataKind } from "../src/abi/metadata.js";
 import { enumerateFields, fieldTypeIn } from "../src/abi/field-descriptor.js";
 
+import { metadataFor } from "../src/abi.js";
 describe("generic field resolution", () => {
   test("instantiated metadata exposes its nominal descriptor", () => {
     requireSwift();
-    const arrayInt = Swift.metadataFor("Swift.Array", [Swift.metadataFor("Swift.Int")!])!;
+    const arrayInt = metadataFor("Swift.Array", [metadataFor("Swift.Int")!])!;
     expect(arrayInt.description.handle.equals(findType("Swift.Array")!.handle)).toBeTruthy();
   });
 
   test("resolves a field referencing the generic parameter via the argument vector", () => {
     requireSwift();
-    const arrayInt = Swift.metadataFor("Swift.Array", [Swift.metadataFor("Swift.Int")!])!;
+    const arrayInt = metadataFor("Swift.Array", [metadataFor("Swift.Int")!])!;
     const fields = [...enumerateFields(arrayInt.description)];
     expect(fields.length).toBeGreaterThan(0);
     const bufferType = fieldTypeIn(arrayInt, fields[0]);
@@ -25,8 +26,8 @@ describe("generic field resolution", () => {
 
   test("distinct element types yield distinct field metadata", () => {
     requireSwift();
-    const arrayInt = Swift.metadataFor("Swift.Array", [Swift.metadataFor("Swift.Int")!])!;
-    const arrayString = Swift.metadataFor("Swift.Array", [Swift.metadataFor("Swift.String")!])!;
+    const arrayInt = metadataFor("Swift.Array", [metadataFor("Swift.Int")!])!;
+    const arrayString = metadataFor("Swift.Array", [metadataFor("Swift.String")!])!;
     const field = [...enumerateFields(arrayInt.description)][0];
     const intBuffer = fieldTypeIn(arrayInt, field);
     const stringBuffer = fieldTypeIn(arrayString, field);

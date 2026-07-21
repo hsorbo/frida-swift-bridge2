@@ -5,11 +5,12 @@ import { Swift } from "../src/index.js";
 import {
   shouldPassIndirectly,
   makeSwiftNativeFunction,
-  SwiftThrownError,
 } from "../src/runtime/calling-convention.js";
+import { SwiftError } from "../src/runtime/thrown-error.js";
 import { readString } from "../src/abi/string.js";
 import { findProtocol, conformsToProtocol } from "../src/abi/protocol-conformance.js";
 
+import { metadataFor } from "../src/abi.js";
 // Exposed by the GumJS runtime, not declared in @types/frida-gum.
 declare function gc(): void;
 
@@ -23,13 +24,13 @@ describe("shouldPassIndirectly", () => {
   beforeEach(() => { loadFixture(); });
 
   test("scalars and register-sized aggregates pass directly", () => {
-    expect(shouldPassIndirectly(Swift.metadataFor("Swift.Int")!)).toBe(false);
-    expect(shouldPassIndirectly(Swift.metadataFor("Swift.Bool")!)).toBe(false);
+    expect(shouldPassIndirectly(metadataFor("Swift.Int")!)).toBe(false);
+    expect(shouldPassIndirectly(metadataFor("Swift.Bool")!)).toBe(false);
   });
 
   test("four-word struct is at the loadable boundary, five-word is indirect", () => {
-    expect(shouldPassIndirectly(Swift.metadataFor("fixture.LoadableStruct")!)).toBe(false);
-    expect(shouldPassIndirectly(Swift.metadataFor("fixture.BigStruct")!)).toBe(true);
+    expect(shouldPassIndirectly(metadataFor("fixture.LoadableStruct")!)).toBe(false);
+    expect(shouldPassIndirectly(metadataFor("fixture.BigStruct")!)).toBe(true);
   });
 });
 
@@ -37,13 +38,13 @@ describe("makeSwiftNativeFunction", () => {
   beforeEach(() => { loadFixture(); });
 
   test("scalar arguments and a scalar return", () => {
-    const Int = Swift.metadataFor("Swift.Int")!;
+    const Int = metadataFor("Swift.Int")!;
     const add = makeSwiftNativeFunction(fixtureExport("fixture.addInts"), Int, [Int, Int]);
     expect(add(intValue(20), intValue(22))!.readU64().toNumber()).toBe(42);
   });
 
   test("direct (multi-register) struct return", () => {
-    const Loadable = Swift.metadataFor("fixture.LoadableStruct")!;
+    const Loadable = metadataFor("fixture.LoadableStruct")!;
     const make = makeSwiftNativeFunction(fixtureExport("fixture.makeLoadableStruct"), Loadable, []);
     const r = make()!;
     for (let i = 0; i < 4; i++) {
@@ -52,7 +53,7 @@ describe("makeSwiftNativeFunction", () => {
   });
 
   test("indirect (x8) struct return", () => {
-    const Big = Swift.metadataFor("fixture.BigStruct")!;
+    const Big = metadataFor("fixture.BigStruct")!;
     const make = makeSwiftNativeFunction(fixtureExport("fixture.makeBigStruct"), Big, []);
     const r = make()!;
     for (let i = 0; i < 5; i++) {
@@ -61,8 +62,8 @@ describe("makeSwiftNativeFunction", () => {
   });
 
   test("direct (register-exploded) struct argument", () => {
-    const Int = Swift.metadataFor("Swift.Int")!;
-    const Loadable = Swift.metadataFor("fixture.LoadableStruct")!;
+    const Int = metadataFor("Swift.Int")!;
+    const Loadable = metadataFor("fixture.LoadableStruct")!;
     const sum = makeSwiftNativeFunction(fixtureExport("fixture.sumLoadable"), Int, [Loadable]);
     const arg = Memory.alloc(Loadable.typeLayout.stride);
     for (let i = 0; i < 4; i++) {
@@ -72,8 +73,8 @@ describe("makeSwiftNativeFunction", () => {
   });
 
   test("indirect struct argument", () => {
-    const Int = Swift.metadataFor("Swift.Int")!;
-    const Big = Swift.metadataFor("fixture.BigStruct")!;
+    const Int = metadataFor("Swift.Int")!;
+    const Big = metadataFor("fixture.BigStruct")!;
     const sum = makeSwiftNativeFunction(fixtureExport("fixture.sumBig"), Int, [Big]);
     const arg = Memory.alloc(Big.typeLayout.stride);
     for (let i = 0; i < 5; i++) {
@@ -83,13 +84,13 @@ describe("makeSwiftNativeFunction", () => {
   });
 
   test("decodes a non-POD (String) return value", () => {
-    const String_ = Swift.metadataFor("Swift.String")!;
+    const String_ = metadataFor("Swift.String")!;
     const make = makeSwiftNativeFunction(fixtureExport("fixture.makeString"), String_, []);
     expect(readString(make()!)).toBe("New Cairo");
   });
 
   test("survives garbage collection between creation and call", () => {
-    const Int = Swift.metadataFor("Swift.Int")!;
+    const Int = metadataFor("Swift.Int")!;
     const add = makeSwiftNativeFunction(fixtureExport("fixture.addInts"), Int, [Int, Int]);
     if (typeof gc === "function") {
       gc();
@@ -99,7 +100,7 @@ describe("makeSwiftNativeFunction", () => {
   });
 
   test("successive results do not alias", () => {
-    const Int = Swift.metadataFor("Swift.Int")!;
+    const Int = metadataFor("Swift.Int")!;
     const add = makeSwiftNativeFunction(fixtureExport("fixture.addInts"), Int, [Int, Int]);
     const r1 = add(intValue(1), intValue(2))!;
     const r2 = add(intValue(10), intValue(20))!;
@@ -109,7 +110,7 @@ describe("makeSwiftNativeFunction", () => {
   });
 
   test("passes self in the context register and the callee mutates through it", () => {
-    const Int = Swift.metadataFor("Swift.Int")!;
+    const Int = metadataFor("Swift.Int")!;
     const add = makeSwiftNativeFunction(fixtureExport("fixture.Accumulator.add"), null, [Int], {
       hasSelf: true,
     });
@@ -122,15 +123,15 @@ describe("makeSwiftNativeFunction", () => {
   });
 
   test("returns normally when a throwing function does not throw", () => {
-    const Int = Swift.metadataFor("Swift.Int")!;
+    const Int = metadataFor("Swift.Int")!;
     const fn = makeSwiftNativeFunction(fixtureExport("fixture.mightThrow"), Int, [Int], {
       throws: true,
     });
     expect(fn(intValue(0))!.readU64().toNumber()).toBe(99);
   });
 
-  test("surfaces a Swift error as SwiftThrownError", () => {
-    const Int = Swift.metadataFor("Swift.Int")!;
+  test("surfaces a Swift error as SwiftError, decoding the value lazily", () => {
+    const Int = metadataFor("Swift.Int")!;
     const fn = makeSwiftNativeFunction(fixtureExport("fixture.mightThrow"), Int, [Int], {
       throws: true,
     });
@@ -140,12 +141,13 @@ describe("makeSwiftNativeFunction", () => {
     } catch (e) {
       thrown = e;
     }
-    expect(thrown instanceof SwiftThrownError).toBe(true);
-    expect((thrown as SwiftThrownError).error.isNull()).toBe(false);
+    expect(thrown instanceof SwiftError).toBe(true);
+    expect((thrown as SwiftError).error.isNull()).toBe(false);
+    expect((thrown as SwiftError).value).toBe("boom");
   });
 
   test("passes and returns a Double in the floating-point registers", () => {
-    const Double_ = Swift.metadataFor("Swift.Double")!;
+    const Double_ = metadataFor("Swift.Double")!;
     const fn = makeSwiftNativeFunction(fixtureExport("fixture.scaleDouble"), Double_, [Double_]);
     const arg = Memory.alloc(8);
     arg.writeDouble(21);
@@ -153,7 +155,7 @@ describe("makeSwiftNativeFunction", () => {
   });
 
   test("passes and returns a Float in the floating-point registers", () => {
-    const Float_ = Swift.metadataFor("Swift.Float")!;
+    const Float_ = metadataFor("Swift.Float")!;
     const fn = makeSwiftNativeFunction(fixtureExport("fixture.scaleFloat"), Float_, [Float_]);
     const arg = Memory.alloc(4);
     arg.writeFloat(21);
@@ -161,8 +163,8 @@ describe("makeSwiftNativeFunction", () => {
   });
 
   test("mixes integer and floating-point argument registers", () => {
-    const Int = Swift.metadataFor("Swift.Int")!;
-    const Double_ = Swift.metadataFor("Swift.Double")!;
+    const Int = metadataFor("Swift.Int")!;
+    const Double_ = metadataFor("Swift.Double")!;
     const fn = makeSwiftNativeFunction(fixtureExport("fixture.combine"), Double_, [Int, Double_]);
     const d = Memory.alloc(8);
     d.writeDouble(40);
@@ -170,7 +172,7 @@ describe("makeSwiftNativeFunction", () => {
   });
 
   test("drives a generic function directly with supplied type metadata", () => {
-    const Int = Swift.metadataFor("Swift.Int")!;
+    const Int = metadataFor("Swift.Int")!;
     const id = makeSwiftNativeFunction(
       fixtureExport("fixture.genericIdentity"),
       { genericParam: 0 },
@@ -181,7 +183,7 @@ describe("makeSwiftNativeFunction", () => {
   });
 
   test("a generic value argument is passed indirectly regardless of concrete size", () => {
-    const Loadable = Swift.metadataFor("fixture.LoadableStruct")!;
+    const Loadable = metadataFor("fixture.LoadableStruct")!;
     const id = makeSwiftNativeFunction(
       fixtureExport("fixture.genericIdentity"),
       { genericParam: 0 },
@@ -199,7 +201,7 @@ describe("makeSwiftNativeFunction", () => {
   });
 
   test("appends one metadata argument per generic parameter", () => {
-    const Int = Swift.metadataFor("Swift.Int")!;
+    const Int = metadataFor("Swift.Int")!;
     const first = makeSwiftNativeFunction(
       fixtureExport("fixture.genericFirst"),
       { genericParam: 0 },
@@ -210,7 +212,7 @@ describe("makeSwiftNativeFunction", () => {
   });
 
   test("appends a witness table so a constrained requirement dispatches", () => {
-    const Int = Swift.metadataFor("Swift.Int")!;
+    const Int = metadataFor("Swift.Int")!;
     const witnessTable = conformsToProtocol(Int, findProtocol("fixture.Scalable")!)!;
     const scale = makeSwiftNativeFunction(
       fixtureExport("fixture.scaleGeneric"),

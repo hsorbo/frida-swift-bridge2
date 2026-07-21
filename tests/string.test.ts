@@ -5,6 +5,7 @@ import { Swift } from "../src/index.js";
 import { readString } from "../src/abi/string.js";
 import { readValue } from "../src/abi/instance.js";
 
+import { metadataFor } from "../src/abi.js";
 // Build a small-string _StringObject (ASCII, <= 15 bytes) in 16 bytes.
 function writeSmallString(p: NativePointer, s: string): void {
   p.writeU64(0);
@@ -40,9 +41,9 @@ describe("readString", () => {
       throw new Error("_typeName not exported under the expected mangling");
     }
     const fn = new NativeFunction(typeNameFn, ["uint64", "uint64"], ["pointer", "bool"]);
-    const dict = Swift.metadataFor("Swift.Dictionary", [
-      Swift.metadataFor("Swift.String")!,
-      Swift.metadataFor("Swift.Int")!,
+    const dict = metadataFor("Swift.Dictionary", [
+      metadataFor("Swift.String")!,
+      metadataFor("Swift.Int")!,
     ])!;
     const ret = fn(dict.handle, 1) as unknown as [UInt64, UInt64];
 
@@ -57,7 +58,7 @@ describe("readString", () => {
 
   test("readValue decodes String fields of a struct", () => {
     requireSwift();
-    const rangeString = Swift.metadataFor("Swift.Range", [Swift.metadataFor("Swift.String")!])!;
+    const rangeString = metadataFor("Swift.Range", [metadataFor("Swift.String")!])!;
     const buf = Memory.alloc(rangeString.typeLayout.stride);
     writeSmallString(buf, "a");
     writeSmallString(buf.add(16), "z");

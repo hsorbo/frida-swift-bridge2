@@ -1,6 +1,6 @@
 dist/
 node_modules/
-docs/
+docs
 tests/fixtures/*.dylib
 tests/fixtures/*.so
 tests/fixtures/paths.ts
@@ -11,3 +11,4 @@ tests/fixtures/*.swiftdoc
 tests/fixtures/*.swiftsourceinfo
 tests/fixtures/*.abi.json
 linux/
+resources

@@ -7,12 +7,13 @@ import { MetadataKind, instantiateGenericMetadata } from "../src/abi/metadata.js
 import { buildGenericMetadata } from "../src/abi/generic-instantiation.js";
 import { findProtocol, conformsToProtocol } from "../src/abi/protocol-conformance.js";
 
+import { metadataFor } from "../src/abi.js";
 describe("constrained generic auto-assembly", () => {
   test("Dictionary<String,Int> instantiates without supplying a witness table", () => {
     requireSwift();
-    const dictionary = Swift.metadataFor("Swift.Dictionary", [
-      Swift.metadataFor("Swift.String")!,
-      Swift.metadataFor("Swift.Int")!,
+    const dictionary = metadataFor("Swift.Dictionary", [
+      metadataFor("Swift.String")!,
+      metadataFor("Swift.Int")!,
     ]);
     expect(dictionary).not.toBeNull();
     expect(dictionary!.kind).toBe(MetadataKind.Struct);
@@ -21,15 +22,15 @@ describe("constrained generic auto-assembly", () => {
 
   test("Set<Int> resolves its Hashable requirement", () => {
     requireSwift();
-    const set = Swift.metadataFor("Swift.Set", [Swift.metadataFor("Swift.Int")!]);
+    const set = metadataFor("Swift.Set", [metadataFor("Swift.Int")!]);
     expect(set).not.toBeNull();
     expect(set!.kind).toBe(MetadataKind.Struct);
   });
 
   test("auto-assembly matches a hand-built key-argument vector", () => {
     requireSwift();
-    const string = Swift.metadataFor("Swift.String")!;
-    const int = Swift.metadataFor("Swift.Int")!;
+    const string = metadataFor("Swift.String")!;
+    const int = metadataFor("Swift.Int")!;
     const manual = instantiateGenericMetadata(findType("Swift.Dictionary")!, [
       string.handle,
       int.handle,
@@ -41,7 +42,7 @@ describe("constrained generic auto-assembly", () => {
 
   test("unconstrained generics still work through the same path", () => {
     requireSwift();
-    const arrayInt = Swift.metadataFor("Swift.Array", [Swift.metadataFor("Swift.Int")!]);
+    const arrayInt = metadataFor("Swift.Array", [metadataFor("Swift.Int")!]);
     expect(arrayInt!.kind).toBe(MetadataKind.Struct);
   });
 });

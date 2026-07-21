@@ -21,19 +21,39 @@ export function* enumerateTypes(module: Module): Generator<ContextDescriptor> {
   }
 }
 
-// Stale after dlclose, but Swift dylibs are effectively never unloaded.
-const cachedTypesByModulePath = new Map<string, ContextDescriptor[]>();
-
-function typesOf(module: Module): ContextDescriptor[] {
-  let list = cachedTypesByModulePath.get(module.path);
-  if (list === undefined) {
-    list = [...enumerateTypes(module)];
-    cachedTypesByModulePath.set(module.path, list);
-  }
-  return list;
+interface TypeScan {
+  parsed: ContextDescriptor[];
+  remaining: Generator<ContextDescriptor> | null;
 }
 
-export function* swiftModules(): Generator<Module> {
+// Stale after dlclose, but Swift dylibs are effectively never unloaded.
+const typeScansByModulePath = new Map<string, TypeScan>();
+
+function* typesOf(module: Module): Generator<ContextDescriptor> {
+  let scan = typeScansByModulePath.get(module.path);
+  if (scan === undefined) {
+    scan = { parsed: [], remaining: enumerateTypes(module) };
+    typeScansByModulePath.set(module.path, scan);
+  }
+  for (let i = 0; ; i++) {
+    if (i < scan.parsed.length) {
+      yield scan.parsed[i];
+      continue;
+    }
+    if (scan.remaining === null) {
+      return;
+    }
+    const next = scan.remaining.next();
+    if (next.done) {
+      scan.remaining = null;
+      return;
+    }
+    scan.parsed.push(next.value);
+    yield next.value;
+  }
+}
+
+export function* swiftImages(): Generator<Module> {
   yield* enumerateSwiftModules();
 }
 

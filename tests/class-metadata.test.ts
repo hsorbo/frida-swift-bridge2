@@ -5,6 +5,7 @@ import { findType } from "../src/reflection/registry.js";
 import { ContextDescriptorKind } from "../src/abi/context-descriptor.js";
 import { getClassMetadata, enumerateClassFields } from "../src/abi/class-metadata.js";
 
+import { Swift } from "../src/index.js";
 function requireClass(name: string) {
   requireSwift();
   const descriptor = findType(name);

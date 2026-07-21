@@ -1,5 +1,5 @@
 import { getSwiftCoreApi } from "./api.js";
-import { markScriptOwnedErrorBox } from "./error-box.js";
+import { markScriptOwnedErrorBox } from "./thrown-error.js";
 
 const ARCH = Process.arch;
 

@@ -11,6 +11,7 @@ import { findProtocol } from "../src/abi/protocol-conformance.js";
 import { loadSwiftCore } from "./swift.js";
 import { arenaAlloc, arenaString, writeRelativeDirectPointer } from "./arena.js";
 
+import { Swift } from "../src/index.js";
 function writeParamName(at: NativePointer, name: string): void {
   writeRelativeDirectPointer(at, arenaString(name));
 }

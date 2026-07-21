@@ -11,6 +11,7 @@ import type { StoredKeyPathComponent, ComputedKeyPathComponent } from "../src/ab
 import { typeName } from "../src/runtime/type-name.js";
 import { Swift } from "../src/index.js";
 
+import { metadataFor } from "../src/abi.js";
 function keyPath(accessor: string, mod: Module = loadFixture()): NativePointer {
   return new NativeFunction(fixtureExport(accessor, mod), "pointer", [])() as NativePointer;
 }
@@ -125,32 +126,32 @@ describe("resolveKeyPathNames", () => {
 
   test("names a stored struct component by byte offset", () => {
     const buffer = readKeyPathBuffer(keyPath("keyPathPointX"));
-    const names = resolveKeyPathNames(buffer.components, Swift.metadataFor("fixture.Point")!);
+    const names = resolveKeyPathNames(buffer.components, metadataFor("fixture.Point")!);
     expect(names).toEqual(["x"]);
   });
 
   test("names a stored class component by byte offset", () => {
     const buffer = readKeyPathBuffer(keyPath("keyPathGadgetValue"));
-    const names = resolveKeyPathNames(buffer.components, Swift.metadataFor("fixture.Gadget")!);
+    const names = resolveKeyPathNames(buffer.components, metadataFor("fixture.Gadget")!);
     expect(names).toEqual(["value"]);
   });
 
   test("names every step of a multi-component path across the inter-component type", () => {
     const buffer = readKeyPathBuffer(keyPath("keyPathLineEndX"));
-    const names = resolveKeyPathNames(buffer.components, Swift.metadataFor("fixture.Line")!);
+    const names = resolveKeyPathNames(buffer.components, metadataFor("fixture.Line")!);
     expect(names).toEqual(["end", "x"]);
   });
 
   test("leaves a plain-getter computed component unnamed", () => {
     const doubled = readKeyPathBuffer(keyPath("keyPathPointDoubled"));
-    expect(resolveKeyPathNames(doubled.components, Swift.metadataFor("fixture.Point")!)).toEqual([null]);
+    expect(resolveKeyPathNames(doubled.components, metadataFor("fixture.Point")!)).toEqual([null]);
 
     const scaled = readKeyPathBuffer(keyPath("keyPathRectScaled"));
-    expect(resolveKeyPathNames(scaled.components, Swift.metadataFor("fixture.Rect")!)).toEqual([null]);
+    expect(resolveKeyPathNames(scaled.components, metadataFor("fixture.Rect")!)).toEqual([null]);
   });
 
   test("names a reabstracted stored property via its storedPropertyIndex id", () => {
-    const root = Swift.metadataFor("fixture.Handler")!;
+    const root = metadataFor("fixture.Handler")!;
 
     const action = readKeyPathBuffer(keyPath("keyPathHandlerAction"));
     expect((action.components[0] as ComputedKeyPathComponent).idKind).toBe("storedPropertyIndex");
@@ -164,7 +165,7 @@ describe("resolveKeyPathNames", () => {
   test("names a reabstracted stored property on a class via its storedPropertyIndex id", () => {
     const onEvent = readKeyPathBuffer(keyPath("keyPathSinkOnEvent"));
     expect((onEvent.components[0] as ComputedKeyPathComponent).idKind).toBe("storedPropertyIndex");
-    expect(resolveKeyPathNames(onEvent.components, Swift.metadataFor("fixture.Sink")!)).toEqual([
+    expect(resolveKeyPathNames(onEvent.components, metadataFor("fixture.Sink")!)).toEqual([
       "onEvent",
     ]);
   });

@@ -1,10 +1,10 @@
 import { test, expect, describe, beforeEach } from "@frida/injest/agent";
 import { loadFixture } from "./fixtures/load.js";
 
-import { Swift, ClassType, ClassMetadata, enumerateClassFields } from "../src/index.js";
+import { ClassType, ClassMetadata, enumerateClassFields, metadataFor, typeOf } from "../src/abi.js";
 
 function classType(name: string): ClassType {
-  return Swift.typeOf(Swift.metadataFor(name)!) as ClassType;
+  return typeOf(metadataFor(name)!) as ClassType;
 }
 
 const HEAP_OBJECT_WORDS = 2;
@@ -31,7 +31,7 @@ describe("actor identification", () => {
   });
 
   test("a default actor's stored fields sit past its hidden actor storage", () => {
-    const md = new ClassMetadata(Swift.metadataFor("fixture.Ticker")!.handle);
+    const md = new ClassMetadata(metadataFor("fixture.Ticker")!.handle);
     const count = [...enumerateClassFields(md)].find((f) => f.field.name === "count");
     expect(count).toBeDefined();
     expect(count!.offset).toBeGreaterThanOrEqual(DEFAULT_ACTOR_STORAGE_END);

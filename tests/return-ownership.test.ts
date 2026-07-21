@@ -1,17 +1,11 @@
 import { test, expect, describe, beforeEach } from "@frida/injest/agent";
 import { loadFixture } from "./fixtures/load.js";
 
-import {
-  Swift,
-  SwiftObject,
-  ClassInstance,
-  ClassType,
-  StructType,
-  embedsManagedReference,
-} from "../src/index.js";
+import { SwiftObject, ClassInstance, ClassType, StructType, Metadata, metadataFor as metadataForRaw, typeOf } from "../src/abi.js";
+import { embedsManagedReference } from "../src/abi/instance.js";
 
-function metadataFor(name: string) {
-  return Swift.metadataFor(name)!;
+function metadataFor(name: string, args?: Metadata[]): Metadata {
+  return metadataForRaw(name, args)!;
 }
 
 describe("value return embedding a class ref", () => {
@@ -24,17 +18,17 @@ describe("value return embedding a class ref", () => {
     expect(embedsManagedReference(metadataFor("fixture.PoliteGreeter"))).toBe(false);
     // Array/Set/Dictionary: a Builtin.BridgeObject (Opaque) backing, not a class ref.
     const Int = metadataFor("Swift.Int");
-    expect(embedsManagedReference(Swift.metadataFor("Swift.Array", [Int])!)).toBe(true);
-    expect(embedsManagedReference(Swift.metadataFor("Swift.Set", [Int])!)).toBe(true);
-    expect(embedsManagedReference(Swift.metadataFor("Swift.Dictionary", [Int, Int])!)).toBe(true);
+    expect(embedsManagedReference(metadataFor("Swift.Array", [Int])!)).toBe(true);
+    expect(embedsManagedReference(metadataFor("Swift.Set", [Int])!)).toBe(true);
+    expect(embedsManagedReference(metadataFor("Swift.Dictionary", [Int, Int])!)).toBe(true);
   });
 
   test("a returned aggregate owns its embedded class ref and releases it on dispose", () => {
-    const token = (Swift.typeOf(metadataFor("fixture.Token")) as ClassType).init(7);
+    const token = (typeOf(metadataFor("fixture.Token")) as ClassType).init(7);
     const view = new ClassInstance(token.$handle);
     const before = view.retainCount;
 
-    const wrapper = (Swift.typeOf(metadataFor("fixture.Wrapper")) as StructType).call("make", token.$handle) as SwiftObject;
+    const wrapper = (typeOf(metadataFor("fixture.Wrapper")) as StructType).call("make", token) as SwiftObject;
     expect(wrapper.$kind).toBe("value");
 
     const owned = wrapper;
@@ -54,14 +48,14 @@ describe("bridge-object container return", () => {
   beforeEach(() => { loadFixture(); });
 
   test("a returned Array is adopted as an owned ValueInstance, not decoded lossily", () => {
-    const arr = (Swift.typeOf(metadataFor("fixture.Bag")) as StructType).call("ints") as SwiftObject;
+    const arr = (typeOf(metadataFor("fixture.Bag")) as StructType).call("ints") as SwiftObject;
     expect(arr.$kind).toBe("value");
 
     const owned = arr;
     expect(owned.$owned).toBe(true);
 
     // +1 buffer survived a premature destroy: it sums back through a [Int] param.
-    const box = Swift.typeOf(metadataFor("fixture.Box")) as ClassType;
+    const box = typeOf(metadataFor("fixture.Box")) as ClassType;
     expect(box.init().$method("sumInts").call(owned)).toEqual(int64(60));
 
     owned.$dispose();
@@ -69,16 +63,14 @@ describe("bridge-object container return", () => {
 });
 
 describe("opaque existential return", () => {
-  beforeEach(() => {
-    loadFixture();
-  });
+  beforeEach(() => { loadFixture(); });
 
   test("a class payload stays boxed and alive until the facade is disposed", () => {
-    const greeter = (Swift.typeOf(metadataFor("fixture.LoudGreeter")) as ClassType).init("Ada");
+    const greeter = (typeOf(metadataFor("fixture.LoudGreeter")) as ClassType).init("Ada");
     const view = new ClassInstance(greeter.$handle);
     const before = view.retainCount;
 
-    const boxed = (Swift.typeOf(metadataFor("fixture.GreeterBox")) as StructType).call("wrap", greeter) as SwiftObject;
+    const boxed = (typeOf(metadataFor("fixture.GreeterBox")) as StructType).call("wrap", greeter) as SwiftObject;
     expect(boxed.$kind).toBe("value");
     expect(boxed.$owned).toBe(true);
     expect(view.retainCount).toBe(before + 1);
@@ -88,7 +80,7 @@ describe("opaque existential return", () => {
   });
 
   test("a value payload still reads out as a plain value", () => {
-    const person = (Swift.typeOf(metadataFor("fixture.GreeterBox")) as StructType).call("wrapPerson", "Cy", 9);
+    const person = (typeOf(metadataFor("fixture.GreeterBox")) as StructType).call("wrapPerson", "Cy", 9);
     expect(person).toEqual({ name: "Cy", age: int64(9) });
   });
 });

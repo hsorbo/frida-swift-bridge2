@@ -1,7 +1,7 @@
 import { test, expect, describe, beforeEach } from "@frida/injest/agent";
 import { loadFixture } from "./fixtures/load.js";
 
-import { Swift, Protocol, readProtocolRequirements, ProtocolRequirementKind } from "../src/index.js";
+import { Protocol, readProtocolRequirements, ProtocolRequirementKind, metadataFor } from "../src/abi.js";
 
 describe("WitnessTable.originOf", () => {
   beforeEach(() => { loadFixture(); });
@@ -12,8 +12,8 @@ describe("WitnessTable.originOf", () => {
       (r) => r.kind === ProtocolRequirementKind.Method
     )!;
 
-    const defaultTable = labeled.conformanceFor(Swift.metadataFor("fixture.DefaultDescriber")!)!;
-    const customTable = labeled.conformanceFor(Swift.metadataFor("fixture.CustomDescriber")!)!;
+    const defaultTable = labeled.conformanceFor(metadataFor("fixture.DefaultDescriber")!)!;
+    const customTable = labeled.conformanceFor(metadataFor("fixture.CustomDescriber")!)!;
 
     const defaultOrigin = defaultTable.originOf(describeReq);
     expect(defaultOrigin.kind).toBe("default");
@@ -32,8 +32,8 @@ describe("WitnessTable.originOf", () => {
       (r) => r.kind === ProtocolRequirementKind.Getter
     )!;
 
-    const defaultTable = labeled.conformanceFor(Swift.metadataFor("fixture.DefaultDescriber")!)!;
-    const customTable = labeled.conformanceFor(Swift.metadataFor("fixture.CustomDescriber")!)!;
+    const defaultTable = labeled.conformanceFor(metadataFor("fixture.DefaultDescriber")!)!;
+    const customTable = labeled.conformanceFor(metadataFor("fixture.CustomDescriber")!)!;
 
     expect(defaultTable.originOf(nameReq).kind).toBe("override");
     expect(customTable.originOf(nameReq).kind).toBe("override");
@@ -42,7 +42,7 @@ describe("WitnessTable.originOf", () => {
   test("a protocol with no defaults anywhere still classifies as override", () => {
     const greeter = Protocol.find("fixture.Greeter")!;
     const greetReq = readProtocolRequirements(greeter.descriptor)[0];
-    const table = greeter.conformanceFor(Swift.metadataFor("fixture.PoliteGreeter")!)!;
+    const table = greeter.conformanceFor(metadataFor("fixture.PoliteGreeter")!)!;
 
     const origin = table.originOf(greetReq);
     expect(origin.kind).toBe("override");
@@ -57,7 +57,7 @@ describe("WitnessTable.originOf — vtable-dispatched (overridable class) requir
   test("non-AnyObject-constrained conformance: override via vtable", () => {
     const vocal = Protocol.find("fixture.Vocal")!;
     const speakReq = readProtocolRequirements(vocal.descriptor)[0];
-    const table = vocal.conformanceFor(Swift.metadataFor("fixture.BaseSpeaker")!)!;
+    const table = vocal.conformanceFor(metadataFor("fixture.BaseSpeaker")!)!;
 
     const origin = table.originOf(speakReq);
     expect(origin.kind).toBe("override");
@@ -68,7 +68,7 @@ describe("WitnessTable.originOf — vtable-dispatched (overridable class) requir
   test("AnyObject-constrained conformance: override via vtable", () => {
     const squawker = Protocol.find("fixture.Squawker")!;
     const squawkReq = readProtocolRequirements(squawker.descriptor)[0];
-    const table = squawker.conformanceFor(Swift.metadataFor("fixture.BaseSquawker")!)!;
+    const table = squawker.conformanceFor(metadataFor("fixture.BaseSquawker")!)!;
 
     const origin = table.originOf(squawkReq);
     expect(origin.kind).toBe("override");
@@ -79,7 +79,7 @@ describe("WitnessTable.originOf — vtable-dispatched (overridable class) requir
   test("a subclass reusing its ancestor's conformance resolves its own live override, not the ancestor's", () => {
     const vocal = Protocol.find("fixture.Vocal")!;
     const speakReq = readProtocolRequirements(vocal.descriptor)[0];
-    const table = vocal.conformanceFor(Swift.metadataFor("fixture.SubSpeaker")!)!;
+    const table = vocal.conformanceFor(metadataFor("fixture.SubSpeaker")!)!;
 
     const origin = table.originOf(speakReq);
     expect(origin.kind).toBe("override");

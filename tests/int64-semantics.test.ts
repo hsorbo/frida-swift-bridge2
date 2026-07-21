@@ -1,15 +1,14 @@
 import { test, expect, describe, beforeEach } from "@frida/injest/agent";
 import { loadFixture } from "./fixtures/load.js";
 
-import { Swift, readValue, writeValue } from "../src/index.js";
+import { readValue, writeValue, metadataFor } from "../src/abi.js";
 
+import { Swift } from "../src/index.js";
 describe("64-bit integer semantics", () => {
-  beforeEach(() => {
-    loadFixture();
-  });
+  beforeEach(() => { loadFixture(); });
 
   function roundtrip(typeName: string, value: number | Int64 | UInt64) {
-    const metadata = Swift.metadataFor(typeName)!;
+    const metadata = metadataFor(typeName)!;
     const buffer = Memory.alloc(metadata.typeLayout.stride);
     writeValue(metadata, buffer, value);
     return readValue(metadata, buffer);

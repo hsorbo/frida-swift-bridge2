@@ -13,6 +13,7 @@ import {
 } from "../src/runtime/symbolication.js";
 import { makeSwiftNativeFunction } from "../src/runtime/calling-convention.js";
 
+import { typeName } from "../src/abi.js";
 function fixtureSymbol(swiftName: string): { address: NativePointer; demangled: string } {
   const mod = loadFixture();
   for (const e of mod.enumerateExports()) {
@@ -168,9 +169,9 @@ describe("resolveFunctionSignature", () => {
     const { demangled } = fixtureSymbol("fixture.combine");
     const resolved = resolveFunctionSignature(parseSwiftSignature(demangled) as SwiftFunctionSignature)!;
     expect(resolved.throws).toBe(false);
-    expect(Swift.typeName(resolved.argTypes[0])).toBe("Swift.Int");
-    expect(Swift.typeName(resolved.argTypes[1])).toBe("Swift.Double");
-    expect(Swift.typeName(resolved.returnType!)).toBe("Swift.Double");
+    expect(typeName(resolved.argTypes[0])).toBe("Swift.Int");
+    expect(typeName(resolved.argTypes[1])).toBe("Swift.Double");
+    expect(typeName(resolved.returnType!)).toBe("Swift.Double");
   });
 
   test("drives makeSwiftNativeFunction straight from a symbol", () => {
@@ -190,6 +191,6 @@ describe("resolveFunctionSignature", () => {
     const { demangled } = fixtureSymbol("fixture.Point.doubled.getter");
     const sig = parseSwiftSignature(demangled) as SwiftAccessorSignature;
     expect(sig.kind).toBe("getter");
-    expect(Swift.typeName(resolveType(sig.typeName)!)).toBe("Swift.Int");
+    expect(typeName(resolveType(sig.typeName)!)).toBe("Swift.Int");
   });
 });

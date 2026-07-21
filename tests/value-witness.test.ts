@@ -5,6 +5,7 @@ import { Swift } from "../src/index.js";
 import { allocateValueBuffer } from "../src/abi/value-witness.js";
 import { readString } from "../src/abi/string.js";
 
+import { metadataFor } from "../src/abi.js";
 function writeSmallString(p: NativePointer, s: string): void {
   p.writeU64(0);
   p.add(8).writeU64(0);
@@ -18,7 +19,7 @@ describe("ValueWitnessTable", () => {
   beforeEach(() => { loadFixture(); });
 
   test("exposes layout + flags for Int (POD, inline)", () => {
-    const vwt = Swift.metadataFor("Swift.Int")!.valueWitnesses;
+    const vwt = metadataFor("Swift.Int")!.valueWitnesses;
     expect(vwt.size).toBe(8);
     expect(vwt.stride).toBe(8);
     expect(vwt.alignment).toBe(8);
@@ -29,7 +30,7 @@ describe("ValueWitnessTable", () => {
   });
 
   test("String is non-POD but bitwise-takable and inline", () => {
-    const vwt = Swift.metadataFor("Swift.String")!.valueWitnesses;
+    const vwt = metadataFor("Swift.String")!.valueWitnesses;
     expect(vwt.size).toBe(16);
     expect(vwt.stride).toBe(16);
     expect(vwt.isPOD).toBe(false);
@@ -38,7 +39,7 @@ describe("ValueWitnessTable", () => {
   });
 
   test("initializeWithCopy duplicates a POD value", () => {
-    const vwt = Swift.metadataFor("Swift.Int")!.valueWitnesses;
+    const vwt = metadataFor("Swift.Int")!.valueWitnesses;
     const src = Memory.alloc(8);
     src.writeU64(0x12345678);
     const dest = Memory.alloc(8);
@@ -49,7 +50,7 @@ describe("ValueWitnessTable", () => {
   });
 
   test("buffer round-trip projects an inline String value", () => {
-    const vwt = Swift.metadataFor("Swift.String")!.valueWitnesses;
+    const vwt = metadataFor("Swift.String")!.valueWitnesses;
     const srcBuf = allocateValueBuffer();
     writeSmallString(srcBuf, "vwt!");
     const destBuf = allocateValueBuffer();
@@ -61,8 +62,8 @@ describe("ValueWitnessTable", () => {
   });
 
   test("reports out-of-line storage for structs larger than 3 words", () => {
-    const loadable = Swift.metadataFor("fixture.LoadableStruct")!.valueWitnesses;
-    const big = Swift.metadataFor("fixture.BigStruct")!.valueWitnesses;
+    const loadable = metadataFor("fixture.LoadableStruct")!.valueWitnesses;
+    const big = metadataFor("fixture.BigStruct")!.valueWitnesses;
     expect(loadable.size).toBe(32);
     expect(big.size).toBe(40);
     expect(loadable.isInlineStorage).toBe(false);
@@ -72,7 +73,7 @@ describe("ValueWitnessTable", () => {
   });
 
   test("noncopyable struct reports isCopyable false and refuses copies", (ctx) => {
-    const metadata = Swift.metadataFor("fixture.NoncopyableStruct");
+    const metadata = metadataFor("fixture.NoncopyableStruct");
     if (metadata === null) ctx.skip("fixture compiled without ~Copyable (Swift < 5.9)");
     const vwt = metadata!.valueWitnesses;
     expect(vwt.isCopyable).toBe(false);
@@ -85,16 +86,16 @@ describe("ValueWitnessTable", () => {
   });
 
   test("reports extra-inhabitant counts from the type layout", () => {
-    expect(Swift.metadataFor("Swift.Int")!.valueWitnesses.extraInhabitantCount).toBe(0);
-    expect(Swift.metadataFor("Swift.Bool")!.valueWitnesses.extraInhabitantCount).toBe(254);
+    expect(metadataFor("Swift.Int")!.valueWitnesses.extraInhabitantCount).toBe(0);
+    expect(metadataFor("Swift.Bool")!.valueWitnesses.extraInhabitantCount).toBe(254);
     // a class pointer's invalid low addresses are all extra inhabitants
     expect(
-      Swift.metadataFor("Swift.__RawSetStorage")!.valueWitnesses.extraInhabitantCount
+      metadataFor("Swift.__RawSetStorage")!.valueWitnesses.extraInhabitantCount
     ).toBeGreaterThan(0);
   });
 
   test("single-payload witnesses discriminate a class optional's nil", () => {
-    const cls = Swift.metadataFor("Swift.__RawSetStorage")!;
+    const cls = metadataFor("Swift.__RawSetStorage")!;
     const vwt = cls.valueWitnesses;
     const storage = Memory.alloc(Process.pointerSize);
 
@@ -110,7 +111,7 @@ describe("ValueWitnessTable", () => {
   });
 
   test("initializeWithCopy duplicates an out-of-line value", () => {
-    const vwt = Swift.metadataFor("fixture.BigStruct")!.valueWitnesses;
+    const vwt = metadataFor("fixture.BigStruct")!.valueWitnesses;
     const src = Memory.alloc(vwt.stride);
     for (let i = 0; i < 5; i++) {
       src.add(i * 8).writeU64(i + 1);

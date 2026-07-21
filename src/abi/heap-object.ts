@@ -17,7 +17,7 @@ import {
   bindGenericMethod,
   rootAsyncReceiver,
   bindGenericTypeClassMethod,
-  MethodResolveOptions,
+  RawMethodResolveOptions,
   getProperty,
   setProperty,
   CallResult,
@@ -33,7 +33,7 @@ interface OwnedState {
   disposed: boolean;
 }
 
-interface VTableInvokeSignature {
+export interface VTableInvokeSignature {
   returnType: Metadata | null;
   argTypes: Metadata[];
   throws?: boolean;
@@ -144,7 +144,7 @@ export class ClassInstance implements RawInstance {
     return readObject(this.handle);
   }
 
-  method(name: string, options: MethodResolveOptions = {}): BoundMethod | GenericBoundMethod | GenericBoundAsyncMethod | BoundAsyncMethod {
+  method(name: string, options: RawMethodResolveOptions = {}): BoundMethod | GenericBoundMethod | GenericBoundAsyncMethod | BoundAsyncMethod {
     if (options.typeArguments !== undefined) {
       return rootAsyncReceiver(bindGenericMethod(this.typeName, name, this.handle, { ...options, static: false }), this);
     }

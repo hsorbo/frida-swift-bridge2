@@ -2,7 +2,7 @@ import { test, expect, describe } from "@frida/injest/agent";
 import { requireSwift } from "./swift.js";
 import { fixtureExport, existentialMetadata } from "./fixtures/load.js";
 
-import { Swift, Metadata, readValue, readObject } from "../src/index.js";
+import { Metadata, readValue, readObject, metadataFor } from "../src/abi.js";
 import { MetadataKind } from "../src/abi/metadata.js";
 import {
   extendedExistentialSpecialKind,
@@ -10,6 +10,7 @@ import {
 } from "../src/abi/existential.js";
 import { makeSwiftNativeFunction } from "../src/runtime/calling-convention.js";
 
+import { Swift } from "../src/index.js";
 function ptrValue(p: NativePointer): NativePointer {
   const cell = Memory.alloc(Process.pointerSize);
   cell.writePointer(p);
@@ -17,7 +18,7 @@ function ptrValue(p: NativePointer): NativePointer {
 }
 
 function store(fn: string, metadata: Metadata): NativePointer {
-  const RawPointer = Swift.metadataFor("Swift.UnsafeMutableRawPointer")!;
+  const RawPointer = metadataFor("Swift.UnsafeMutableRawPointer")!;
   const container = Memory.alloc(metadata.typeLayout.stride);
   makeSwiftNativeFunction(fixtureExport(fn), null, [RawPointer])(ptrValue(container));
   return container;

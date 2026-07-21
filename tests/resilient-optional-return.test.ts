@@ -1,35 +1,45 @@
 import { test, expect, describe, beforeEach } from "@frida/injest/agent";
 import { loadResilient } from "./fixtures/load.js";
 
-import { Swift, StructType, SwiftObject } from "../src/index.js";
+import { Swift } from "../src/index.js";
+import { StructType, metadataFor, typeOf } from "../src/abi.js";
 
 // resilient.ResilientHolder wraps a class ref (like Foundation.URL wraps NSURL): resilient ABI
 // (returned @out) yet non-POD. Optional<ResilientHolder> must inherit that address-only ABI and be
 // decoded/destroyed through its payload, not the Optional wrapper.
-function holderType(): StructType {
-  return Swift.typeOf(Swift.metadataFor("resilient.ResilientHolder")!) as StructType;
+function optionalHolder() {
+  return typeOf(metadataFor("Swift.Optional", [metadataFor("resilient.ResilientHolder")!])!);
+}
+
+function fn(mod: Module, mangled: string, ret: unknown, args: unknown[]) {
+  return Swift.NativeFunction(mod.getExportByName(mangled), ret as never, args as never[]);
 }
 
 describe("Optional<resilient struct wrapping a class ref> return", () => {
+  let mod: Module;
   beforeEach(() => {
-    loadResilient();
+    mod = loadResilient();
     Swift.markResilient("resilient");
   });
 
   test(".some unwraps to a facade whose class ref survives decode and destroy", () => {
-    const holder = holderType().call("make", 7) as SwiftObject;
+    const make = fn(mod, "$s9resilient10makeHolderyAA09ResilientC0VSgSiF", optionalHolder(), [Swift.type("Swift.Int")!]);
+    const holder = make(7) as any;
     expect(holder).not.toBeNull();
-    expect(holder.$kind).toBe("value");
-    expect(holder.$call("tokenId")).toEqual(int64(7));
+    expect(holder.$type.name).toBe("resilient.ResilientHolder");
+
+    const tokenId = fn(mod, "$s9resilient13holderTokenIdySiAA15ResilientHolderVF", Swift.type("Swift.Int")!, [Swift.type("resilient.ResilientHolder")!]);
+    expect(tokenId(holder)).toEqual(int64(7));
     holder.$dispose();
   });
 
   test(".none decodes to null", () => {
-    expect(holderType().call("make", -1)).toBeNull();
+    const make = fn(mod, "$s9resilient10makeHolderyAA09ResilientC0VSgSiF", optionalHolder(), [Swift.type("Swift.Int")!]);
+    expect(make(-1)).toBeNull();
   });
 
   test("a failable initializer returns a facade or null", () => {
-    const holder = holderType();
+    const holder = Swift.type("resilient.ResilientHolder") as StructType;
     expect(holder.initializer({ labels: ["id"] }).call(9)).not.toBeNull();
     expect(holder.initializer({ labels: ["id"] }).call(-1)).toBeNull();
   });

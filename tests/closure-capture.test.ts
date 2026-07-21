@@ -9,6 +9,7 @@ import { resolveTypeByMangledName } from "../src/abi/field-descriptor.js";
 import { MetadataKind } from "../src/abi/metadata.js";
 import { fixtureExport } from "./fixtures/load.js";
 
+import { Swift } from "../src/index.js";
 const HEAP_LOCAL_VARIABLE = 0x400;
 const NOT_A_CLOSURE = 0x0;
 

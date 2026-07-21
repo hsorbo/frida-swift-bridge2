@@ -5,6 +5,7 @@ import { findType } from "../src/reflection/registry.js";
 import { getClassMetadata, enumerateClassFields } from "../src/abi/class-metadata.js";
 import { enumerateClassInstanceFields, readObject } from "../src/abi/instance.js";
 
+import { Swift } from "../src/index.js";
 // Allocate a real heap instance of `metadata`'s class (isa set by the runtime).
 function allocObject(metadataHandle: NativePointer, size: number, alignMask: number): NativePointer {
   const fn = new NativeFunction(

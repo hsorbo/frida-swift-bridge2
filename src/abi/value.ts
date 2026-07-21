@@ -12,7 +12,7 @@ import {
   bindGenericTypeValueMethod,
   getProperty,
   setProperty,
-  ValueMethodResolveOptions,
+  RawValueMethodResolveOptions,
   CallResult,
   CallArg,
   RawInstance,
@@ -134,7 +134,7 @@ export class ValueInstance implements RawInstance {
     throw new Error(`ValueInstance.field: no field ${name}`);
   }
 
-  method(name: string, options: ValueMethodResolveOptions = {}): BoundValueMethod | GenericBoundMethod | GenericBoundAsyncMethod | BoundAsyncMethod {
+  method(name: string, options: RawValueMethodResolveOptions = {}): BoundValueMethod | GenericBoundMethod | GenericBoundAsyncMethod | BoundAsyncMethod {
     this.checkLive();
     if (options.typeArguments !== undefined) {
       return rootAsyncReceiver(bindGenericValueMethod(this.metadata, this.handle, name, options), this);

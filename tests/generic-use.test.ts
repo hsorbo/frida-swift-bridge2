@@ -5,9 +5,10 @@ import { Swift, type SwiftValue, type CallResult } from "../src/index.js";
 import { makeSwiftNativeFunction } from "../src/runtime/calling-convention.js";
 import { SwiftInterceptor } from "../src/runtime/interceptor.js";
 
+import { metadataFor } from "../src/abi.js";
 describe("hook decodes generic uses", () => {
   test("resolves A? arg and return per-invocation from the recovered param", () => {
-    const Int = Swift.metadataFor("Swift.Int")!;
+    const Int = metadataFor("Swift.Int")!;
     const roundOptional = fixtureExport("fixture.roundOptional");
     const trigger = fixtureExport("fixture.triggerRoundOptional");
     let seenArgs: SwiftValue[] | null = null;

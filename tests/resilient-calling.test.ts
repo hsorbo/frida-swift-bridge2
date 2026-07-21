@@ -1,8 +1,9 @@
 import { test, expect, describe, beforeEach } from "@frida/injest/agent";
 import { loadResilient } from "./fixtures/load.js";
 
-import { Swift, indirect, isResilientValueType, makeSwiftNativeFunction } from "../src/index.js";
+import { indirect, isResilientValueType, makeSwiftNativeFunction, metadataFor } from "../src/abi.js";
 
+import { Swift } from "../src/index.js";
 // resilient.dylib (-enable-library-evolution) gives a real resilience boundary without a system
 // framework: ResilientPoint crosses it address-only, FrozenPoint stays direct.
 
@@ -38,8 +39,8 @@ describe("resilient calling convention (local library-evolution fixture)", () =>
 
   test("a non-frozen resilient struct is passed @in / returned @out", () => {
     const mod = loadResilient();
-    const RP = Swift.metadataFor("resilient.ResilientPoint")!;
-    const Int = Swift.metadataFor("Swift.Int")!;
+    const RP = metadataFor("resilient.ResilientPoint")!;
+    const Int = metadataFor("Swift.Int")!;
     const translate = resilientFn(mod, "resilient.translate(");
 
     const fn = makeSwiftNativeFunction(translate, indirect(RP), [indirect(RP), Int, Int]);
@@ -48,8 +49,8 @@ describe("resilient calling convention (local library-evolution fixture)", () =>
 
   test("a @frozen struct in a resilient module keeps the direct ABI", () => {
     const mod = loadResilient();
-    const FP = Swift.metadataFor("resilient.FrozenPoint")!;
-    const Int = Swift.metadataFor("Swift.Int")!;
+    const FP = metadataFor("resilient.FrozenPoint")!;
+    const Int = metadataFor("Swift.Int")!;
     const translate = resilientFn(mod, "resilient.translateFrozen(");
 
     const fn = makeSwiftNativeFunction(translate, FP, [FP, Int, Int]);
@@ -59,7 +60,7 @@ describe("resilient calling convention (local library-evolution fixture)", () =>
   // swiftc emits no layout-string bit, so the heuristic can't see local resilient types — they need
   // the explicit AbstractIndirect used above. Pinned so the limitation is explicit, not silent.
   test("auto-detection does not fire for a locally-built resilient struct", () => {
-    expect(isResilientValueType(Swift.metadataFor("resilient.ResilientPoint")!)).toBe(false);
-    expect(isResilientValueType(Swift.metadataFor("resilient.FrozenPoint")!)).toBe(false);
+    expect(isResilientValueType(metadataFor("resilient.ResilientPoint")!)).toBe(false);
+    expect(isResilientValueType(metadataFor("resilient.FrozenPoint")!)).toBe(false);
   });
 });

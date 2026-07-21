@@ -9,6 +9,7 @@ import {
   ParameterOwnership,
 } from "../src/abi/function-type.js";
 
+import { Swift } from "../src/index.js";
 function allocType(kind: MetadataKind): NativePointer {
   const type = Memory.alloc(Process.pointerSize);
   type.writeU32(kind);

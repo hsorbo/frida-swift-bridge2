@@ -4,8 +4,9 @@ import { requireLinux } from "./swift.js";
 
 import { Swift, StructType } from "../src/index.js";
 
+import { metadataFor, typeOf } from "../src/abi.js";
 function structType(name: string): StructType {
-  return Swift.typeOf(Swift.metadataFor(name)!) as StructType;
+  return typeOf(metadataFor(name)!) as StructType;
 }
 
 // Value-type init resolution depends on the symbol table (method.ts:282): a

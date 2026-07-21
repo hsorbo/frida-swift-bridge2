@@ -1,39 +1,33 @@
 import { test, expect, describe, beforeEach } from "@frida/injest/agent";
-import { loadFixture, loadFixtureSyms } from "./fixtures/load.js";
+import { loadFixture, loadFixtureSyms, fixtureExport } from "./fixtures/load.js";
 
-import {
-  Swift,
-  ClassType,
-  StructType,
-  ClassInstance,
-  BoundAsyncMethod,
-  GenericBoundAsyncMethod,
-  SwiftObject,
-} from "../src/index.js";
+import { Swift, ClassType, StructType, SwiftObject } from "../src/index.js";
+import { BoundAsyncMethod, GenericBoundAsyncMethod, ClassInstance, metadataFor, typeOf } from "../src/abi.js";
 
 // A Wrapper is non-POD (it embeds a Token class ref), so marshalling it +1s the embedded token. If a
 // later argument fails to marshal, the copied Wrapper temp must be destroyed, releasing that token.
-function wrapperOverToken(module = "fixture"): { wrapper: SwiftObject; view: ClassInstance } {
-  const token = (Swift.typeOf(Swift.metadataFor(`${module}.Token`)!) as ClassType).init(7) as SwiftObject;
-  const wrapper = (Swift.typeOf(Swift.metadataFor(`${module}.Wrapper`)!) as StructType).call(
-    "make",
-    token.$handle
-  ) as SwiftObject;
+function wrapperOverToken(module: string): { wrapper: SwiftObject; view: ClassInstance } {
+  const mod = module === "fixture" ? loadFixture() : loadFixtureSyms();
+  const Int = typeOf(metadataFor("Swift.Int")!);
+  const Token = typeOf(metadataFor(`${module}.Token`)!);
+  const Wrapper = typeOf(metadataFor(`${module}.Wrapper`)!);
+  const makeToken = Swift.NativeFunction(fixtureExport(`${module}.makeToken`, mod), Token, [Int]);
+  const makeWrapper = Swift.NativeFunction(fixtureExport(`${module}.makeWrapper`, mod), Wrapper, [Token]);
+  const token = makeToken(7) as SwiftObject;
+  const wrapper = makeWrapper(token) as SwiftObject;
   return { wrapper, view: new ClassInstance(token.$handle) };
 }
 
 function boxType(): ClassType {
-  return Swift.typeOf(Swift.metadataFor("fixture.Box")!) as ClassType;
+  return typeOf(metadataFor("fixture.Box")!) as ClassType;
 }
 
 describe("marshalling-failure cleanup across call paths", () => {
-  beforeEach(() => {
-    loadFixture();
-  });
+  beforeEach(() => { loadFixture(); });
 
   test("sync generic: a failed later arg does not leak the non-POD prefix temp", () => {
-    const Int = Swift.metadataFor("Swift.Int")!;
-    const { wrapper, view } = wrapperOverToken();
+    const Int = typeOf(metadataFor("Swift.Int")!);
+    const { wrapper, view } = wrapperOverToken("fixture");
     const mix = boxType().init().$method("mix", { typeArguments: [Int] });
     const before = view.retainCount;
     expect(() => mix.call(wrapper, "bad" as never)).toThrow();
@@ -41,7 +35,7 @@ describe("marshalling-failure cleanup across call paths", () => {
   });
 
   test("plain async: a failed later arg does not leak the non-POD prefix temp", () => {
-    const { wrapper, view } = wrapperOverToken();
+    const { wrapper, view } = wrapperOverToken("fixture");
     const combine = boxType().init().$method("combineAsync") as BoundAsyncMethod;
     const before = view.retainCount;
     expect(() => combine.call(wrapper, "bad" as never)).toThrow();
@@ -49,8 +43,8 @@ describe("marshalling-failure cleanup across call paths", () => {
   });
 
   test("generic async: a failed later arg does not leak the non-POD prefix temp", () => {
-    const Int = Swift.metadataFor("Swift.Int")!;
-    const { wrapper, view } = wrapperOverToken();
+    const Int = typeOf(metadataFor("Swift.Int")!);
+    const { wrapper, view } = wrapperOverToken("fixture");
     const mix = boxType().init().$method("mixAsync", { typeArguments: [Int] }) as GenericBoundAsyncMethod;
     const before = view.retainCount;
     expect(() => mix.call(wrapper, "bad" as never)).toThrow();
@@ -60,24 +54,26 @@ describe("marshalling-failure cleanup across call paths", () => {
 
 // Value initializers resolve only through the symbol table, so use the unstripped fixturesyms twin.
 describe("value-initializer ownership", () => {
-  beforeEach(() => {
-    loadFixtureSyms();
-  });
+  beforeEach(() => { loadFixtureSyms(); });
 
   test("a failed later arg does not leak the non-POD prefix temp", () => {
     const { wrapper, view } = wrapperOverToken("fixturesyms");
-    const Keeper = Swift.typeOf(Swift.metadataFor("fixturesyms.Keeper")!) as StructType;
+    const Keeper = typeOf(metadataFor("fixturesyms.Keeper")!) as StructType;
+    const init = Keeper.initializer({ labels: [null, "tag"] });
     const before = view.retainCount;
-    expect(() => Keeper.initializer().call(wrapper, "bad" as never)).toThrow();
+    expect(() => init.call(wrapper, "bad" as never)).toThrow();
     expect(view.retainCount).toBe(before);
   });
 
   test("a consumed class argument is retained, so the caller's object survives the init", () => {
-    const token = (Swift.typeOf(Swift.metadataFor("fixturesyms.Token")!) as ClassType).init(7) as SwiftObject;
+    const Int = typeOf(metadataFor("Swift.Int")!);
+    const Token = typeOf(metadataFor("fixturesyms.Token")!);
+    const makeToken = Swift.NativeFunction(fixtureExport("fixturesyms.makeToken", loadFixtureSyms()), Token, [Int]);
+    const token = makeToken(7) as SwiftObject;
     const view = new ClassInstance(token.$handle);
     const before = view.retainCount;
-    const box = (Swift.typeOf(Swift.metadataFor("fixturesyms.TokenBox")!) as StructType)
-      .initializer()
+    const box = (typeOf(metadataFor("fixturesyms.TokenBox")!) as StructType)
+      .initializer({ labels: [null, "tag"] })
       .call(token, 5) as SwiftObject;
     // The box owns its own +1 on the token; the caller's reference is untouched.
     expect(view.retainCount).toBe(before + 1);
@@ -89,20 +85,18 @@ describe("value-initializer ownership", () => {
 });
 
 describe("class-boundary ownership (init and property setter)", () => {
-  beforeEach(() => {
-    loadFixture();
-  });
+  beforeEach(() => { loadFixture(); });
 
   function kennelType(): ClassType {
-    return Swift.typeOf(Swift.metadataFor("fixture.Kennel")!) as ClassType;
+    return typeOf(metadataFor("fixture.Kennel")!) as ClassType;
   }
   function token(id: number): { facade: SwiftObject; view: ClassInstance } {
-    const facade = (Swift.typeOf(Swift.metadataFor("fixture.Token")!) as ClassType).init(id) as SwiftObject;
+    const facade = (typeOf(metadataFor("fixture.Token")!) as ClassType).init(id);
     return { facade, view: new ClassInstance(facade.$handle) };
   }
 
   test("class init gives the callee its own +1 on a class argument", () => {
-    const { wrapper } = wrapperOverToken();
+    const { wrapper } = wrapperOverToken("fixture");
     const occupant = token(1);
     const before = occupant.view.retainCount;
     const kennel = kennelType().init(wrapper, occupant.facade);
@@ -111,14 +105,14 @@ describe("class-boundary ownership (init and property setter)", () => {
   });
 
   test("class init failure destroys the non-POD prefix temp", () => {
-    const { wrapper, view } = wrapperOverToken();
+    const { wrapper, view } = wrapperOverToken("fixture");
     const before = view.retainCount;
     expect(() => kennelType().init(wrapper, "bad" as never)).toThrow();
     expect(view.retainCount).toBe(before);
   });
 
   test("a class-valued setter consumes its own +1, not the caller's reference", () => {
-    const { wrapper } = wrapperOverToken();
+    const { wrapper } = wrapperOverToken("fixture");
     const first = token(1);
     const kennel = kennelType().init(wrapper, first.facade);
     const next = token(2);

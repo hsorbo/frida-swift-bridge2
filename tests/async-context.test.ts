@@ -2,8 +2,9 @@ import { test, expect, describe } from "@frida/injest/agent";
 import { requireSwift } from "./swift.js";
 import { loadFixture } from "./fixtures/load.js";
 
-import { Swift, AsyncContext } from "../src/index.js";
+import { AsyncContext } from "../src/abi.js";
 
+import { Swift } from "../src/index.js";
 const COMPUTE_ASYNC = "$s7fixture12computeAsyncyS2iYaF";
 const DRIVE = "$s7fixture17driveComputeAsyncyS2iF";
 

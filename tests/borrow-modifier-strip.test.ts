@@ -2,7 +2,7 @@ import { test, expect, describe, beforeEach } from "@frida/injest/agent";
 import { loadFixtureSyms } from "./fixtures/load.js";
 import { requireSwift } from "./swift.js";
 
-import { Swift, resolveMethod } from "../src/index.js";
+import { metadataFor, resolveMethod } from "../src/abi.js";
 import { resolveTypeExpr } from "../src/runtime/symbolication.js";
 
 describe("borrow-modifier strip in resolveTypeExpr", () => {
@@ -24,6 +24,6 @@ describe("borrow-modifier strip in resolveTypeExpr", () => {
     loadFixtureSyms();
     const resolved = resolveMethod("fixturesyms.SharedName", "init", { labels: ["name"] });
     expect(resolved.argTypes.length).toBe(1);
-    expect(resolved.argTypes[0].handle.equals(Swift.metadataFor("Swift.String")!.handle)).toBe(true);
+    expect(resolved.argTypes[0].handle.equals(metadataFor("Swift.String")!.handle)).toBe(true);
   });
 });

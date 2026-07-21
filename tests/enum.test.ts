@@ -5,10 +5,11 @@ import { Swift } from "../src/index.js";
 import { readValue, writeValue } from "../src/abi/instance.js";
 import { readEnumCase, enumTag, injectEnumTag, projectBox } from "../src/abi/enum.js";
 
+import { metadataFor } from "../src/abi.js";
 describe("enum instances", () => {
   test("tag injection round-trips and maps to the payload-first case order", () => {
     requireSwift();
-    const optionalInt = Swift.metadataFor("Swift.Optional", [Swift.metadataFor("Swift.Int")!])!;
+    const optionalInt = metadataFor("Swift.Optional", [metadataFor("Swift.Int")!])!;
     const storage = Memory.alloc(optionalInt.typeLayout.stride);
 
     injectEnumTag(optionalInt, storage, 0);
@@ -31,7 +32,7 @@ describe("enum instances", () => {
       ["pointer", "pointer"],
       ["pointer"]
     );
-    const int = Swift.metadataFor("Swift.Int")!;
+    const int = metadataFor("Swift.Int")!;
     const pair = allocBox(int.handle) as unknown as [NativePointer, NativePointer];
     const object = pair[0];
     const buffer = pair[1];
@@ -45,7 +46,7 @@ describe("enum instances", () => {
 
   test("decodes a payload case and reads its associated value", () => {
     requireSwift();
-    const optionalInt = Swift.metadataFor("Swift.Optional", [Swift.metadataFor("Swift.Int")!])!;
+    const optionalInt = metadataFor("Swift.Optional", [metadataFor("Swift.Int")!])!;
     const storage = Memory.alloc(optionalInt.typeLayout.stride);
     storage.writeS64(42);
     injectEnumTag(optionalInt, storage, 0);
@@ -54,7 +55,7 @@ describe("enum instances", () => {
 
   test("decodes a no-payload case to its name", () => {
     requireSwift();
-    const optionalInt = Swift.metadataFor("Swift.Optional", [Swift.metadataFor("Swift.Int")!])!;
+    const optionalInt = metadataFor("Swift.Optional", [metadataFor("Swift.Int")!])!;
     const storage = Memory.alloc(optionalInt.typeLayout.stride);
     injectEnumTag(optionalInt, storage, 1);
     expect(readValue(optionalInt, storage)).toBe("none");
@@ -62,8 +63,8 @@ describe("enum instances", () => {
 
   test("reads an enum field nested in a struct value", () => {
     requireSwift();
-    const int = Swift.metadataFor("Swift.Int")!;
-    const optionalInt = Swift.metadataFor("Swift.Optional", [int])!;
+    const int = metadataFor("Swift.Int")!;
+    const optionalInt = metadataFor("Swift.Optional", [int])!;
     // hand-build a payload Optional<Int> and confirm it round-trips through readValue
     const storage = Memory.alloc(optionalInt.typeLayout.stride);
     storage.writeS64(7);
@@ -73,8 +74,8 @@ describe("enum instances", () => {
 
   test("discriminates a class optional via the extra-inhabitant (nil-pointer) layout", () => {
     requireSwift();
-    const cls = Swift.metadataFor("Swift.__RawSetStorage")!;
-    const optionalClass = Swift.metadataFor("Swift.Optional", [cls])!;
+    const cls = metadataFor("Swift.__RawSetStorage")!;
+    const optionalClass = metadataFor("Swift.Optional", [cls])!;
     const storage = Memory.alloc(optionalClass.typeLayout.stride);
 
     storage.writePointer(ptr(0));
@@ -88,7 +89,7 @@ describe("enum instances", () => {
 
   test("round-trips a Bool optional whose none is an extra inhabitant", () => {
     requireSwift();
-    const optionalBool = Swift.metadataFor("Swift.Optional", [Swift.metadataFor("Swift.Bool")!])!;
+    const optionalBool = metadataFor("Swift.Optional", [metadataFor("Swift.Bool")!])!;
     const storage = Memory.alloc(optionalBool.typeLayout.stride);
 
     writeValue(optionalBool, storage, { some: true });
@@ -101,9 +102,9 @@ describe("enum instances", () => {
 
   test("round-trips a nested Optional<Optional<Int>> through writeValue/readValue", () => {
     requireSwift();
-    const int = Swift.metadataFor("Swift.Int")!;
-    const optInt = Swift.metadataFor("Swift.Optional", [int])!;
-    const optOptInt = Swift.metadataFor("Swift.Optional", [optInt])!;
+    const int = metadataFor("Swift.Int")!;
+    const optInt = metadataFor("Swift.Optional", [int])!;
+    const optOptInt = metadataFor("Swift.Optional", [optInt])!;
     const storage = Memory.alloc(optOptInt.typeLayout.stride);
 
     writeValue(optOptInt, storage, { some: { some: 5 } });

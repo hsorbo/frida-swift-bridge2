@@ -1,9 +1,10 @@
 import { test, expect, describe } from "@frida/injest/agent";
 import { fixtureExport } from "./fixtures/load.js";
 
-import { Swift, ClassInstance } from "../src/index.js";
+import { ClassInstance, metadataFor } from "../src/abi.js";
 import { makeSwiftNativeFunction } from "../src/runtime/calling-convention.js";
 
+import { Swift } from "../src/index.js";
 function intArg(n: number): NativePointer {
   const cell = Memory.alloc(Process.pointerSize);
   cell.writeS64(n);
@@ -17,9 +18,9 @@ function ptrArg(p: NativePointer): NativePointer {
 }
 
 function freshWrapper(): { token: ClassInstance; wrapperPtr: NativePointer } {
-  const Int = Swift.metadataFor("Swift.Int")!;
-  const Token = Swift.metadataFor("fixture.Token")!;
-  const Wrapper = Swift.metadataFor("fixture.Wrapper")!;
+  const Int = metadataFor("Swift.Int")!;
+  const Token = metadataFor("fixture.Token")!;
+  const Wrapper = metadataFor("fixture.Wrapper")!;
   const makeToken = makeSwiftNativeFunction(fixtureExport("fixture.makeToken"), Token, [Int]);
   const makeWrapper = makeSwiftNativeFunction(fixtureExport("fixture.makeWrapper"), Wrapper, [
     Token,
@@ -31,8 +32,8 @@ function freshWrapper(): { token: ClassInstance; wrapperPtr: NativePointer } {
 
 describe("consumed (+1) indirect arguments", () => {
   test("consumedArgs passes a witness copy so the caller's value survives", () => {
-    const Int = Swift.metadataFor("Swift.Int")!;
-    const Wrapper = Swift.metadataFor("fixture.Wrapper")!;
+    const Int = metadataFor("Swift.Int")!;
+    const Wrapper = metadataFor("fixture.Wrapper")!;
     const { token, wrapperPtr } = freshWrapper();
     const before = token.retainCount;
     const consume = makeSwiftNativeFunction(
@@ -46,7 +47,7 @@ describe("consumed (+1) indirect arguments", () => {
   });
 
   test("rejects consuming a directly-passed argument", () => {
-    const Int = Swift.metadataFor("Swift.Int")!;
+    const Int = metadataFor("Swift.Int")!;
     expect(() =>
       makeSwiftNativeFunction(fixtureExport("fixture.addInts"), Int, [Int, Int], {
         consumedArgs: [0],
@@ -55,8 +56,8 @@ describe("consumed (+1) indirect arguments", () => {
   });
 
   test("rejects an out-of-range consumed index", () => {
-    const Int = Swift.metadataFor("Swift.Int")!;
-    const Wrapper = Swift.metadataFor("fixture.Wrapper")!;
+    const Int = metadataFor("Swift.Int")!;
+    const Wrapper = metadataFor("fixture.Wrapper")!;
     expect(() =>
       makeSwiftNativeFunction(fixtureExport("fixture.consumeWrapper"), Int, [Wrapper], {
         consumedArgs: [1],
@@ -65,8 +66,8 @@ describe("consumed (+1) indirect arguments", () => {
   });
 
   test("rejects a duplicate consumed index", () => {
-    const Int = Swift.metadataFor("Swift.Int")!;
-    const Wrapper = Swift.metadataFor("fixture.Wrapper")!;
+    const Int = metadataFor("Swift.Int")!;
+    const Wrapper = metadataFor("fixture.Wrapper")!;
     expect(() =>
       makeSwiftNativeFunction(fixtureExport("fixture.consumeWrapper"), Int, [Wrapper], {
         consumedArgs: [0, 0],
@@ -75,8 +76,8 @@ describe("consumed (+1) indirect arguments", () => {
   });
 
   test("without consumedArgs the callee consumes the caller's value", () => {
-    const Int = Swift.metadataFor("Swift.Int")!;
-    const Wrapper = Swift.metadataFor("fixture.Wrapper")!;
+    const Int = metadataFor("Swift.Int")!;
+    const Wrapper = metadataFor("fixture.Wrapper")!;
     const { token, wrapperPtr } = freshWrapper();
     const before = token.retainCount;
     const consume = makeSwiftNativeFunction(

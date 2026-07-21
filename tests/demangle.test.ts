@@ -1,12 +1,12 @@
 import { test, expect, describe } from "@frida/injest/agent";
-import { requireSwiftHost } from "./swift.js";
+import { requireSwift, requireSwiftHost } from "./swift.js";
 
 import { Swift } from "../src/index.js";
 import { isSwiftSymbol, demangle } from "../src/runtime/demangle.js";
 
 describe("demangle", () => {
   test("Swift is available once libswiftCore loads", () => {
-    requireSwiftHost();
+    requireSwift();
     expect(Swift.available).toBeTruthy();
   });
 

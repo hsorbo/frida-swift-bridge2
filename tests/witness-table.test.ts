@@ -1,15 +1,9 @@
 import { test, expect, describe, beforeEach } from "@frida/injest/agent";
 import { loadFixture, loadFixtureSyms } from "./fixtures/load.js";
 
-import {
-  Swift,
-  Protocol,
-  conformsToProtocol,
-  ProtocolConformance,
-  readProtocolRequirements,
-  WitnessTable,
-} from "../src/index.js";
+import { Protocol, conformsToProtocol, ProtocolConformance, readProtocolRequirements, WitnessTable, metadataFor } from "../src/abi.js";
 
+import { Swift } from "../src/index.js";
 describe("WitnessTable", () => {
   beforeEach(() => { loadFixture(); });
 
@@ -19,7 +13,7 @@ describe("WitnessTable", () => {
     const greeter = Protocol.find("fixturesyms.Greeter")!;
     const requirement = readProtocolRequirements(greeter.descriptor)[0];
 
-    const politeGreeter = Swift.metadataFor("fixturesyms.PoliteGreeter")!;
+    const politeGreeter = metadataFor("fixturesyms.PoliteGreeter")!;
     const table = new WitnessTable(conformsToProtocol(politeGreeter, greeter.descriptor)!, politeGreeter);
 
     const thunk = [...mod.enumerateSymbols()].find((e) => {
@@ -35,7 +29,7 @@ describe("WitnessTable", () => {
 
   test("slot 0 is the conformance descriptor, pointing back at Greeter and PoliteGreeter", () => {
     const greeter = Protocol.find("fixture.Greeter")!;
-    const politeGreeter = Swift.metadataFor("fixture.PoliteGreeter")!;
+    const politeGreeter = metadataFor("fixture.PoliteGreeter")!;
     const table = new WitnessTable(conformsToProtocol(politeGreeter, greeter.descriptor)!, politeGreeter);
 
     const conformance = new ProtocolConformance(table.conformanceDescriptor);

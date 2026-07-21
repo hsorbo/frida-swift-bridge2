@@ -3,8 +3,9 @@ import { loadFixture } from "./fixtures/load.js";
 
 import { Swift, StructType, EnumType } from "../src/index.js";
 
+import { metadataFor, typeOf } from "../src/abi.js";
 function structType(name: string): StructType {
-  return Swift.typeOf(Swift.metadataFor(name)!) as StructType;
+  return typeOf(metadataFor(name)!) as StructType;
 }
 
 describe("Static value-type method invocation", () => {
@@ -19,7 +20,7 @@ describe("Static value-type method invocation", () => {
   });
 
   test("static method on an enum passes no self", () => {
-    const t = Swift.typeOf(Swift.metadataFor("fixture.Pick")!) as EnumType;
+    const t = typeOf(metadataFor("fixture.Pick")!) as EnumType;
     expect(t.call("tag", 21)).toEqual(int64(42));
   });
 

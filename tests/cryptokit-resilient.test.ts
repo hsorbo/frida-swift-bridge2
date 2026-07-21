@@ -1,15 +1,9 @@
 import { test, expect, describe } from "@frida/injest/agent";
 import { requireSwift, requireDarwin } from "./swift.js";
 
-import {
-  Swift,
-  StructType,
-  ValueInstance,
-  isResilientValueType,
-  makeSwiftNativeFunction,
-  resolveMethod,
-} from "../src/index.js";
+import { StructType, ValueInstance, asSwiftObject, isResilientValueType, makeSwiftNativeFunction, resolveMethod, metadataFor, typeOf } from "../src/abi.js";
 
+import { Swift } from "../src/index.js";
 // markResilient drives auto-detection for a real Apple resilient framework on any OS; the
 // indirect-ABI machinery itself is fixture-tested in resilient-calling.test.ts.
 
@@ -28,8 +22,8 @@ function loadCryptoKit(): void {
 // Resilient init(size:): SymmetricKeySize @in, SymmetricKey @out, auto-lowered from plain metadata.
 // Result is the 1-word SecureBytes.Backing pointer.
 function makeKey(bitCount: number): NativePointer {
-  const sizeMd = Swift.metadataFor("CryptoKit.SymmetricKeySize")!;
-  const keyMd = Swift.metadataFor("CryptoKit.SymmetricKey")!;
+  const sizeMd = metadataFor("CryptoKit.SymmetricKeySize")!;
+  const keyMd = metadataFor("CryptoKit.SymmetricKey")!;
   const init = makeSwiftNativeFunction(
     resolveMethod("CryptoKit.SymmetricKey", "init", { labels: ["size"] }).address,
     keyMd,
@@ -45,10 +39,10 @@ describe("resilient auto-detection (CryptoKit)", () => {
     requireDarwin(ctx);
     loadCryptoKit();
 
-    expect(isResilientValueType(Swift.metadataFor("CryptoKit.SymmetricKeySize")!)).toBe(true);
-    expect(isResilientValueType(Swift.metadataFor("Swift.Int")!)).toBe(false);
+    expect(isResilientValueType(metadataFor("CryptoKit.SymmetricKeySize")!)).toBe(true);
+    expect(isResilientValueType(metadataFor("Swift.Int")!)).toBe(false);
 
-    const keyMd = Swift.metadataFor("CryptoKit.SymmetricKey")!;
+    const keyMd = metadataFor("CryptoKit.SymmetricKey")!;
     expect(ValueInstance.borrow(keyMd, makeKey(256)).get("bitCount")).toEqual(int64(256));
   });
 
@@ -56,12 +50,12 @@ describe("resilient auto-detection (CryptoKit)", () => {
     requireDarwin(ctx);
     loadCryptoKit();
 
-    const sizeMd = Swift.metadataFor("CryptoKit.SymmetricKeySize")!;
+    const sizeMd = metadataFor("CryptoKit.SymmetricKeySize")!;
     const sizeBuf = Memory.alloc(sizeMd.typeLayout.stride);
     sizeBuf.writeU64(256);
 
-    const keyType = Swift.typeOf(Swift.metadataFor("CryptoKit.SymmetricKey")!) as StructType;
-    const key = keyType.initializer({ labels: ["size"] }).call(ValueInstance.borrow(sizeMd, sizeBuf))!;
+    const keyType = typeOf(metadataFor("CryptoKit.SymmetricKey")!) as StructType;
+    const key = keyType.initializer({ labels: ["size"] }).call(asSwiftObject(ValueInstance.borrow(sizeMd, sizeBuf)))!;
 
     expect(key.$get("bitCount")).toEqual(int64(256));
   });
