@@ -239,6 +239,23 @@ export function makeSwiftNativeFunction(
   };
 
   const loweredArgs = argTypes.map(lowerArg);
+  // Only a concrete @in argument can be consumed: we hand the callee a private copy to destroy.
+  // Direct, generic, and closure args have no such copy; inout is borrowed, never consumed here.
+  if (options.consumedArgs !== undefined) {
+    const seen = new Set<number>();
+    for (const i of options.consumedArgs) {
+      if (!Number.isInteger(i) || i < 0 || i >= argTypes.length) {
+        throw new Error(`consumedArgs: invalid argument index ${i}`);
+      }
+      if (seen.has(i)) {
+        throw new Error(`consumedArgs: duplicate argument index ${i}`);
+      }
+      seen.add(i);
+      if (argMetadata[i] === null || !loweredArgs[i].indirect) {
+        throw new Error(`consumedArgs: argument ${i} is not a concrete indirectly-passed parameter`);
+      }
+    }
+  }
   const fridaArgTypes: NativeFunctionArgumentType[] = [];
   for (const arg of loweredArgs) {
     if (arg.indirect) {

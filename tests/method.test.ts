@@ -148,6 +148,12 @@ describe("ClassInstance method invocation", () => {
     expect(a.$call("merged", b.$handle)).toBe("Ada+Bee");
   });
 
+  test("rejects a class argument whose type is not the declared class", () => {
+    const a = robotType().init("Ada");
+    const token = (Swift.typeOf(Swift.metadataFor("fixture.Token")!) as ClassType).init(1);
+    expect(() => a.$call("merged", token)).toThrow(/expected fixture.Robot/);
+  });
+
   test("adopts a class-existential return, keeping the reference alive past the call", () => {
     const named = robotType().init("R2").$call("alias") as SwiftObject;
     expect(named.$kind).toBe("object");
