@@ -2,6 +2,7 @@ import { Metadata, MetadataKind } from "../abi/metadata.js";
 import { enumerateFields, fieldTypeIn } from "../abi/field-descriptor.js";
 import { existentialRepresentation } from "../abi/existential.js";
 import { typeName } from "./type-name.js";
+import { releaseErrorBoxWhenCollected } from "./error-box.js";
 import { signCode } from "../basic/pac.js";
 
 export const MAX_LOADABLE_SIZE = Process.pointerSize * 4;
@@ -369,7 +370,9 @@ export function makeSwiftNativeFunction(
     if (throws) {
       const error = resources.errorBuffer!.readPointer();
       if (!error.isNull()) {
-        throw new SwiftThrownError(error);
+        const thrown = new SwiftThrownError(error);
+        releaseErrorBoxWhenCollected(thrown, error);
+        throw thrown;
       }
     }
 

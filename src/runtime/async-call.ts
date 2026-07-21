@@ -2,6 +2,7 @@ import { AsyncFunctionPointer } from "../abi/async-function-pointer.js";
 import { AsyncTask } from "../abi/async-task.js";
 import { projectErrorExistential } from "../abi/existential.js";
 import { readValue, SwiftValue } from "../abi/instance.js";
+import { releaseErrorBoxWhenCollected } from "./error-box.js";
 import { LIBSWIFT_CORE_NAME, SWIFT_HOST_SUPPORTED } from "./platform.js";
 import { ARM64E_ABI, signCode } from "../basic/pac.js";
 
@@ -57,9 +58,14 @@ export interface AsyncCallOptions {
 }
 
 export class SwiftAsyncThrow extends Error {
-  constructor(readonly value: SwiftValue) {
+  constructor(readonly value: SwiftValue, errorBox?: NativePointer) {
     super(`Swift async function threw: ${String(value)}`);
     this.name = "SwiftAsyncThrow";
+    // The decoded value may hold an unretained reference into the box, so keep the box alive as long
+    // as this error is reachable and release it only when this error is collected.
+    if (errorBox !== undefined) {
+      releaseErrorBoxWhenCollected(this, errorBox);
+    }
   }
 }
 
@@ -475,7 +481,7 @@ function getWaitSemaphore(api: DriveApi): NativePointer {
 function takeResult(call: SynthesizedCall): NativePointer {
   const thrown = call.error.readPointer();
   if (!thrown.isNull()) {
-    throw new SwiftAsyncThrow(decodeThrownError(thrown));
+    throw new SwiftAsyncThrow(decodeThrownError(thrown), thrown);
   }
   return call.result;
 }
