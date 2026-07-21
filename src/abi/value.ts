@@ -98,7 +98,15 @@ export class ValueInstance implements RawInstance {
 
   write(value: SwiftValue): void {
     this.checkLive();
-    writeValue(this.metadata, this.handle, value);
+    const vwt = this.metadata.valueWitnesses;
+    if (vwt.isPOD) {
+      writeValue(this.metadata, this.handle, value);
+      return;
+    }
+    // Assignment, not initialization: take the fresh value over the old one so it is released.
+    const scratch = Memory.alloc(this.metadata.typeLayout.stride);
+    writeValue(this.metadata, scratch, value);
+    vwt.assignWithTake(this.handle, scratch);
   }
 
   container(): SwiftValue {
