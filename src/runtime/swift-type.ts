@@ -4,7 +4,7 @@ import { ClassMetadata } from "../abi/class-metadata.js";
 import { isActor, isDefaultActor } from "../abi/class-descriptor.js";
 import { ValueInstance } from "../abi/value.js";
 import { ClassInstance } from "../abi/heap-object.js";
-import { asSwiftObject, SwiftClassObject, SwiftValueObject } from "./object-facade.js";
+import { asSwiftObject, SwiftClassObject, SwiftValueObject, RAW } from "./object-facade.js";
 import { SwiftValue } from "../abi/instance.js";
 import { enumerateFields, fieldTypeIn } from "../abi/field-descriptor.js";
 import { makeSwiftNativeFunction } from "./calling-convention.js";
@@ -173,7 +173,17 @@ export class ValueType extends SwiftType {
   }
 
   init(...args: CallArg[]): SwiftValueObject | null {
+    const labeled = asLabeledArgs(args);
+    if (labeled !== null && this.hasInitializer(labeled.labels)) {
+      return this.initializer({ labels: labeled.labels }).call(...labeled.values);
+    }
     return this.initializer({ arity: args.length }).call(...args);
+  }
+
+  private hasInitializer(labels: string[]): boolean {
+    return enumerateMethods(this.name).some(
+      (m) => m.name === "init" && sameSequence(m.argLabels, labels)
+    );
   }
 
   fromJS(value: SwiftValue): SwiftValueObject {
@@ -254,6 +264,28 @@ function isOptionalTypeName(name: string): boolean {
   return /[?!]$/.test(name) || name.startsWith("Swift.Optional<");
 }
 
+// A lone plain { label: value } object selects a labeled initializer, keys mapping to labels in order;
+// a facade, pointer, array, or empty object is not a label spec and stays a positional argument.
+function asLabeledArgs(args: CallArg[]): { labels: string[]; values: CallArg[] } | null {
+  if (args.length !== 1) {
+    return null;
+  }
+  const spec = args[0];
+  if (
+    spec === null ||
+    typeof spec !== "object" ||
+    Array.isArray(spec) ||
+    spec instanceof NativePointer ||
+    (spec as { [RAW]?: unknown })[RAW] !== undefined
+  ) {
+    return null;
+  }
+  const entries = Object.entries(spec as Record<string, CallArg>);
+  return entries.length === 0
+    ? null
+    : { labels: entries.map(([k]) => k), values: entries.map(([, v]) => v) };
+}
+
 function sameSequence(a: (string | null)[], b: (string | null)[]): boolean {
   return a.length === b.length && a.every((v, i) => v === b[i]);
 }
@@ -299,7 +331,15 @@ export class ClassType extends SwiftType {
   }
 
   init(...args: CallArg[]): SwiftClassObject {
+    const labeled = asLabeledArgs(args);
+    if (labeled !== null && this.hasInitializer(labeled.labels)) {
+      return this.initializer({ labels: labeled.labels }).call(...labeled.values);
+    }
     return this.initializer({ arity: args.length }).call(...args);
+  }
+
+  private hasInitializer(labels: string[]): boolean {
+    return this.resolveInitializers().some((c) => sameSequence(c.argLabels, labels));
   }
 
   initializer(options: MethodResolveOptions = {}): SwiftClassBoundInitializer {

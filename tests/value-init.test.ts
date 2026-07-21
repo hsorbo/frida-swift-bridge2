@@ -50,6 +50,12 @@ describe("value-type initializers (with symtab)", () => {
     expect(t.init(5)!.$fields).toEqual({ lo: int64(5), hi: int64(5) });
     expect(t.init(3, 9)!.$fields).toEqual({ lo: int64(3), hi: int64(9) });
   });
+
+  test("init selects an overload from a { label: value } object by its keys", () => {
+    const t = structType("fixturesyms.Ranged");
+    expect(t.init({ lo: 5 })!.$fields).toEqual({ lo: int64(5), hi: int64(5) });
+    expect(t.init({ lo: 3, hi: 9 })!.$fields).toEqual({ lo: int64(3), hi: int64(9) });
+  });
 });
 
 // The same memberwise inits are unresolvable once the binary is stripped: on ELF
