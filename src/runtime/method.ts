@@ -1490,7 +1490,8 @@ function resolveAccessor(typeName: string, member: string, kind: AccessorKind): 
     if (candidate === undefined) {
       continue;
     }
-    const type = resolveType(candidate.typeName);
+    // resolveTypeExpr, not a bare nominal lookup: an accessor type can be generic (`Int?`, `[Int]`, …).
+    const type = resolveTypeExpr(candidate.typeName, () => null);
     if (type === null) {
       throw new Error(`cannot resolve ${kind} type ${candidate.typeName} of ${className}.${member}`);
     }
