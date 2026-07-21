@@ -7,6 +7,7 @@ import {
   GenericBoundMethod,
   GenericBoundAsyncMethod,
   bindValueMethod,
+  rootAsyncReceiver,
   bindGenericValueMethod,
   bindGenericTypeValueMethod,
   getProperty,
@@ -128,12 +129,12 @@ export class ValueInstance implements RawInstance {
   method(name: string, options: ValueMethodResolveOptions = {}): BoundValueMethod | GenericBoundMethod | GenericBoundAsyncMethod | BoundAsyncMethod {
     this.checkLive();
     if (options.typeArguments !== undefined) {
-      return bindGenericValueMethod(this.metadata, this.handle, name, options);
+      return rootAsyncReceiver(bindGenericValueMethod(this.metadata, this.handle, name, options), this);
     }
     if (this.metadata.description.isGeneric) {
-      return bindGenericTypeValueMethod(this.metadata, this.handle, name, options);
+      return rootAsyncReceiver(bindGenericTypeValueMethod(this.metadata, this.handle, name, options), this);
     }
-    return bindValueMethod(this.metadata, this.handle, name, options);
+    return rootAsyncReceiver(bindValueMethod(this.metadata, this.handle, name, options), this);
   }
 
   call(name: string, ...args: CallArg[]): CallResult | Promise<CallResult> {

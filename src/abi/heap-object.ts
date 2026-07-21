@@ -15,6 +15,7 @@ import {
   resolveMethod,
   actorSerialExecutor,
   bindGenericMethod,
+  rootAsyncReceiver,
   bindGenericTypeClassMethod,
   MethodResolveOptions,
   getProperty,
@@ -145,10 +146,10 @@ export class ClassInstance implements RawInstance {
 
   method(name: string, options: MethodResolveOptions = {}): BoundMethod | GenericBoundMethod | GenericBoundAsyncMethod | BoundAsyncMethod {
     if (options.typeArguments !== undefined) {
-      return bindGenericMethod(this.typeName, name, this.handle, { ...options, static: false });
+      return rootAsyncReceiver(bindGenericMethod(this.typeName, name, this.handle, { ...options, static: false }), this);
     }
     if (this.metadata.description.isGeneric) {
-      return bindGenericTypeClassMethod(this.dynamicType, this.handle, name, options);
+      return rootAsyncReceiver(bindGenericTypeClassMethod(this.dynamicType, this.handle, name, options), this);
     }
     const resolved = resolveMethod(this.typeName, name, { ...options, static: false });
     if (resolved.async === true) {
@@ -157,7 +158,7 @@ export class ClassInstance implements RawInstance {
         executor = actorSerialExecutor(this.dynamicType, this.handle)
           ?? (isDefaultActor(this.metadata.description) ? { identity: this.handle, implementation: NULL } : null);
       }
-      return new BoundAsyncMethod(resolved, this.handle, { indirect: true }, executor);
+      return rootAsyncReceiver(new BoundAsyncMethod(resolved, this.handle, { indirect: true }, executor), this);
     }
     return new BoundMethod(resolved, this.handle);
   }
