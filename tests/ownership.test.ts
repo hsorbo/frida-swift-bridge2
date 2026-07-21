@@ -62,4 +62,15 @@ describe("ownership", () => {
     const storage = stringStorage(r.$field("name").handle);
     expect(storage.retainCount).toBe(1);
   });
+
+  test("a field write releases the previous value instead of leaking it", () => {
+    const r = robotType().init("short");
+    r.$field("name").write("the first deliberately long, heap-allocated name");
+    const old = stringStorage(r.$field("name").handle);
+    old.retain();
+    const before = old.retainCount;
+    r.$field("name").write("the second deliberately long, heap-allocated name");
+    expect(old.retainCount).toBe(before - 1);
+    old.release();
+  });
 });

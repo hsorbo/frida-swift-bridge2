@@ -72,67 +72,152 @@ const PRIMITIVE_WRITERS: { [typeName: string]: (p: NativePointer, v: SwiftValue)
   "Swift.OpaquePointer": (p, v) => p.writePointer(v as NativePointer),
 };
 
-export function writeValue(metadata: Metadata, address: NativePointer, value: SwiftValue): void {
+const isIntValue = (v: SwiftValue): boolean =>
+  typeof v === "number" || v instanceof Int64 || v instanceof UInt64;
+
+const INT_RANGES: { [typeName: string]: { min: number; max: number } } = {
+  "Swift.Int32": { min: -0x80000000, max: 0x7fffffff },
+  "Swift.UInt32": { min: 0, max: 0xffffffff },
+  "Swift.Int16": { min: -0x8000, max: 0x7fff },
+  "Swift.UInt16": { min: 0, max: 0xffff },
+  "Swift.Int8": { min: -0x80, max: 0x7f },
+  "Swift.UInt8": { min: 0, max: 0xff },
+};
+const WIDE_SIGNED = new Set(["Swift.Int", "Swift.Int64"]);
+const WIDE_UNSIGNED = new Set(["Swift.UInt", "Swift.UInt64"]);
+
+const describeRejected = (v: SwiftValue): string =>
+  typeof v === "number" || v instanceof Int64 || v instanceof UInt64 ? String(v) : typeof v;
+
+function normalizePrimitive(name: string, value: SwiftValue): SwiftValue {
+  const range = INT_RANGES[name];
+  if (range !== undefined) {
+    const n = value instanceof Int64 || value instanceof UInt64 ? value.toNumber() : value;
+    if (typeof n !== "number" || !Number.isInteger(n) || n < range.min || n > range.max) {
+      throw new Error(`writeValue: ${String(value)} is out of range for ${name}`);
+    }
+    return n;
+  }
+  if (WIDE_SIGNED.has(name)) {
+    if (value instanceof Int64) return value;
+    if (typeof value === "number" && Number.isSafeInteger(value)) return value;
+    throw new Error(`writeValue: cannot write ${describeRejected(value)} as ${name}; pass a safe integer or Int64`);
+  }
+  if (WIDE_UNSIGNED.has(name)) {
+    if (value instanceof UInt64) return value;
+    if (typeof value === "number" && Number.isSafeInteger(value) && value >= 0) return value;
+    throw new Error(`writeValue: cannot write ${describeRejected(value)} as ${name}; pass a non-negative safe integer or UInt64`);
+  }
+  if (!PRIMITIVE_VALIDATORS[name](value)) {
+    throw new Error(`writeValue: cannot write ${typeof value} as ${name}`);
+  }
+  return value;
+}
+const isFloatValue = (v: SwiftValue): boolean => typeof v === "number";
+const isPointerValue = (v: SwiftValue): boolean => v instanceof NativePointer;
+
+const PRIMITIVE_VALIDATORS: { [typeName: string]: (v: SwiftValue) => boolean } = {
+  "Swift.Int": isIntValue,
+  "Swift.UInt": isIntValue,
+  "Swift.Int64": isIntValue,
+  "Swift.UInt64": isIntValue,
+  "Swift.Int32": isIntValue,
+  "Swift.UInt32": isIntValue,
+  "Swift.Int16": isIntValue,
+  "Swift.UInt16": isIntValue,
+  "Swift.Int8": isIntValue,
+  "Swift.UInt8": isIntValue,
+  "Swift.Bool": (v) => typeof v === "boolean",
+  "Swift.Double": isFloatValue,
+  "Swift.Float": isFloatValue,
+  "Swift.String": (v) => typeof v === "string",
+  "Swift.UnsafeRawPointer": isPointerValue,
+  "Swift.UnsafeMutableRawPointer": isPointerValue,
+  "Swift.OpaquePointer": isPointerValue,
+};
+
+type WritePlan = (address: NativePointer) => void;
+
+// Reads every caller property exactly once and validates it, so a Proxy or getter cannot change the
+// value between validation and the write, and a failing aggregate never initializes a partial result.
+function planWrite(metadata: Metadata, value: SwiftValue): WritePlan {
   switch (metadata.kind) {
     case MetadataKind.Struct: {
       const name = metadata.description.fullTypeName ?? "";
       const writer = PRIMITIVE_WRITERS[name];
       if (writer !== undefined) {
-        writer(address, value);
-        return;
+        const normalized = normalizePrimitive(name, value);
+        return (address) => writer(address, normalized);
+      }
+      if (value === null || typeof value !== "object") {
+        throw new Error(`writeValue: expected a field object for ${typeName(metadata)}`);
       }
       const fields = value as { [field: string]: SwiftValue };
-      for (const field of enumerateInstanceFields(metadata, address)) {
-        if (field.type === null) {
+      const fieldPlans: WritePlan[] = [];
+      for (const field of enumerateFields(metadata.description)) {
+        const fieldType = fieldTypeIn(metadata, field);
+        if (fieldType === null) {
           throw new Error(`writeValue: unresolved type for field ${field.name}`);
         }
         if (!(field.name in fields)) {
           throw new Error(`writeValue: missing field ${field.name}`);
         }
-        writeValue(field.type, field.address, fields[field.name]);
+        fieldPlans.push(planWrite(fieldType, fields[field.name]));
       }
-      return;
+      return (address) => {
+        let i = 0;
+        for (const field of enumerateInstanceFields(metadata, address)) {
+          fieldPlans[i++](field.address);
+        }
+      };
     }
     case MetadataKind.Enum:
-    case MetadataKind.Optional:
-      writeEnum(metadata, address, value);
-      return;
+    case MetadataKind.Optional: {
+      const { caseName, payload } = parseEnumValue(value);
+      const cases = [...enumerateFields(metadata.description)];
+      const tag = cases.findIndex((c) => c.name === caseName);
+      if (tag === -1) {
+        throw new Error(`writeValue: unknown enum case ${caseName}`);
+      }
+      const field = cases[tag];
+      let payloadPlan: WritePlan | null = null;
+      if (field.mangledTypeName !== null) {
+        if (field.isIndirectCase) {
+          throw new Error(`writeValue: indirect enum case ${caseName} not supported`);
+        }
+        const payloadType = fieldTypeIn(metadata, field);
+        if (payloadType === null) {
+          throw new Error(`writeValue: unresolved payload type for case ${caseName}`);
+        }
+        payloadPlan = planWrite(payloadType, payload as SwiftValue);
+      }
+      return (address) => {
+        payloadPlan?.(address);
+        setEnumTag(metadata, address, tag);
+      };
+    }
     default:
       throw new Error(`writeValue: unsupported metadata kind ${metadata.kind}`);
   }
 }
 
-function writeEnum(metadata: Metadata, address: NativePointer, value: SwiftValue): void {
-  let caseName: string;
-  let payload: SwiftValue | undefined;
+function parseEnumValue(value: SwiftValue): { caseName: string; payload?: SwiftValue } {
   if (typeof value === "string") {
-    caseName = value;
-  } else {
-    const entries = Object.entries(value as { [k: string]: SwiftValue });
-    if (entries.length !== 1) {
-      throw new Error("writeValue: enum value must be a case name or { case: payload }");
-    }
-    [caseName, payload] = entries[0];
+    return { caseName: value };
   }
+  if (value === null || typeof value !== "object") {
+    throw new Error("writeValue: enum value must be a case name or { case: payload }");
+  }
+  const entries = Object.entries(value as { [k: string]: SwiftValue });
+  if (entries.length !== 1) {
+    throw new Error("writeValue: enum value must be a case name or { case: payload }");
+  }
+  const [caseName, payload] = entries[0];
+  return { caseName, payload };
+}
 
-  const cases = [...enumerateFields(metadata.description)];
-  const tag = cases.findIndex((c) => c.name === caseName);
-  if (tag === -1) {
-    throw new Error(`writeValue: unknown enum case ${caseName}`);
-  }
-
-  const field = cases[tag];
-  if (field.mangledTypeName !== null) {
-    if (field.isIndirectCase) {
-      throw new Error(`writeValue: indirect enum case ${caseName} not supported`);
-    }
-    const payloadType = fieldTypeIn(metadata, field);
-    if (payloadType === null) {
-      throw new Error(`writeValue: unresolved payload type for case ${caseName}`);
-    }
-    writeValue(payloadType, address, payload as SwiftValue);
-  }
-  setEnumTag(metadata, address, tag);
+export function writeValue(metadata: Metadata, address: NativePointer, value: SwiftValue): void {
+  planWrite(metadata, value)(address);
 }
 
 export function readValue(metadata: Metadata, address: NativePointer): SwiftValue {

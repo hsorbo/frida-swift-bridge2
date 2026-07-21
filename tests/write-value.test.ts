@@ -25,6 +25,24 @@ describe("writeValue", () => {
     expect(roundTrip(Swift.metadataFor("Swift.Double")).write(3.5)).toBe(3.5);
   });
 
+  test("accepts an Int64-wrapped value for a narrow field, range-checked", () => {
+    expect(roundTrip(Swift.metadataFor("Swift.UInt8")).write(int64(200))).toBe(200);
+    expect(roundTrip(Swift.metadataFor("Swift.Int8")).write(int64(-5))).toEqual(-5);
+    expect(() => roundTrip(Swift.metadataFor("Swift.UInt8")).write(300)).toThrow(/out of range/);
+    expect(() => roundTrip(Swift.metadataFor("Swift.Int8")).write(200)).toThrow(/out of range/);
+  });
+
+  test("an out-of-range narrow field is rejected before a preceding String is written", () => {
+    const Badge = Swift.metadataFor("fixture.Badge")!;
+    const stride = Badge.typeLayout.stride;
+    const storage = Memory.alloc(stride);
+    const sentinel = new Array(stride).fill(0xaa);
+    storage.writeByteArray(sentinel);
+    expect(() => writeValue(Badge, storage, { title: "gold", level: 300 })).toThrow(/out of range/);
+    const bytes = new Uint8Array(storage.readByteArray(stride)!);
+    expect(bytes.every((b) => b === 0xaa)).toBe(true);
+  });
+
   test("recurses into nested struct fields", () => {
     const Loadable = Swift.metadataFor("fixture.LoadableStruct");
     expect(roundTrip(Loadable).write({ a: 1, b: 2, c: 3, d: 4 })).toEqual({
@@ -48,6 +66,49 @@ describe("writeValue", () => {
     const storage = Memory.alloc(String_.typeLayout.stride);
     writeValue(String_, storage, "hi");
     expect(readValue(String_, storage)).toBe("hi");
+  });
+
+  test("a mismatch deep in an aggregate is rejected before anything is written", () => {
+    const Loadable = Swift.metadataFor("fixture.LoadableStruct")!;
+    const stride = Loadable.typeLayout.stride;
+    const storage = Memory.alloc(stride);
+    const sentinel = new Array(stride).fill(0xaa);
+    storage.writeByteArray(sentinel);
+    expect(() =>
+      writeValue(Loadable, storage, { a: 1, b: "bad" as never, c: 3, d: 4 })
+    ).toThrow(/cannot write string as Swift.Int/);
+    expect(() => writeValue(Loadable, storage, { a: 1, b: 2, c: 3 })).toThrow(/missing field d/);
+    const bytes = new Uint8Array(storage.readByteArray(stride)!);
+    expect(bytes.every((b) => b === 0xaa)).toBe(true);
+  });
+
+  test("a mismatched enum payload is rejected before the tag is set", () => {
+    const Pick = Swift.metadataFor("fixture.Pick")!;
+    const stride = Pick.typeLayout.stride;
+    const storage = Memory.alloc(stride);
+    const sentinel = new Array(stride).fill(0xaa);
+    storage.writeByteArray(sentinel);
+    expect(() => writeValue(Pick, storage, { value: "bad" as never })).toThrow();
+    expect(() => writeValue(Pick, storage, "nosuchcase")).toThrow(/unknown enum case/);
+    const bytes = new Uint8Array(storage.readByteArray(stride)!);
+    expect(bytes.every((b) => b === 0xaa)).toBe(true);
+  });
+
+  test("reads each caller field exactly once, immune to a getter that mutates between passes", () => {
+    const Loadable = Swift.metadataFor("fixture.LoadableStruct")!;
+    let reads = 0;
+    const value = {
+      a: 1,
+      get b() {
+        // Valid on the first read; a second read would change the outcome.
+        return reads++ === 0 ? 2 : ("poison" as never);
+      },
+      c: 3,
+      d: 4,
+    };
+    const result = roundTrip(Loadable).write(value);
+    expect(result).toEqual({ a: int64(1), b: int64(2), c: int64(3), d: int64(4) });
+    expect(reads).toBe(1);
   });
 
   test("rejects an unsupported metadata kind", () => {

@@ -34,6 +34,16 @@ describe("64-bit integer semantics", () => {
     expect((out as Int64).toNumber()).toBe(-42);
   });
 
+  test("wide integers reject fractional, non-finite, unsafe, and cross-signed values", () => {
+    expect(() => roundtrip("Swift.Int", 1.5)).toThrow(/cannot write/);
+    expect(() => roundtrip("Swift.Int", NaN)).toThrow(/cannot write/);
+    expect(() => roundtrip("Swift.Int", Infinity)).toThrow(/cannot write/);
+    expect(() => roundtrip("Swift.Int", 2 ** 53)).toThrow(/cannot write/);
+    expect(() => roundtrip("Swift.Int", uint64(1))).toThrow(/cannot write/);
+    expect(() => roundtrip("Swift.UInt64", -1)).toThrow(/cannot write/);
+    expect(() => roundtrip("Swift.UInt64", int64(1))).toThrow(/cannot write/);
+  });
+
   test("32-bit integers stay plain numbers", () => {
     expect(typeof roundtrip("Swift.Int32", -7)).toBe("number");
   });
