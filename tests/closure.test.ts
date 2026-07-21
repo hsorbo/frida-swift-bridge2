@@ -1,5 +1,5 @@
 import { test, expect, describe, beforeEach } from "@frida/injest/agent";
-import { requireClosures } from "./swift.js";
+import { requireSwift } from "./swift.js";
 import { loadFixture, fixtureExport } from "./fixtures/load.js";
 
 import { ValueInstance, asSwiftObject, metadataFor, typeOf } from "../src/abi.js";
@@ -14,8 +14,8 @@ import {
 } from "../src/runtime/closure-discriminator.js";
 
 import { Swift } from "../src/index.js";
-describe("closure as a Swift argument", (ctx) => {
-  requireClosures(ctx);
+describe("closure as a Swift argument", () => {
+  beforeEach(requireSwift);
   test("marshals a closure as a 2-word arg and routes a buffer into its body", () => {
     const Int = metadataFor("Swift.Int")!;
 
@@ -87,8 +87,8 @@ describe("closure as a Swift argument", (ctx) => {
   });
 });
 
-describe("closure result and error routing", (ctx) => {
-  requireClosures(ctx);
+describe("closure result and error routing", () => {
+  beforeEach(requireSwift);
   test("writes its result through x8 and Swift returns it", () => {
     const Int = metadataFor("Swift.Int")!;
 
@@ -153,8 +153,8 @@ describe("closure result and error routing", (ctx) => {
   });
 });
 
-describe("escaping closure context", (ctx) => {
-  requireClosures(ctx);
+describe("escaping closure context", () => {
+  beforeEach(requireSwift);
   // The synthesized context is a real heap object: only its destroy slot (M-16) is read on release,
   // and Swift runs destroy when the strong count reaches zero.
   test("a synthesized refcounted context runs destroy when released to zero", () => {
@@ -224,10 +224,9 @@ describe("escaping closure context", (ctx) => {
   });
 });
 
-describe("closure through the $call facade", (ctx) => {
+describe("closure through the $call facade", () => {
   beforeEach(() => { loadFixture(); });
 
-  requireClosures(ctx);
   test("Swift.closure passed to a generic rethrows method receives the bytes", () => {
     const data = [0x01, 0x02, 0x03, 0x04, 0x05, 0x06];
     const buffer = Memory.alloc(data.length);
@@ -292,8 +291,8 @@ describe("closure through the $call facade", (ctx) => {
   });
 });
 
-describe("loadable closures (register-passed params and result)", (ctx) => {
-  requireClosures(ctx);
+describe("loadable closures (register-passed params and result)", () => {
+  beforeEach(requireSwift);
   test("marshals a (Int) -> Int closure: value in x0, result in x0", () => {
     const Int = metadataFor("Swift.Int")!;
 
@@ -364,10 +363,9 @@ describe("loadable closures (register-passed params and result)", (ctx) => {
   });
 });
 
-describe("loadable closure through the $call facade", (ctx) => {
+describe("loadable closure through the $call facade", () => {
   beforeEach(() => { loadFixture(); });
 
-  requireClosures(ctx);
   function byteSource(): ReturnType<typeof asSwiftObject> {
     const ByteSource = metadataFor("fixture.ByteSource")!;
     const self = Memory.alloc(ByteSource.valueWitnesses.stride);
@@ -388,10 +386,9 @@ describe("loadable closure through the $call facade", (ctx) => {
   });
 });
 
-describe("throwing loadable closures", (ctx) => {
+describe("throwing loadable closures", () => {
   beforeEach(() => { loadFixture(); });
 
-  requireClosures(ctx);
   test("a non-throwing body returns its result through a throws closure type", () => {
     const Int = metadataFor("Swift.Int")!;
     const Bool = metadataFor("Swift.Bool")!;
@@ -453,10 +450,9 @@ describe("throwing loadable closures", (ctx) => {
   });
 });
 
-describe("sized-int and pointer loadable closures", (ctx) => {
+describe("sized-int and pointer loadable closures", () => {
   beforeEach(() => { loadFixture(); });
 
-  requireClosures(ctx);
   test("marshals a (Int32) -> Int32 closure", () => {
     const Int32 = metadataFor("Swift.Int32")!;
 
@@ -497,10 +493,9 @@ describe("sized-int and pointer loadable closures", (ctx) => {
   });
 });
 
-describe("loadable param with an indirect result", (ctx) => {
+describe("loadable param with an indirect result", () => {
   beforeEach(() => { loadFixture(); });
 
-  requireClosures(ctx);
   test("marshals a (Int) -> R closure writing its result through x8", () => {
     const Int = metadataFor("Swift.Int")!;
 
@@ -542,10 +537,9 @@ describe("loadable param with an indirect result", (ctx) => {
   });
 });
 
-describe("String loadable closures through the facade", (ctx) => {
+describe("String loadable closures through the facade", () => {
   beforeEach(() => { loadFixture(); });
 
-  requireClosures(ctx);
   function byteSource(): ReturnType<typeof asSwiftObject> {
     const ByteSource = metadataFor("fixture.ByteSource")!;
     const self = Memory.alloc(ByteSource.valueWitnesses.stride);

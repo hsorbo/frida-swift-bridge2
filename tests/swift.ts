@@ -24,13 +24,6 @@ export function requireLinux(ctx: { skip: (reason?: string) => never }): void {
   }
 }
 
-// Closure synthesis works on arm64 (Darwin signs blraa, Linux uses a plain blr) and x86-64.
-export function requireClosures(ctx: { skip: (reason?: string) => void }): void {
-  if ((Process.arch !== "arm64" && Process.arch !== "x64") || !tryLoadSwiftCore()) {
-    ctx.skip("needs an arm64 or x86-64 Swift host");
-  }
-}
-
 // arm64 always exposes v-registers; x86-64 surfaces xmm on the CpuContext only in Frida > 17.15.5.
 export function requireFpRegisterHooks(ctx: { skip: (reason?: string) => never }): void {
   if (Process.arch !== "arm64" && Process.arch !== "x64") {
@@ -61,20 +54,8 @@ export function requireSwiftHost(): void {
 }
 
 // Swift.available no longer loads; the plain-C test host needs Swift.api to.
-function tryLoadSwiftCore(): boolean {
-  try {
-    void Swift.api;
-    return true;
-  } catch {
-    return false;
-  }
-}
-
 export function requireSwift(): void {
-  requireSwiftHost();
-  if (!tryLoadSwiftCore()) {
-    throw new Error(`${LIBSWIFT_CORE_NAME} not loadable`);
-  }
+  void Swift.api;
 }
 
 export function loadSwiftCore(): Module {
