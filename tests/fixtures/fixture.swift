@@ -248,6 +248,11 @@ public final class Box {
     public func roundOpt<T>(_ x: T?) -> T? { x }
     // Non-generic [Int] param: opaque to the JS writers, so a high-level call must byte-copy the Value.
     public func sumInts(_ xs: [Int]) -> Int { xs.reduce(0, +) }
+    // A non-POD (Wrapper) prefix ahead of a second arg: a failure marshalling the second must not
+    // leak the first's temp. Covers the sync-generic, async-generic, and plain-async marshalling paths.
+    public func mix<T>(_ w: Wrapper, _ x: T) -> Int { w.a }
+    public func mixAsync<T>(_ w: Wrapper, _ x: T) async -> Int { await Task.yield(); return w.a }
+    public func combineAsync(_ w: Wrapper, _ x: Int) async -> Int { await Task.yield(); return w.a + x }
 }
 
 public func firstGeneric<T>(_ xs: [T]) -> T { xs[0] }
