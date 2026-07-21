@@ -207,7 +207,7 @@ export class ForeignReferenceType extends SwiftType {
 }
 
 export class ClassType extends SwiftType {
-  private initializer: { address: NativePointer; argTypes: Metadata[] } | null = null;
+  private initializers: { address: NativePointer; argTypes: Metadata[] }[] | null = null;
   private vtableEntries: VTableEntry[] | null = null;
 
   get vtable(): VTableEntry[] {
@@ -237,10 +237,16 @@ export class ClassType extends SwiftType {
   }
 
   init(...args: SwiftValue[]): SwiftObject {
-    const { address, argTypes } = this.resolveInitializer();
-    if (args.length !== argTypes.length) {
-      throw new Error(`init expects ${argTypes.length} argument(s), got ${args.length}`);
+    const candidates = this.resolveInitializers();
+    const matches = candidates.filter((c) => c.argTypes.length === args.length);
+    if (matches.length === 0) {
+      const arities = [...new Set(candidates.map((c) => c.argTypes.length))].sort((a, b) => a - b).join(" or ");
+      throw new Error(`init expects ${arities} argument(s), got ${args.length}`);
     }
+    if (matches.length > 1) {
+      throw new Error(`init is ambiguous: ${matches.length} initializers take ${args.length} argument(s)`);
+    }
+    const { address, argTypes } = matches[0];
     const call = makeSwiftNativeFunction(address, this.metadata, argTypes, { hasSelf: true });
     // Initializer params are +1/owned: the callee consumes each temp, so they are not destroyed here.
     const argPtrs = args.map((value, i) => {
@@ -281,9 +287,9 @@ export class ClassType extends SwiftType {
     return name;
   }
 
-  private resolveInitializer(): { address: NativePointer; argTypes: Metadata[] } {
-    if (this.initializer !== null) {
-      return this.initializer;
+  private resolveInitializers(): { address: NativePointer; argTypes: Metadata[] }[] {
+    if (this.initializers !== null) {
+      return this.initializers;
     }
     const descriptor = new ClassMetadata(this.metadata.handle).description;
     const fullName = descriptor.fullTypeName;
@@ -295,6 +301,7 @@ export class ClassType extends SwiftType {
       throw new Error(`no module owns ${fullName}`);
     }
     const prefix = `${fullName}.__allocating_init`;
+    const candidates: { address: NativePointer; argTypes: Metadata[] }[] = [];
     for (const e of module.enumerateExports()) {
       const demangled = demangle(e.name);
       if (demangled === null || !demangled.startsWith(prefix)) {
@@ -311,10 +318,13 @@ export class ClassType extends SwiftType {
         }
         return metadata;
       });
-      this.initializer = { address: e.address, argTypes };
-      return this.initializer;
+      candidates.push({ address: e.address, argTypes });
     }
-    throw new Error(`no __allocating_init found for ${fullName}`);
+    if (candidates.length === 0) {
+      throw new Error(`no __allocating_init found for ${fullName}`);
+    }
+    this.initializers = candidates;
+    return candidates;
   }
 }
 
