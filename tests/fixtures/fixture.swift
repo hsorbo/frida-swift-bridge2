@@ -94,6 +94,14 @@ public enum FixtureError: Error {
     case boom
 }
 
+// A class-typed error: the thrown existential is the instance itself, so its strong count is a direct
+// witness for whether the bridge releases the +1 error box.
+public final class BoxedError: Error {
+    public let code: Int
+    public init(code: Int) { self.code = code }
+}
+public func throwBoxed(_ code: Int) throws -> Int { throw BoxedError(code: code) }
+
 public func mightThrow(_ code: Int) throws -> Int {
     if code != 0 {
         throw FixtureError.boom
