@@ -38,3 +38,19 @@ open class ResilientBase {
     public init(tag: Int) { self.tag = tag }
     open func greeting() -> String { "base" }
 }
+
+// Resilient struct wrapping a class ref (like Foundation.URL wraps NSURL): address-only ABI yet
+// non-POD, so Optional<ResilientHolder> is returned indirectly and destroyed through its payload.
+public final class ResilientToken {
+    public let id: Int
+    public init(id: Int) { self.id = id }
+}
+public struct ResilientHolder {
+    public var token: ResilientToken
+    public init?(id: Int) {
+        if id < 0 { return nil }
+        self.token = ResilientToken(id: id)
+    }
+    public static func make(_ id: Int) -> ResilientHolder? { ResilientHolder(id: id) }
+    public func tokenId() -> Int { token.id }
+}

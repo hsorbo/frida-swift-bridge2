@@ -143,7 +143,7 @@ export class ValueType extends SwiftType {
     return bindValueInitializer(this.metadata, options);
   }
 
-  init(...args: CallArg[]): SwiftObject {
+  init(...args: CallArg[]): SwiftObject | null {
     return this.initializer({ arity: args.length }).call(...args);
   }
 }

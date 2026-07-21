@@ -6,6 +6,7 @@ import { ClassInstance } from "../abi/heap-object.js";
 import { createObject, SwiftObject, RAW } from "./object-facade.js";
 import { ValueInstance } from "../abi/value.js";
 import { readValue, writeValue, embedsManagedReference, SwiftValue } from "../abi/instance.js";
+import { readEnumCase, projectEnumData, projectBox } from "../abi/enum.js";
 import { findType } from "../reflection/registry.js";
 import { demangle } from "./demangle.js";
 import {
@@ -199,6 +200,23 @@ function existentialPayloadEmbedsManagedReference(metadata: Metadata, container:
   return embedsManagedReference(payload.type);
 }
 
+// `.none` returns null; `.some`'s bare T sits at offset 0 (single-payload), so it decodes in place
+// and the Optional wrapper is never destroyed — destroying it faults on resilient payloads (URL).
+function projectOptionalPayload(
+  metadata: Metadata,
+  ret: NativePointer
+): { payloadType: Metadata; address: NativePointer } | null {
+  const { payloadType, isIndirect } = readEnumCase(metadata, ret);
+  if (payloadType === null) {
+    return null;
+  }
+  if (!isIndirect) {
+    return { payloadType, address: ret };
+  }
+  projectEnumData(metadata, ret);
+  return { payloadType, address: projectBox(ret.readPointer()) };
+}
+
 // Returns are +1: adopt a class; destroy a read non-POD temp; POD owns nothing. A value embedding a
 // managed reference would dangle on that destroy, so hand it back as an owned ValueInstance instead.
 function decodeReturn(returnType: Metadata | null, ret: NativePointer | null): CallResult {
@@ -207,6 +225,10 @@ function decodeReturn(returnType: Metadata | null, ret: NativePointer | null): C
   }
   if (returnType.kind === MetadataKind.Class) {
     return createObject(ClassInstance.adopt(ret.readPointer()));
+  }
+  if (returnType.kind === MetadataKind.Optional) {
+    const some = projectOptionalPayload(returnType, ret);
+    return some === null ? null : decodeReturn(some.payloadType, some.address);
   }
   // A class existential owns its +1 class ref in the first word; adopt it and skip the container
   // destroy, which would release that same ref and dangle the returned object.
@@ -755,7 +777,7 @@ export class BoundValueInitializer {
     return this.resolved.address;
   }
 
-  call(...args: CallArg[]): SwiftObject {
+  call(...args: CallArg[]): SwiftObject | null {
     const { argTypes, returnType, selector } = this.resolved;
     if (returnType === null) {
       throw new Error(`${selector} is not a value initializer`);
@@ -767,6 +789,11 @@ export class BoundValueInitializer {
     const ret = this.fn(...buffers);
     if (ret === null) {
       throw new Error(`${selector} returned no value`);
+    }
+    // A failable initializer (`init?`) returns Optional<Self>.
+    if (returnType.kind === MetadataKind.Optional) {
+      const some = projectOptionalPayload(returnType, ret);
+      return some === null ? null : createObject(ValueInstance.adopt(some.payloadType, some.address));
     }
     return createObject(ValueInstance.adopt(returnType, ret));
   }
