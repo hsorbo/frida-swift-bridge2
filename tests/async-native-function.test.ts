@@ -48,9 +48,9 @@ describe("Swift.asyncFunction", () => {
     expect(await makeTupleAsync.call(3, 4)).toEqual([int64(7), "sum"]);
   });
 
-  test("threads a caller-annotated return type, no cast at the call site", async () => {
-    const makeTupleAsync = Swift.asyncFunction<[Int64, string]>(module, MAKE_TUPLE_ASYNC);
-    const [sum, label] = await makeTupleAsync.call(3, 4);
+  test("threads caller-annotated argument and return types, no cast at the call site", async () => {
+    const makeTupleAsync = Swift.asyncFunction<[Int64, string], [number, number]>(module, MAKE_TUPLE_ASYNC);
+    const [sum, label] = await makeTupleAsync.call(3, 4); // .call is (a: number, b: number) => Promise<[Int64, string]>
     expect(sum).toEqual(int64(7));
     expect(label).toBe("sum");
   });
