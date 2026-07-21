@@ -793,7 +793,9 @@ function resolveReceiverType(context: string): Metadata | null {
 }
 
 // The async sibling of Swift.NativeFunction: call() for a free function, bind(self) for a method.
-export class SwiftAsyncFunction {
+// Generic like NativeFunction<Ret, Args>: the caller annotates the marshalled return and argument
+// types so a call site is typed without casting; both default to the untyped CallResult/CallArg.
+export class SwiftAsyncFunction<Ret = CallResult, Args extends CallArg[] = CallArg[]> {
   private readonly unbound: BoundAsyncMethod;
 
   constructor(
@@ -807,14 +809,14 @@ export class SwiftAsyncFunction {
     return this.resolved.address;
   }
 
-  call(...args: CallArg[]): Promise<CallResult> {
+  call(...args: Args): Promise<Ret> {
     if (this.receiverType !== null) {
       throw new Error(`${this.resolved.selector} is an instance method; bind a receiver with .bind(self)`);
     }
-    return this.unbound.call(...args);
+    return this.unbound.call(...args) as Promise<Ret>;
   }
 
-  bind(receiver: AsyncReceiver): (...args: CallArg[]) => Promise<CallResult> {
+  bind(receiver: AsyncReceiver): (...args: Args) => Promise<Ret> {
     if (this.receiverType === null) {
       throw new Error(`${this.resolved.selector} takes no receiver`);
     }
@@ -823,11 +825,14 @@ export class SwiftAsyncFunction {
     }
     const bound = new BoundAsyncMethod(this.resolved, toReceiverPointer(receiver), { indirect: true });
     rootAsyncReceiver(bound, receiver);
-    return (...args: CallArg[]) => bound.call(...args);
+    return (...args: Args) => bound.call(...args) as Promise<Ret>;
   }
 }
 
-export function resolveAsyncFunction(module: Module, mangled: string): SwiftAsyncFunction {
+export function resolveAsyncFunction<Ret = CallResult, Args extends CallArg[] = CallArg[]>(
+  module: Module,
+  mangled: string
+): SwiftAsyncFunction<Ret, Args> {
   const demangled = demangle(mangled);
   if (demangled === null) {
     throw new Error(`not a Swift symbol: ${mangled}`);
@@ -871,7 +876,7 @@ export function resolveAsyncFunction(module: Module, mangled: string): SwiftAsyn
     async: true,
     asyncFunctionPointer: afp,
   };
-  return new SwiftAsyncFunction(resolved, resolveReceiverType(signature.context));
+  return new SwiftAsyncFunction<Ret, Args>(resolved, resolveReceiverType(signature.context));
 }
 
 function staticInvokerFor(resolved: ResolvedMethod): SwiftNativeFunction {
