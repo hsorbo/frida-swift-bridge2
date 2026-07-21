@@ -1,6 +1,6 @@
 import { test, expect, describe } from "@frida/injest/agent";
 import { requireSwift, SWIFTCORE_MODULE } from "./swift.js";
-import { loadResilient, RESILIENT_MODULE, loadFixture } from "./fixtures/load.js";
+import { loadResilient, RESILIENT_MODULE, loadFixture, loadFixtureSyms } from "./fixtures/load.js";
 
 import { Swift } from "../src/index.js";
 import {
@@ -53,11 +53,24 @@ describe("registry", () => {
     expect(byLeaf("ExtensionProbe")!.fullTypeName).toBeNull();
   });
 
-  test("finds a type by simple name", () => {
-    requireSwift();
-    const optional = findType("Optional");
-    expect(optional).not.toBeNull();
-    expect(optional!.kind).toBe(ContextDescriptorKind.Enum);
+  test("finds a type by a uniquely-resolving simple name", () => {
+    loadResilient();
+    const point = findType("ResilientPoint");
+    expect(point).not.toBeNull();
+    expect(point!.fullTypeName).toBe("resilient.ResilientPoint");
+  });
+
+  test("rejects an ambiguous bare name but resolves each qualified form", () => {
+    loadFixture();
+    loadFixtureSyms();
+    expect(() => findType("LoadableStruct")).toThrow(/ambiguous/);
+    expect(findType("fixture.LoadableStruct")!.fullTypeName).toBe("fixture.LoadableStruct");
+    expect(findType("fixturesyms.LoadableStruct")!.fullTypeName).toBe("fixturesyms.LoadableStruct");
+  });
+
+  test("bare lookup skips unnameable extension-nested descriptors", () => {
+    loadFixture();
+    expect(findType("ExtensionProbe")).toBeNull();
   });
 
   test("returns null for an unknown type", () => {

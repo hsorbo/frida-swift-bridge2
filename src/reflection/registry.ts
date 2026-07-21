@@ -77,20 +77,37 @@ export function findType(name: string): ContextDescriptor | null {
 
   const dot = name.lastIndexOf(".");
   const simpleName = dot === -1 ? name : name.slice(dot + 1);
-  const moduleName = dot === -1 ? null : name.slice(0, dot);
+  const qualified = dot === -1 ? null : name;
 
+  // A qualified name resolves to the first full-path match. A bare name is accepted only when it
+  // resolves uniquely across loaded images, so it must scan every image before committing. Distinct
+  // descriptors that share a qualified name denote the same type (dyld cache aliases), not ambiguity.
+  let match: ContextDescriptor | null = null;
+  let matchName: string | null = null;
   for (const module of enumerateSwiftModules()) {
     for (const descriptor of typesOf(module)) {
       if (descriptor.name !== simpleName) {
         continue;
       }
-      if (moduleName !== null && descriptor.moduleName !== moduleName) {
+      if (qualified !== null) {
+        if (descriptor.fullTypeName !== qualified) {
+          continue;
+        }
+        resolved.set(name, descriptor);
+        return descriptor;
+      }
+      const fullName = descriptor.fullTypeName;
+      if (fullName === null) {
         continue;
       }
-      resolved.set(name, descriptor);
-      return descriptor;
+      if (match !== null && fullName !== matchName) {
+        throw new Error(`ambiguous type name "${name}"; qualify it with a module`);
+      }
+      match = descriptor;
+      matchName = fullName;
     }
   }
 
-  return null;
+  // Never cached: a later-loaded image can make a bare name ambiguous.
+  return match;
 }
