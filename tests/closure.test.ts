@@ -379,7 +379,7 @@ describe("loadable closure through the $call facade", (ctx) => {
 
   test("Swift.closure (Int) -> Int returns the mapped value", () => {
     const result = byteSource().$call("apply", 7, Swift.closure((n: number) => Number(n) * 6));
-    expect(result).toBe(42);
+    expect(result).toEqual(int64(42));
   });
 
   test("Swift.closure (Int) -> Bool returns the predicate result", () => {
@@ -539,7 +539,7 @@ describe("loadable param with an indirect result", (ctx) => {
     const result = source
       .$method("produce", { typeArguments: [Int] })
       .call(6, Swift.closure((n: number) => Number(n) * 7));
-    expect(result).toBe(42);
+    expect(result).toEqual(int64(42));
   });
 });
 
@@ -573,7 +573,7 @@ describe("String loadable closures through the facade", (ctx) => {
   });
 
   test("(String) -> Int passes the string and returns a scalar", () => {
-    expect(byteSource().$call("strLen", "héllo", Swift.closure((s: string) => s.length))).toBe(5);
+    expect(byteSource().$call("strLen", "héllo", Swift.closure((s: string) => s.length))).toEqual(int64(5));
   });
 
   test("(Int) -> String returns a synthesized string", () => {

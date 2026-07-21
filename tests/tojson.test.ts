@@ -66,7 +66,7 @@ describe("toJSON", () => {
     expect(json(v)).toEqual({
       kind: "value",
       type: "fixture.LoadableStruct",
-      value: { a: 1, b: 2, c: 3, d: 4 },
+      value: { a: "1", b: "2", c: "3", d: "4" },
     });
     v.dispose();
     expect(json(v)).toEqual({ kind: "value", type: "fixture.LoadableStruct", disposed: true });
@@ -87,7 +87,7 @@ describe("toJSON", () => {
     expect(json(obj)).toEqual({
       kind: "value",
       type: "fixture.LoadableStruct",
-      value: { a: 1, b: 2, c: 3, d: 4 },
+      value: { a: "1", b: "2", c: "3", d: "4" },
     });
   });
 

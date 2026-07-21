@@ -19,7 +19,7 @@ describe("writeValue", () => {
   beforeEach(() => { loadFixture(); });
 
   test("materializes integer primitives", () => {
-    expect(roundTrip(Swift.metadataFor("Swift.Int")).write(-42)).toBe(-42);
+    expect(roundTrip(Swift.metadataFor("Swift.Int")).write(-42)).toEqual(int64(-42));
     expect(roundTrip(Swift.metadataFor("Swift.UInt8")).write(200)).toBe(200);
     expect(roundTrip(Swift.metadataFor("Swift.Bool")).write(true)).toBe(true);
     expect(roundTrip(Swift.metadataFor("Swift.Double")).write(3.5)).toBe(3.5);
@@ -28,15 +28,15 @@ describe("writeValue", () => {
   test("recurses into nested struct fields", () => {
     const Loadable = Swift.metadataFor("fixture.LoadableStruct");
     expect(roundTrip(Loadable).write({ a: 1, b: 2, c: 3, d: 4 })).toEqual({
-      a: 1,
-      b: 2,
-      c: 3,
-      d: 4,
+      a: int64(1),
+      b: int64(2),
+      c: int64(3),
+      d: int64(4),
     });
   });
 
   test("injects a payload enum case", () => {
-    expect(roundTrip(Swift.metadataFor("fixture.Pick")).write({ value: 7 })).toEqual({ value: 7 });
+    expect(roundTrip(Swift.metadataFor("fixture.Pick")).write({ value: 7 })).toEqual({ value: int64(7) });
   });
 
   test("injects an empty enum case", () => {
@@ -60,7 +60,7 @@ describe("writeValue", () => {
     const { swift_allocBox, swift_release } = getSwiftCoreApi();
     const [object, buffer] = swift_allocBox(Int.handle);
     writeValue(Int, buffer, 99);
-    expect(readValue(Int, buffer)).toBe(99);
+    expect(readValue(Int, buffer)).toEqual(int64(99));
     expect(projectBox(object).equals(buffer)).toBe(true);
     swift_release(object);
   });

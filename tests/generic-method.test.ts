@@ -16,7 +16,7 @@ describe("generic method invocation", () => {
 
   test("calls an unconstrained generic method with a supplied type argument", () => {
     const Int = Swift.metadataFor("Swift.Int")!;
-    expect(box().$method("echo", { typeArguments: [Int] }).call(7)).toBe(7);
+    expect(box().$method("echo", { typeArguments: [Int] }).call(7)).toEqual(int64(7));
   });
 
   test("the same method works for a different concrete type argument", () => {
@@ -27,12 +27,12 @@ describe("generic method invocation", () => {
   test("appends one metadata argument per generic parameter", () => {
     const Int = Swift.metadataFor("Swift.Int")!;
     const Str = Swift.metadataFor("Swift.String")!;
-    expect(box().$method("pick", { typeArguments: [Int, Str] }).call(11, "x")).toBe(11);
+    expect(box().$method("pick", { typeArguments: [Int, Str] }).call(11, "x")).toEqual(int64(11));
   });
 
   test("auto-resolves a witness table for a constrained requirement", () => {
     const Int = Swift.metadataFor("Swift.Int")!;
-    expect(box().$method("scaled", { typeArguments: [Int] }).call(6, 7)).toBe(42);
+    expect(box().$method("scaled", { typeArguments: [Int] }).call(6, 7)).toEqual(int64(42));
   });
 
   test("passes a class-typed generic argument by reference", () => {
@@ -45,8 +45,8 @@ describe("generic method invocation", () => {
   test("a bound generic method is reusable across calls", () => {
     const Int = Swift.metadataFor("Swift.Int")!;
     const echo = box().$method("echo", { typeArguments: [Int] });
-    expect(echo.call(1)).toBe(1);
-    expect(echo.call(2)).toBe(2);
+    expect(echo.call(1)).toEqual(int64(1));
+    expect(echo.call(2)).toEqual(int64(2));
   });
 
   test("rejects a type that fails the conformance requirement", () => {

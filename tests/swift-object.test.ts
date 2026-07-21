@@ -28,14 +28,14 @@ describe("Swift.Object method sugar", () => {
 
   test("disambiguates arity overloads by argument count", () => {
     const o = robot("R2");
-    expect(o.at(5)).toBe(5);
-    expect(o.at(5, 6)).toBe(11);
+    expect(o.at(5)).toEqual(int64(5));
+    expect(o.at(5, 6)).toEqual(int64(11));
   });
 
   test("disambiguates same-arity overloads via $method labels", () => {
     const o = robot("R2");
-    expect(o.$method("move", { labels: ["to"] }).call(5)).toBe(5);
-    expect(o.$method("move", { labels: ["by"] }).call(5)).toBe(50);
+    expect(o.$method("move", { labels: ["to"] }).call(5)).toEqual(int64(5));
+    expect(o.$method("move", { labels: ["by"] }).call(5)).toEqual(int64(50));
   });
 
   test("$call mirrors the bare-name call", () => {
@@ -120,18 +120,18 @@ describe("Swift.Object collision-proofing", () => {
 
   test("bare names reach Swift members that clash with the facade's raw spellings", () => {
     const c = clash(7);
-    expect(c.handle).toBe(7);      // stored property, not the native pointer
+    expect(c.handle).toEqual(int64(7));      // stored property, not the native pointer
     expect(c.get()).toBe("got 7"); // method named get, not a property reader
-    expect(c.call()).toBe(14);     // method named call, not the bridge invoker
-    expect(c.field()).toBe(107);   // method named field, not the bridge field accessor
+    expect(c.call()).toEqual(int64(14));     // method named call, not the bridge invoker
+    expect(c.field()).toEqual(int64(107));   // method named field, not the bridge field accessor
   });
 
   test("$-prefixed intrinsics stay available alongside the clashing members", () => {
     const c = clash(7);
     expect(c.$handle.isNull()).toBe(false);
-    expect(c.$get("handle")).toBe(7);
+    expect(c.$get("handle")).toEqual(int64(7));
     expect(c.$call("get")).toBe("got 7");
-    expect(c.$field("handle").read()).toBe(7);
+    expect(c.$field("handle").read()).toEqual(int64(7));
   });
 
   test("raw spellings are not leaked when no Swift member shadows them", () => {

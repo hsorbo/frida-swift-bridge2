@@ -49,7 +49,7 @@ describe("resilient auto-detection (CryptoKit)", () => {
     expect(isResilientValueType(Swift.metadataFor("Swift.Int")!)).toBe(false);
 
     const keyMd = Swift.metadataFor("CryptoKit.SymmetricKey")!;
-    expect(ValueInstance.borrow(keyMd, makeKey(256)).get("bitCount")).toBe(256);
+    expect(ValueInstance.borrow(keyMd, makeKey(256)).get("bitCount")).toEqual(int64(256));
   });
 
   test("constructs a resilient value type through the type wrapper", (ctx) => {
@@ -63,6 +63,6 @@ describe("resilient auto-detection (CryptoKit)", () => {
     const keyType = Swift.typeOf(Swift.metadataFor("CryptoKit.SymmetricKey")!) as StructType;
     const key = keyType.initializer({ labels: ["size"] }).call(ValueInstance.borrow(sizeMd, sizeBuf));
 
-    expect(key.$get("bitCount")).toBe(256);
+    expect(key.$get("bitCount")).toEqual(int64(256));
   });
 });

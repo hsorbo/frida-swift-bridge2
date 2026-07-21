@@ -14,7 +14,7 @@ describe("compound generic-using exprs in generic methods", () => {
   test("T? argument and return pass indirectly (Optional payload is address-only)", () => {
     const Int = Swift.metadataFor("Swift.Int")!;
     const roundOpt = box().$method("roundOpt", { typeArguments: [Int] });
-    expect(roundOpt.call({ some: 9 })).toEqual({ some: 9 });
+    expect(roundOpt.call({ some: 9 })).toEqual({ some: int64(9) });
     expect(roundOpt.call("none")).toBe("none");
   });
 
@@ -51,6 +51,6 @@ describe("compound generic-using exprs in generic methods", () => {
 
     // The Array is opaque to the JS writers; as a ValueInstance it byte-copies through a high-level .call() arg.
     const arr = ValueInstance.fromCopy(ArrInt, arrPtr);
-    expect(box().$method("sumInts").call(arr)).toBe(21);
+    expect(box().$method("sumInts").call(arr)).toEqual(int64(21));
   });
 });

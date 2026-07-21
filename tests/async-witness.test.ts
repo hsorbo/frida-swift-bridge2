@@ -30,6 +30,6 @@ describe("async witness-table method invocation", () => {
     const table = proto.conformanceFor(type)!;
     const bound = table.method(value, "scaled");
     expect(bound instanceof BoundAsyncMethod).toBe(true);
-    expect(await (bound as BoundAsyncMethod).call(7)).toBe(21);
+    expect(await (bound as BoundAsyncMethod).call(7)).toEqual(int64(21));
   });
 });

@@ -57,7 +57,7 @@ describe("witness-table method invocation", () => {
     const greeter = Protocol.find("fixturesyms.Greeter")!;
     const aged = Protocol.find("fixturesyms.Aged")!;
     expect(greeter.conformanceFor(type)!.method(value, "greet").call()).toBe("Hi, Cy");
-    expect(aged.conformanceFor(type)!.get(value, "age")).toBe(9);
+    expect(aged.conformanceFor(type)!.get(value, "age")).toEqual(int64(9));
   });
 
   test("unknown requirement name throws", () => {
