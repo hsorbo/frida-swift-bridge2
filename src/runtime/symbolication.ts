@@ -330,11 +330,13 @@ export function splitBoundTypeName(name: string): { base: string; arguments: str
 }
 
 // Desugars A? / [A] / [K: V] / Base<...>, resolving each leaf via resolveParam (generics) or findType.
+// A leading borrow modifier (init params spell a non-consuming String as `__shared String`) is not
+// part of the type and is dropped; __owned/inout are rejected upstream, not here.
 export function resolveTypeExpr(
   expr: string,
   resolveParam: (name: string) => Metadata | null
 ): Metadata | null {
-  expr = expr.trim();
+  expr = expr.trim().replace(/^(?:__shared|borrowing)\s+/, "");
   if (expr.endsWith("?") || expr.endsWith("!")) {
     return instantiate("Swift.Optional", [resolveTypeExpr(expr.slice(0, -1), resolveParam)]);
   }
