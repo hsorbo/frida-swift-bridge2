@@ -43,6 +43,12 @@ describe("value-type initializers (with symtab)", () => {
   test("throws on an argument-count mismatch", () => {
     expect(() => structType("fixturesyms.Person").init("Ada")).toThrow();
   });
+
+  test("init selects an overload by its argument count", () => {
+    const t = structType("fixturesyms.Ranged");
+    expect(t.init(5).$fields).toEqual({ lo: int64(5), hi: int64(5) });
+    expect(t.init(3, 9).$fields).toEqual({ lo: int64(3), hi: int64(9) });
+  });
 });
 
 // The same memberwise inits are unresolvable once the binary is stripped: on ELF
