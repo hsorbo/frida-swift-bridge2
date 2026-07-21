@@ -1016,6 +1016,11 @@ public func makePairAsync(_ a: Int, _ b: Int) async -> AsyncPair {
     return AsyncPair(a: a, b: b)
 }
 
+public func makeTupleAsync(_ a: Int, _ b: Int) async -> (Int, String) {
+    await Task.yield()
+    return (a + b, "sum")
+}
+
 public protocol AsyncScaler {
     func scaled(_ x: Int) async -> Int
 }

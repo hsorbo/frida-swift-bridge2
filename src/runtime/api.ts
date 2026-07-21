@@ -64,6 +64,10 @@ export interface SwiftCoreApi {
     NativePointer,
     [number, NativePointerValue, number | UInt64, NativePointerValue]
   >;
+  swift_getTupleTypeMetadata: NativeFunction<
+    NativePointer,
+    [number | UInt64, number | UInt64, NativePointerValue, NativePointerValue, NativePointerValue]
+  >;
   swift_getAssociatedTypeWitness: NativeFunction<
     [NativePointer, NativePointer],
     [number | UInt64, NativePointerValue, NativePointerValue, NativePointerValue, NativePointerValue]
@@ -166,6 +170,11 @@ export function getSwiftCoreApi(): SwiftCoreApi {
       lib.getExportByName("swift_getExistentialTypeMetadata"),
       "pointer",
       ["uint8", "pointer", "size_t", "pointer"]
+    ),
+    swift_getTupleTypeMetadata: new NativeFunction(
+      lib.getExportByName("swift_getTupleTypeMetadata"),
+      "pointer",
+      ["size_t", "size_t", "pointer", "pointer", "pointer"]
     ),
     swift_getAssociatedTypeWitness: new NativeFunction(
       lib.getExportByName("swift_getAssociatedTypeWitness"),

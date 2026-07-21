@@ -1,4 +1,8 @@
 import { Metadata } from "./metadata.js";
+import { getSwiftCoreApi } from "../runtime/api.js";
+
+const METADATA_REQUEST_COMPLETE = 0;
+const TUPLE_NUM_ELEMENTS_MASK = 0xffff;
 
 const OFFSETOF_NUM_ELEMENTS = Process.pointerSize;
 const OFFSETOF_LABELS = 2 * Process.pointerSize;
@@ -33,4 +37,20 @@ export function* enumerateTupleElements(metadata: Metadata): Generator<TupleElem
       offset: element.add(OFFSETOF_ELEMENT_OFFSET).readU32(),
     };
   }
+}
+
+export function getUnlabelledTupleTypeMetadata(elements: Metadata[]): Metadata {
+  if (elements.length > TUPLE_NUM_ELEMENTS_MASK) {
+    throw new Error(`tuple has too many elements: ${elements.length}`);
+  }
+  const buffer = Memory.alloc(Math.max(elements.length, 1) * Process.pointerSize);
+  elements.forEach((m, i) => buffer.add(i * Process.pointerSize).writePointer(m.handle));
+  const metadata = getSwiftCoreApi().swift_getTupleTypeMetadata(
+    METADATA_REQUEST_COMPLETE,
+    elements.length,
+    buffer,
+    NULL,
+    NULL
+  );
+  return new Metadata(metadata);
 }

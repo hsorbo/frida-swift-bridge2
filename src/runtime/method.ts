@@ -7,6 +7,7 @@ import { asSwiftObject, SwiftObject, SwiftValueObject, SwiftField, RAW } from ".
 import { ValueInstance } from "../abi/value.js";
 import { readValue, writeValue, embedsManagedReference, SwiftValue } from "../abi/instance.js";
 import { readEnumCase, projectEnumData, projectBox } from "../abi/enum.js";
+import { enumerateTupleElements } from "../abi/tuple.js";
 import { findType } from "../reflection/registry.js";
 import { demangle } from "./demangle.js";
 import {
@@ -258,6 +259,10 @@ function decodeReturn(returnType: Metadata | null, ret: NativePointer | null): C
   if (returnType.kind === MetadataKind.Optional) {
     const some = projectOptionalPayload(returnType, ret);
     return some === null ? null : decodeReturn(some.payloadType, some.address);
+  }
+  // A tuple decodes to an array, each element consumed in place by the recursion (not one facade).
+  if (returnType.kind === MetadataKind.Tuple) {
+    return [...enumerateTupleElements(returnType)].map((e) => decodeReturn(e.type, ret.add(e.offset)));
   }
   // A class existential owns its +1 class ref in the first word; adopt it and skip the container
   // destroy, which would release that same ref and dangle the returned object.
@@ -761,6 +766,112 @@ export class BoundAsyncMethod {
       }
     );
   }
+}
+
+// A Swift facade's $handle, an ObjC.Object's handle, or a raw swiftself pointer.
+export type AsyncReceiver = NativePointer | { $handle: NativePointer } | { handle: NativePointer };
+
+function toReceiverPointer(receiver: AsyncReceiver): NativePointer {
+  if (receiver instanceof NativePointer) {
+    return receiver;
+  }
+  const handle = (receiver as { $handle?: unknown }).$handle ?? (receiver as { handle?: unknown }).handle;
+  if (handle instanceof NativePointer) {
+    return handle;
+  }
+  throw new Error("receiver must be a Swift object, an ObjC.Object, or a NativePointer");
+}
+
+// A static method's thin-metatype self is erased (null); an extension receiver keeps its `(extension
+// in Module):` prefix, which is not part of the type name.
+function resolveReceiverType(context: string): Metadata | null {
+  const { context: base, isStatic } = stripReceiverKeyword(context);
+  if (isStatic) {
+    return null;
+  }
+  return resolveType(base.replace(/^\(extension in [^)]+\):/, ""));
+}
+
+// The async sibling of Swift.NativeFunction: call() for a free function, bind(self) for a method.
+export class SwiftAsyncFunction {
+  private readonly unbound: BoundAsyncMethod;
+
+  constructor(
+    private readonly resolved: ResolvedMethod,
+    private readonly receiverType: Metadata | null
+  ) {
+    this.unbound = new BoundAsyncMethod(resolved, null);
+  }
+
+  get address(): NativePointer {
+    return this.resolved.address;
+  }
+
+  call(...args: CallArg[]): Promise<CallResult> {
+    if (this.receiverType !== null) {
+      throw new Error(`${this.resolved.selector} is an instance method; bind a receiver with .bind(self)`);
+    }
+    return this.unbound.call(...args);
+  }
+
+  bind(receiver: AsyncReceiver): (...args: CallArg[]) => Promise<CallResult> {
+    if (this.receiverType === null) {
+      throw new Error(`${this.resolved.selector} takes no receiver`);
+    }
+    if (this.receiverType.kind !== MetadataKind.Class && this.receiverType.kind !== MetadataKind.ObjCClassWrapper) {
+      throw new Error(`receiver binding is only supported for class receivers, not ${typeName(this.receiverType)}`);
+    }
+    const bound = new BoundAsyncMethod(this.resolved, toReceiverPointer(receiver), { indirect: true });
+    rootAsyncReceiver(bound, receiver);
+    return (...args: CallArg[]) => bound.call(...args);
+  }
+}
+
+export function resolveAsyncFunction(module: Module, mangled: string): SwiftAsyncFunction {
+  const demangled = demangle(mangled);
+  if (demangled === null) {
+    throw new Error(`not a Swift symbol: ${mangled}`);
+  }
+  const signature = parseSwiftSignature(demangled);
+  if (signature === null || signature.kind !== "function") {
+    throw new Error(`cannot parse a function signature from ${demangled}`);
+  }
+  if (!signature.async) {
+    throw new Error(`${signature.selector} is not async; use Swift.NativeFunction`);
+  }
+  if (signature.genericParams.length > 0) {
+    throw new Error(`${signature.selector} is generic; async generics are not supported here`);
+  }
+  const afp = findAsyncFunctionPointer(module, mangled);
+  if (afp === null) {
+    throw new Error(`no async function pointer for ${mangled} in ${module.name}`);
+  }
+  assertBorrowingArgs(signature.argTypeNames, signature.selector);
+  const argTypes = signature.argTypeNames.map((name) => {
+    const metadata = resolveTypeExpr(name, () => null);
+    if (metadata === null) {
+      throw new Error(`cannot resolve argument type ${name} of ${signature.selector}`);
+    }
+    return metadata;
+  });
+  let returnType: Metadata | null = null;
+  if (signature.returnTypeName !== null) {
+    returnType = resolveTypeExpr(signature.returnTypeName, () => null);
+    if (returnType === null) {
+      throw new Error(`cannot resolve return type ${signature.returnTypeName} of ${signature.selector}`);
+    }
+  }
+  const resolved: ResolvedMethod = {
+    address: afp.code,
+    argTypes,
+    returnType,
+    throws: signature.throws,
+    isStatic: false,
+    selector: signature.selector,
+    async: true,
+    asyncFunctionPointer: afp,
+  };
+  return new SwiftAsyncFunction(resolved, resolveReceiverType(signature.context));
 }
 
 function staticInvokerFor(resolved: ResolvedMethod): SwiftNativeFunction {

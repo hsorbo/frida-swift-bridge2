@@ -6,6 +6,7 @@ import { getMetadata, Metadata } from "../abi/metadata.js";
 import { buildGenericMetadata } from "../abi/generic-instantiation.js";
 import { getExistentialTypeMetadata } from "../abi/existential.js";
 import { resolveTypeByMangledName } from "../abi/field-descriptor.js";
+import { getUnlabelledTupleTypeMetadata } from "../abi/tuple.js";
 
 export interface SwiftSymbol {
   address: NativePointer;
@@ -235,6 +236,9 @@ export function resolveFunctionSignature(
 }
 
 export function resolveType(name: string): Metadata | null {
+  if (name.startsWith("__C.")) {
+    return resolveObjCClass(name);
+  }
   const descriptor = findType(name);
   if (descriptor !== null) {
     try {
@@ -244,6 +248,16 @@ export function resolveType(name: string): Metadata | null {
     }
   }
   return resolveProtocolExistential(name);
+}
+
+// A __C class has no Swift descriptor; resolve it through its `So<len><name>C` mangling.
+function resolveObjCClass(name: string): Metadata | null {
+  const ident = name.slice("__C.".length);
+  if (!/^[A-Za-z_]\w*$/.test(ident)) {
+    return null;
+  }
+  const mangled = `So${ident.length}${ident}C`;
+  return resolveTypeByMangledName({ address: Memory.allocUtf8String(mangled), length: mangled.length });
 }
 
 function resolveProtocolExistential(name: string): Metadata | null {
@@ -353,6 +367,10 @@ export function resolveTypeExpr(
   if (expr.endsWith("?") || expr.endsWith("!")) {
     return instantiate("Swift.Optional", [resolveTypeExpr(expr.slice(0, -1), resolveParam)]);
   }
+  // `(A) -> B` is a function type, not a tuple: its `)` is not the last character.
+  if (expr.startsWith("(") && matchingBracket(expr, 0) === expr.length - 1) {
+    return resolveTupleExpr(expr.slice(1, -1), resolveParam);
+  }
   if (expr.startsWith("[") && matchingBracket(expr, 0) === expr.length - 1) {
     const inner = expr.slice(1, -1);
     const colon = topLevelIndexOf(inner, ":");
@@ -372,6 +390,30 @@ export function resolveTypeExpr(
     return instantiate(expr.slice(0, lt), args);
   }
   return resolveParam(expr) ?? resolveType(expr);
+}
+
+// `inner` is a parenthesized body: `()` is Void, a lone unlabelled element is that bare type.
+function resolveTupleExpr(
+  inner: string,
+  resolveParam: (name: string) => Metadata | null
+): Metadata | null {
+  const parts = splitTopLevel(inner, ",");
+  if (parts.length === 0) {
+    return voidMetadata();
+  }
+  const elements: Metadata[] = [];
+  for (const part of parts) {
+    const colon = topLevelIndexOf(part, ": ");
+    const element = resolveTypeExpr(colon === -1 ? part : part.slice(colon + 2), resolveParam);
+    if (element === null) {
+      return null;
+    }
+    elements.push(element);
+  }
+  if (elements.length === 1 && topLevelIndexOf(parts[0], ": ") === -1) {
+    return elements[0];
+  }
+  return getUnlabelledTupleTypeMetadata(elements);
 }
 
 const OPEN: Record<string, string> = { "(": ")", "<": ">", "[": "]" };

@@ -1,5 +1,6 @@
 import { test, expect, describe } from "@frida/injest/agent";
 import { loadFixture } from "./fixtures/load.js";
+import { requireDarwin } from "./swift.js";
 
 import { Swift } from "../src/index.js";
 import {
@@ -8,12 +9,13 @@ import {
   symbolicate,
   resolveFunctionSignature,
   resolveType,
+  resolveTypeExpr,
   type SwiftFunctionSignature,
   type SwiftAccessorSignature,
 } from "../src/runtime/symbolication.js";
 import { makeSwiftNativeFunction } from "../src/runtime/calling-convention.js";
 
-import { typeName } from "../src/abi.js";
+import { typeName, MetadataKind, enumerateTupleElements } from "../src/abi.js";
 function fixtureSymbol(swiftName: string): { address: NativePointer; demangled: string } {
   const mod = loadFixture();
   for (const e of mod.enumerateExports()) {
@@ -192,5 +194,35 @@ describe("resolveFunctionSignature", () => {
     const sig = parseSwiftSignature(demangled) as SwiftAccessorSignature;
     expect(sig.kind).toBe("getter");
     expect(typeName(resolveType(sig.typeName)!)).toBe("Swift.Int");
+  });
+});
+
+describe("resolveTypeExpr tuples", () => {
+  test("builds tuple metadata from a `(A, B)` spelling", () => {
+    const tuple = resolveTypeExpr("(Swift.Int, Swift.String)", () => null)!;
+    expect(tuple.kind).toBe(MetadataKind.Tuple);
+    const elements = [...enumerateTupleElements(tuple)];
+    expect(elements.map((e) => typeName(e.type))).toEqual(["Swift.Int", "Swift.String"]);
+  });
+
+  test("treats `()` as Void and a parenthesized single type as that type", () => {
+    expect(typeName(resolveTypeExpr("()", () => null)!)).toBe("()");
+    expect(typeName(resolveTypeExpr("(Swift.Int)", () => null)!)).toBe("Swift.Int");
+  });
+
+  test("resolves a nested tuple inside an optional", () => {
+    const optional = resolveTypeExpr("(Swift.Int, Swift.Int)?", () => null)!;
+    expect(optional.kind).toBe(MetadataKind.Optional);
+  });
+});
+
+describe("resolveType ObjC classes", () => {
+  test("resolves an imported __C class to its metadata", (ctx) => {
+    requireDarwin(ctx);
+    const metadata = resolveType("__C.NSObject");
+    expect(metadata).not.toBeNull();
+    expect(
+      metadata!.kind === MetadataKind.ObjCClassWrapper || metadata!.kind === MetadataKind.Class
+    ).toBeTruthy();
   });
 });
