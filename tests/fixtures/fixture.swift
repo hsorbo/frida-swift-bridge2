@@ -160,6 +160,13 @@ public struct Ranged {
     public init(lo: Int, hi: Int) { self.lo = lo; self.hi = hi }
 }
 
+// A computed property whose type is generic (`Int?`): its accessor spells the type as
+// `Swift.Optional<Swift.Int>`, which only a desugaring type resolver can resolve.
+public struct Halver {
+    public var n: Int
+    public var half: Int? { n % 2 == 0 ? n / 2 : nil }
+}
+
 public final class Gadget {
     public var value: Int
     public init(value: Int) { self.value = value }
