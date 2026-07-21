@@ -33,7 +33,12 @@ import { SwiftClosure, ClosureSpec, ClosureBody, LoadableClosureBody, SwiftThrow
 import { closureDiscriminator, closureHashString, INDIRECT } from "./closure-discriminator.js";
 import { typeName } from "./type-name.js";
 import { readString, createString } from "../abi/string.js";
-import { isClassExistential } from "../abi/existential.js";
+import {
+  isClassExistential,
+  existentialRepresentation,
+  projectErrorExistential,
+  projectOpaqueExistential,
+} from "../abi/existential.js";
 import {
   findProtocol,
   conformsToProtocol,
@@ -158,6 +163,14 @@ function marshalArg(metadata: Metadata, value: CallArg): NativePointer {
   return buffer;
 }
 
+function existentialPayloadEmbedsManagedReference(metadata: Metadata, container: NativePointer): boolean {
+  const payload =
+    existentialRepresentation(metadata) === "error"
+      ? projectErrorExistential(container)
+      : projectOpaqueExistential(container);
+  return embedsManagedReference(payload.type);
+}
+
 // Returns are +1: adopt a class; destroy a read non-POD temp; POD owns nothing. A value embedding a
 // managed reference would dangle on that destroy, so hand it back as an owned ValueInstance instead.
 function decodeReturn(returnType: Metadata | null, ret: NativePointer | null): CallResult {
@@ -174,6 +187,9 @@ function decodeReturn(returnType: Metadata | null, ret: NativePointer | null): C
     returnType.kind === MetadataKind.ExtendedExistential;
   if (isExistential && isClassExistential(returnType)) {
     return createObject(ClassInstance.adopt(ret.readPointer()));
+  }
+  if (returnType.kind === MetadataKind.Existential && existentialPayloadEmbedsManagedReference(returnType, ret)) {
+    return createObject(ValueInstance.adopt(returnType, ret));
   }
   if (!returnType.valueWitnesses.isPOD && embedsManagedReference(returnType)) {
     return createObject(ValueInstance.adopt(returnType, ret));

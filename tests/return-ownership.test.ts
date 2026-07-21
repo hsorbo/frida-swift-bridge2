@@ -67,3 +67,28 @@ describe("bridge-object container return", () => {
     owned.$dispose();
   });
 });
+
+describe("opaque existential return", () => {
+  beforeEach(() => {
+    loadFixture();
+  });
+
+  test("a class payload stays boxed and alive until the facade is disposed", () => {
+    const greeter = (Swift.typeOf(metadataFor("fixture.LoudGreeter")) as ClassType).init("Ada");
+    const view = new ClassInstance(greeter.$handle);
+    const before = view.retainCount;
+
+    const boxed = (Swift.typeOf(metadataFor("fixture.GreeterBox")) as StructType).call("wrap", greeter) as SwiftObject;
+    expect(boxed.$kind).toBe("value");
+    expect(boxed.$owned).toBe(true);
+    expect(view.retainCount).toBe(before + 1);
+
+    boxed.$dispose();
+    expect(view.retainCount).toBe(before);
+  });
+
+  test("a value payload still reads out as a plain value", () => {
+    const person = (Swift.typeOf(metadataFor("fixture.GreeterBox")) as StructType).call("wrapPerson", "Cy", 9);
+    expect(person).toEqual({ name: "Cy", age: int64(9) });
+  });
+});
