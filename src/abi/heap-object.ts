@@ -203,7 +203,7 @@ export class ClassInstance implements RawInstance {
     return name;
   }
 
-  private checkLive(): void {
+  checkLive(): void {
     if (this.state !== null && this.state.disposed) {
       throw new Error("ClassInstance has been disposed");
     }
