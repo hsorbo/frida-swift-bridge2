@@ -26,6 +26,12 @@ describe("writeValue", () => {
     expect(roundTrip(metadataFor("Swift.Double")).write(3.5)).toBe(3.5);
   });
 
+  test("marshals JS null as Optional .none", () => {
+    const opt = roundTrip(metadataFor("Swift.Optional", [metadataFor("Swift.Int")!]));
+    expect(opt.write(null)).toBe("none");
+    expect(opt.write({ some: 7 })).toEqual({ some: int64(7) });
+  });
+
   test("accepts an Int64-wrapped value for a narrow field, range-checked", () => {
     expect(roundTrip(metadataFor("Swift.UInt8")).write(int64(200))).toBe(200);
     expect(roundTrip(metadataFor("Swift.Int8")).write(int64(-5))).toEqual(-5);

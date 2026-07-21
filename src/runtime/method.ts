@@ -256,6 +256,10 @@ function decodeReturn(returnType: Metadata | null, ret: NativePointer | null): C
   if (returnType.kind === MetadataKind.Class) {
     return asSwiftObject(ClassInstance.adopt(ret.readPointer()));
   }
+  // An imported ObjC class is not a Swift heap object; hand back the raw ref to wrap in ObjC.Object.
+  if (returnType.kind === MetadataKind.ObjCClassWrapper) {
+    return ret.readPointer();
+  }
   if (returnType.kind === MetadataKind.Optional) {
     const some = projectOptionalPayload(returnType, ret);
     return some === null ? null : decodeReturn(some.payloadType, some.address);
@@ -782,14 +786,10 @@ function toReceiverPointer(receiver: AsyncReceiver): NativePointer {
   throw new Error("receiver must be a Swift object, an ObjC.Object, or a NativePointer");
 }
 
-// A static method's thin-metatype self is erased (null); an extension receiver keeps its `(extension
-// in Module):` prefix, which is not part of the type name.
+// A static method's thin-metatype self is erased (null).
 function resolveReceiverType(context: string): Metadata | null {
   const { context: base, isStatic } = stripReceiverKeyword(context);
-  if (isStatic) {
-    return null;
-  }
-  return resolveType(base.replace(/^\(extension in [^)]+\):/, ""));
+  return isStatic ? null : resolveType(base);
 }
 
 // The async sibling of Swift.NativeFunction: call() for a free function, bind(self) for a method.

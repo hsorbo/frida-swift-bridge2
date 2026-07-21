@@ -173,7 +173,10 @@ function planWrite(metadata: Metadata, value: SwiftValue): WritePlan {
     }
     case MetadataKind.Enum:
     case MetadataKind.Optional: {
-      const { caseName, payload } = parseEnumValue(value);
+      const { caseName, payload } =
+        metadata.kind === MetadataKind.Optional && value === null
+          ? { caseName: "none", payload: undefined } // JS null ↔ Swift .none, the inverse of readEnum
+          : parseEnumValue(value);
       const cases = [...enumerateFields(metadata.description)];
       const tag = cases.findIndex((c) => c.name === caseName);
       if (tag === -1) {
