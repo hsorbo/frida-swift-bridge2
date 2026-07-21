@@ -42,6 +42,22 @@ function* nameable(
   }
 }
 
+function typeOfKind<T extends SwiftType>(
+  name: string,
+  ctor: new (descriptor: ContextDescriptor) => T,
+  kind: string
+): T | null {
+  const descriptor = findType(name);
+  if (descriptor === null) {
+    return null;
+  }
+  const type = typeFromDescriptor(descriptor);
+  if (!(type instanceof ctor)) {
+    throw new Error(`'${name}' is ${type.toJSON().kind}, not ${kind}`);
+  }
+  return type;
+}
+
 // The stable root; version-sensitive ABI and reversing machinery lives behind the `/abi` subpath.
 export { SwiftCoreApi } from "./runtime/api.js";
 export { isSwiftSymbol, demangle } from "./runtime/demangle.js";
@@ -131,16 +147,28 @@ export const Swift = {
     }
   },
 
+  class(name: string): ClassType | null {
+    return typeOfKind(name, ClassType, "class");
+  },
+
   *classes(module?: Module): Generator<ClassType> {
     for (const descriptor of nameable(swiftClasses(module))) {
       yield new ClassType(descriptor);
     }
   },
 
+  struct(name: string): StructType | null {
+    return typeOfKind(name, StructType, "struct");
+  },
+
   *structs(module?: Module): Generator<StructType> {
     for (const descriptor of nameable(swiftStructs(module))) {
       yield new StructType(descriptor);
     }
+  },
+
+  enum(name: string): EnumType | null {
+    return typeOfKind(name, EnumType, "enum");
   },
 
   *enums(module?: Module): Generator<EnumType> {
