@@ -1,7 +1,7 @@
 import { test, expect, describe, beforeEach } from "@frida/injest/agent";
 import { loadFixture } from "./fixtures/load.js";
 
-import { Swift, ClassType, StructType, SwiftObject } from "../src/index.js";
+import { Swift, ClassType, ClassInstance, StructType, SwiftObject } from "../src/index.js";
 import {
   resolveMethod,
   enumerateMethods,
@@ -146,6 +146,18 @@ describe("ClassInstance method invocation", () => {
     const a = robotType().init("Ada");
     const b = robotType().init("Bee");
     expect(a.$call("merged", b.$handle)).toBe("Ada+Bee");
+  });
+
+  test("adopts a class-existential return, keeping the reference alive past the call", () => {
+    const named = robotType().init("R2").$call("alias") as SwiftObject;
+    expect(named.$kind).toBe("object");
+    expect(named.$get("label")).toBe("R2");
+    const view = new ClassInstance(named.$handle);
+    view.retain();
+    const before = view.retainCount;
+    named.$dispose();
+    expect(view.retainCount).toBe(before - 1);
+    view.release();
   });
 
   test("reuses a resolved method across calls", () => {

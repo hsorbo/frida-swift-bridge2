@@ -33,6 +33,7 @@ import { SwiftClosure, ClosureSpec, ClosureBody, LoadableClosureBody, SwiftThrow
 import { closureDiscriminator, closureHashString, INDIRECT } from "./closure-discriminator.js";
 import { typeName } from "./type-name.js";
 import { readString, createString } from "../abi/string.js";
+import { isClassExistential } from "../abi/existential.js";
 import {
   findProtocol,
   conformsToProtocol,
@@ -164,6 +165,14 @@ function decodeReturn(returnType: Metadata | null, ret: NativePointer | null): C
     return null;
   }
   if (returnType.kind === MetadataKind.Class) {
+    return createObject(ClassInstance.adopt(ret.readPointer()));
+  }
+  // A class existential owns its +1 class ref in the first word; adopt it and skip the container
+  // destroy, which would release that same ref and dangle the returned object.
+  const isExistential =
+    returnType.kind === MetadataKind.Existential ||
+    returnType.kind === MetadataKind.ExtendedExistential;
+  if (isExistential && isClassExistential(returnType)) {
     return createObject(ClassInstance.adopt(ret.readPointer()));
   }
   if (!returnType.valueWitnesses.isPOD && embedsManagedReference(returnType)) {
