@@ -90,6 +90,7 @@ export {
   GenericRequirementKind,
   GenericRequirementLayoutKind,
   GenericRequirementDescriptor,
+  InvertedProtocolsRequirement,
   readGenericRequirementDescriptors,
 } from "./abi/generic-requirement-descriptor.js";
 export { WitnessTable } from "./abi/witness-table.js";
@@ -218,6 +219,7 @@ export {
   SwiftClosure,
   ClosureSpec,
   ClosureBody,
+  AnyClosureBody,
   SwiftThrow,
   UnsafeRawBufferPointer,
   closure,
@@ -258,6 +260,8 @@ export {
   BoundValueInitializer,
   GenericBoundMethod,
   GenericBoundAsyncMethod,
+  SelfRouting,
+  GenericMethodPlan,
   AccessorKind,
   PropertyInfo,
   resolveMethod,
