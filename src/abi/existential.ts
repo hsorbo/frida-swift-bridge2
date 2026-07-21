@@ -50,6 +50,12 @@ export function extendedExistentialSpecialKind(metadata: Metadata): ExtendedExis
   return shape.readU32() & 0xff;
 }
 
+export function isClassExistential(metadata: Metadata): boolean {
+  return metadata.kind === MetadataKind.ExtendedExistential
+    ? extendedExistentialSpecialKind(metadata) === ExtendedExistentialSpecialKind.Class
+    : existentialRepresentation(metadata) === "class";
+}
+
 export function projectExistentialValue(metadata: Metadata, container: NativePointer): OpaqueExistential {
   if (metadata.kind === MetadataKind.ExtendedExistential) {
     switch (extendedExistentialSpecialKind(metadata)) {
