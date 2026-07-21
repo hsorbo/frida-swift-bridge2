@@ -1,155 +1,53 @@
 import { getSwiftCoreApi, SwiftCoreApi } from "./runtime/api.js";
+import { SWIFT_HOST_SUPPORTED, LIBSWIFT_CORE_NAME } from "./runtime/platform.js";
 import { demangle } from "./runtime/demangle.js";
 import {
   findType,
-  swiftModules,
+  swiftImages,
   swiftTypes,
   swiftClasses,
   swiftStructs,
   swiftEnums,
 } from "./reflection/registry.js";
-import { getMetadata, Metadata } from "./abi/metadata.js";
-import { buildGenericMetadata } from "./abi/generic-instantiation.js";
-import { typeName } from "./runtime/type-name.js";
-import { symbolicate, parseSwiftSignature, voidMetadata } from "./runtime/symbolication.js";
+import { symbolicate } from "./runtime/symbolication.js";
 import { SwiftInterceptor } from "./runtime/interceptor.js";
-import { SwiftType, typeOf, swiftNativeFunction } from "./runtime/swift-type.js";
-import { createObject } from "./runtime/object-facade.js";
-import { Protocol, ProtocolComposition, swiftProtocols } from "./runtime/protocol.js";
-import { indirect, markResilientModule } from "./runtime/calling-convention.js";
+import {
+  SwiftType,
+  ClassType,
+  StructType,
+  EnumType,
+  typeFromDescriptor,
+  swiftFunction,
+} from "./runtime/swift-type.js";
+import { asSwiftObject, SwiftClassObject } from "./runtime/object-facade.js";
+import { ClassInstance } from "./abi/heap-object.js";
+import {
+  Protocol as ProtocolClass,
+  ProtocolComposition as ProtocolCompositionClass,
+  swiftProtocols,
+} from "./runtime/protocol.js";
+import type { StableProtocol, StableProtocolComposition } from "./runtime/protocol.js";
+import { markResilientModule } from "./runtime/calling-convention.js";
 import { closure } from "./runtime/closure.js";
-import { findAccessibleFunction } from "./abi/accessible-function.js";
+import { ContextDescriptor } from "./abi/context-descriptor.js";
 
-export { SwiftCoreApi, getSwiftCoreApi } from "./runtime/api.js";
+function* nameable(
+  descriptors: Generator<ContextDescriptor>
+): Generator<ContextDescriptor> {
+  for (const descriptor of descriptors) {
+    if (descriptor.fullTypeName !== null) {
+      yield descriptor;
+    }
+  }
+}
+
+// The stable root; version-sensitive ABI and reversing machinery lives behind the `/abi` subpath.
+export { SwiftCoreApi } from "./runtime/api.js";
 export { isSwiftSymbol, demangle } from "./runtime/demangle.js";
-export {
-  RelativeDirectPointer,
-  RelativeIndirectablePointer,
-} from "./basic/relative-pointer.js";
-export {
-  getSwiftSection,
-  enumerateTypeContextDescriptors,
-} from "./image/sections.js";
-export {
-  ContextDescriptor,
-  ContextDescriptorKind,
-} from "./abi/context-descriptor.js";
-export {
-  enumerateSwiftModules,
-  enumerateTypes,
-  swiftModules,
-  swiftTypes,
-  swiftClasses,
-  swiftStructs,
-  swiftEnums,
-  findType,
-} from "./reflection/registry.js";
-export {
-  MetadataKind,
-  Metadata,
-  getMetadata,
-  getGenericMetadata,
-  instantiateGenericMetadata,
-} from "./abi/metadata.js";
-export { buildGenericMetadata } from "./abi/generic-instantiation.js";
-export {
-  ProtocolConformance,
-  enumerateProtocolConformances,
-  enumerateProtocols,
-  findProtocol,
-  conformsToProtocol,
-} from "./abi/protocol-conformance.js";
-export { Protocol, ProtocolComposition, swiftProtocols } from "./runtime/protocol.js";
-export {
-  AccessibleFunctionRecord,
-  enumerateAccessibleFunctions,
-  findAccessibleFunction,
-} from "./abi/accessible-function.js";
-export { AsyncFunctionPointer } from "./abi/async-function-pointer.js";
-export { AsyncContext } from "./abi/async-context.js";
-export { AsyncTask, Job, JobKind, JobPriority } from "./abi/async-task.js";
-export {
-  driveAsyncCall,
-  callAsync,
-  currentAsyncTask,
-  SwiftAsyncThrow,
-  AsyncCallOptions,
-  AsyncResultShape,
-  AsyncFloatArg,
-  FloatClass,
-} from "./runtime/async-call.js";
-export {
-  ProtocolRequirementKind,
-  ProtocolRequirement,
-  readProtocolRequirements,
-  readAssociatedTypeNames,
-  requirementBaseDescriptor,
-  readRequirementSignature,
-} from "./abi/protocol-descriptor.js";
-export {
-  GenericRequirementKind,
-  GenericRequirementLayoutKind,
-  GenericRequirementDescriptor,
-  InvertedProtocolsRequirement,
-  readGenericRequirementDescriptors,
-} from "./abi/generic-requirement-descriptor.js";
-export { WitnessTable } from "./abi/witness-table.js";
-export { resolveAssociatedConformance } from "./abi/associated-type.js";
-export {
-  ConditionalRequirement,
-  resolveConditionalRequirements,
-} from "./abi/conditional-conformance.js";
-export {
-  Field,
-  enumerateFields,
-  resolveFieldType,
-  fieldTypeIn,
-  resolveTypeByMangledName,
-  symbolicMangledNameLength,
-} from "./abi/field-descriptor.js";
-export {
-  ClassMetadata,
-  getClassMetadata,
-  classMetadataOf,
-  dynamicTypeOf,
-  enumerateClassFields,
-} from "./abi/class-metadata.js";
-export {
-  MethodDescriptorKind,
-  VTableEntry,
-  readVTable,
-  readVTableChain,
-} from "./abi/class-descriptor.js";
-export {
-  InstanceField,
-  SwiftValue,
-  enumerateInstanceFields,
-  enumerateClassInstanceFields,
-  readValue,
-  writeValue,
-  readObject,
-  embedsManagedReference,
-} from "./abi/instance.js";
-export {
-  EnumCase,
-  enumTag,
-  readEnumCase,
-  projectEnumData,
-  injectEnumTag,
-  setEnumTag,
-  projectBox,
-} from "./abi/enum.js";
-export {
-  ExistentialRepresentation,
-  OpaqueExistential,
-  existentialRepresentation,
-  projectOpaqueExistential,
-  projectClassExistential,
-  projectExistentialValue,
-  projectErrorExistential,
-} from "./abi/existential.js";
-export { ValueInstance } from "./abi/value.js";
-export { ClassInstance } from "./abi/heap-object.js";
+export type {
+  StableProtocol as Protocol,
+  StableProtocolComposition as ProtocolComposition,
+} from "./runtime/protocol.js";
 export {
   SwiftType,
   ValueType,
@@ -163,137 +61,52 @@ export {
   ForeignClassType,
   ForeignReferenceType,
   TypeMember,
+  MethodQuery,
   NativeFunctionType,
-  typeOf,
-  swiftNativeFunction,
+  MarshalledFunctionOptions,
+  SwiftClassBoundInitializer,
+  TupleTypeElement,
+  ParameterConvention,
+  FunctionTypeParameter,
+  FunctionTypeSignature,
 } from "./runtime/swift-type.js";
+export { SwiftValue } from "./abi/instance.js";
+export { SwiftError } from "./runtime/thrown-error.js";
 export {
-  TupleElement,
-  tupleNumElements,
-  tupleLabels,
-  enumerateTupleElements,
-} from "./abi/tuple.js";
-export { metatypeInstanceType } from "./abi/metatype.js";
-export {
-  KeyPathBuffer,
-  KeyPathComponent,
-  StoredKeyPathComponent,
-  OptionalKeyPathComponent,
-  ComputedKeyPathComponent,
-  KeyPathComputedArguments,
-  KeyPathComputedArgumentWitnesses,
-  readKeyPathBuffer,
-  resolveKeyPathNames,
-  hashKeyPathArguments,
-  keyPathArgumentsEqual,
-} from "./abi/keypath.js";
-export {
-  FunctionType as FunctionSignature,
-  FunctionParameter,
-  FunctionMetadataConvention,
-  ParameterOwnership,
-  FunctionMetadataDifferentiabilityKind,
-  FunctionIsolation,
-  readFunctionType,
-} from "./abi/function-type.js";
-export {
-  ValueWitnessTable,
-  NUM_WORDS_VALUE_BUFFER,
-  allocateValueBuffer,
-} from "./abi/value-witness.js";
-export {
-  shouldPassIndirectly,
-  isResilientValueType,
-  markResilientModule,
-  indirect,
-  MAX_LOADABLE_SIZE,
-  makeSwiftNativeFunction,
-  SwiftNativeFunction,
-  SwiftNativeFunctionOptions,
-  SwiftArgType,
-  GenericRef,
-  ClosureRef,
-  SwiftThrownError,
-} from "./runtime/calling-convention.js";
-export {
-  SwiftClosure,
   ClosureSpec,
-  ClosureBody,
   AnyClosureBody,
-  SwiftThrow,
-  UnsafeRawBufferPointer,
-  closure,
 } from "./runtime/closure.js";
+export { SwiftSymbol } from "./runtime/symbolication.js";
 export {
-  closureDiscriminator,
-  closureHashString,
-  INDIRECT,
-} from "./runtime/closure-discriminator.js";
-export { readString } from "./abi/string.js";
-export { typeName } from "./runtime/type-name.js";
-export {
-  SwiftSymbol,
-  SwiftFunctionSignature,
-  GenericRequirement,
-  SwiftAccessorSignature,
-  ParsedSwiftSignature,
-  ResolvedFunctionSignature,
-  symbolicate,
-  parseSwiftSignature,
-  resolveFunctionSignature,
-  resolveType,
-} from "./runtime/symbolication.js";
-export { SwiftInterceptor, SwiftInvocationCallbacks, SwiftAsyncCallbacks } from "./runtime/interceptor.js";
-export {
-  BoundMethod,
-  BoundAsyncMethod,
+  SwiftInterceptorApi,
+  SwiftInvocationCallbacks,
+  SwiftAsyncCallbacks,
+} from "./runtime/interceptor.js";
+export { isSwiftObject } from "./runtime/method.js";
+export type {
+  SwiftBoundMethod,
+  SwiftBoundInitializer,
   CallResult,
-  isSwiftObject,
   CallArg,
   MethodInfo,
   MethodKind,
-  ResolvedMethod,
   MethodResolveOptions,
   ValueMethodResolveOptions,
-  BoundValueMethod,
-  BoundStaticMethod,
-  BoundValueInitializer,
-  GenericBoundMethod,
-  GenericBoundAsyncMethod,
-  SelfRouting,
-  GenericMethodPlan,
   AccessorKind,
   PropertyInfo,
-  resolveMethod,
-  enumerateMethods,
-  enumerateProperties,
-  getProperty,
-  setProperty,
-  bindValueMethod,
-  bindStaticMethod,
-  bindValueInitializer,
-  bindGenericMethod,
-  bindGenericValueMethod,
-  bindGenericTypeValueMethod,
-  bindGenericTypeClassMethod,
-  resolveWitnessMethod,
-  bindWitnessMethod,
-  bindWitnessMethodAt,
-  WitnessMethodSignature,
-  WitnessOrigin,
-  classifyWitnessOrigin,
-  NamedRequirement,
 } from "./runtime/method.js";
-export { SwiftObject, createObject } from "./runtime/object-facade.js";
+export {
+  SwiftObject,
+  SwiftClassObject,
+  SwiftValueObject,
+  SwiftField,
+  SwiftClassBoundMethod,
+  SwiftValueBoundMethod,
+} from "./runtime/object-facade.js";
 
 export const Swift = {
   get available(): boolean {
-    try {
-      getSwiftCoreApi();
-      return true;
-    } catch {
-      return false;
-    }
+    return SWIFT_HOST_SUPPORTED && Process.findModuleByName(LIBSWIFT_CORE_NAME) !== null;
   },
 
   get api(): SwiftCoreApi {
@@ -301,44 +114,59 @@ export const Swift = {
   },
 
   demangle,
-  findType,
-  modules: swiftModules,
-  types: swiftTypes,
-  classes: swiftClasses,
-  structs: swiftStructs,
-  enums: swiftEnums,
+  images: swiftImages,
   protocols: swiftProtocols,
 
-  metadataFor(name: string, typeArguments: Metadata[] = []): Metadata | null {
-    if (name === "Swift.Void" || name === "()") {
-      return voidMetadata();
-    }
+  type(name: string): SwiftType | null {
     const descriptor = findType(name);
-    if (descriptor === null) {
-      return null;
+    return descriptor === null ? null : typeFromDescriptor(descriptor);
+  },
+
+  *types(module?: Module): Generator<SwiftType> {
+    for (const descriptor of nameable(swiftTypes(module))) {
+      yield typeFromDescriptor(descriptor);
     }
-    return typeArguments.length > 0
-      ? buildGenericMetadata(descriptor, typeArguments)
-      : getMetadata(descriptor);
   },
 
-  typeName(metadata: Metadata): string {
-    return typeName(metadata);
+  *classes(module?: Module): Generator<ClassType> {
+    for (const descriptor of nameable(swiftClasses(module))) {
+      yield new ClassType(descriptor);
+    }
   },
 
-  typeOf(metadata: Metadata): SwiftType {
-    return typeOf(metadata);
+  *structs(module?: Module): Generator<StructType> {
+    for (const descriptor of nameable(swiftStructs(module))) {
+      yield new StructType(descriptor);
+    }
   },
 
-  indirect,
+  *enums(module?: Module): Generator<EnumType> {
+    for (const descriptor of nameable(swiftEnums(module))) {
+      yield new EnumType(descriptor);
+    }
+  },
+
   closure,
   markResilient: markResilientModule,
-  findAccessibleFunction,
   symbolicate,
-  parseSignature: parseSwiftSignature,
   Interceptor: SwiftInterceptor,
-  Object: createObject,
-  NativeFunction: swiftNativeFunction,
-  Protocol,
-  ProtocolComposition,
+
+  borrowObject(handle: NativePointer): SwiftClassObject {
+    return asSwiftObject(handle);
+  },
+
+  adoptObject(handle: NativePointer): SwiftClassObject {
+    return asSwiftObject(ClassInstance.adopt(handle));
+  },
+
+  NativeFunction: swiftFunction,
+  Protocol: {
+    find: (name: string): StableProtocol | null => ProtocolClass.find(name),
+  },
+  ProtocolComposition: {
+    fromSignature: (signature: string): StableProtocolComposition =>
+      ProtocolCompositionClass.fromSignature(signature),
+  },
 };
+
+export default Swift;

@@ -1,46 +1,45 @@
-import { Metadata, MetadataKind } from "../abi/metadata.js";
-import { ContextDescriptor } from "../abi/context-descriptor.js";
+import { Metadata, MetadataKind, getMetadata } from "../abi/metadata.js";
+import { ContextDescriptor, ContextDescriptorKind } from "../abi/context-descriptor.js";
 import { ClassMetadata } from "../abi/class-metadata.js";
-import { isActor, isDefaultActor, readVTableChain, VTableEntry } from "../abi/class-descriptor.js";
+import { isActor, isDefaultActor } from "../abi/class-descriptor.js";
 import { ValueInstance } from "../abi/value.js";
 import { ClassInstance } from "../abi/heap-object.js";
-import { createObject, SwiftObject } from "./object-facade.js";
+import { asSwiftObject, SwiftClassObject, SwiftValueObject } from "./object-facade.js";
 import { SwiftValue } from "../abi/instance.js";
 import { enumerateFields, fieldTypeIn } from "../abi/field-descriptor.js";
-import {
-  makeSwiftNativeFunction,
-  SwiftArgType,
-  SwiftNativeFunction,
-  SwiftNativeFunctionOptions,
-} from "./calling-convention.js";
-import { parseSwiftSignature, resolveType } from "./symbolication.js";
+import { makeSwiftNativeFunction } from "./calling-convention.js";
+import { parseSwiftSignature, resolveType, symbolicate } from "./symbolication.js";
 import {
   BoundMethod,
-  BoundStaticMethod,
   BoundAsyncMethod,
-  BoundValueInitializer,
+  SwiftBoundMethod,
+  SwiftBoundInitializer,
+  narrowBoundMethod,
+  narrowBoundInitializer,
   marshalConsumedArgs,
+  assertBorrowingArgs,
   CallArg,
   CallResult,
   MethodResolveOptions,
   PropertyInfo,
   bindStaticMethod,
   bindValueInitializer,
+  callBorrowingArgs,
   enumerateMethods,
   enumerateProperties,
+  lowerResolveOptions,
   resolveMethod,
 } from "./method.js";
-import { enumerateTupleElements, tupleLabels, TupleElement } from "../abi/tuple.js";
+import { enumerateTupleElements, tupleLabels } from "../abi/tuple.js";
 import { metatypeInstanceType } from "../abi/metatype.js";
-import { readFunctionType, FunctionType as FunctionSignature } from "../abi/function-type.js";
+import { readFunctionType, ParameterOwnership } from "../abi/function-type.js";
 import { demangle } from "./demangle.js";
 import { typeName } from "./type-name.js";
-import { getSwiftCoreApi } from "./api.js";
-import { Protocol, ProtocolComposition, protocolsForType } from "./protocol.js";
+import { Protocol, protocolsForType } from "./protocol.js";
 
 export interface TypeMember {
   name: string;
-  type: Metadata | null;
+  type: SwiftType | null;
   isVar: boolean;
 }
 
@@ -78,11 +77,30 @@ function typeKindName(metadata: Metadata): string {
   }
 }
 
+interface RawState {
+  descriptor: ContextDescriptor | null;
+  metadata: Metadata | null;
+}
+
+const rawState = new WeakMap<SwiftType, RawState>();
+
 export class SwiftType {
-  constructor(readonly metadata: Metadata) {}
+  /**
+   * @internal Construct wrappers through `typeOf` (from a Metadata) or `typeFromDescriptor`
+   * (from a ContextDescriptor); both source types are /abi records. Kept in the emitted
+   * declarations (`stripInternal` is off), so this is a documentation-level boundary only.
+   */
+  constructor(source: Metadata | ContextDescriptor) {
+    rawState.set(
+      this,
+      source instanceof ContextDescriptor
+        ? { descriptor: source, metadata: null }
+        : { descriptor: null, metadata: source }
+    );
+  }
 
   get name(): string {
-    return typeName(this.metadata);
+    return backingDescriptorOf(this)?.fullTypeName ?? typeName(metadataOf(this));
   }
 
   get superClass(): SwiftType | null {
@@ -90,24 +108,39 @@ export class SwiftType {
   }
 
   get moduleName(): string | null {
-    return Process.findModuleByAddress(this.descriptorHandle)?.path ?? null;
+    return descriptorOf(this).moduleName;
   }
 
   toJSON(): { kind: string; name: string; module: string | null } {
-    return { kind: typeKindName(this.metadata), name: this.name, module: this.jsonModule() };
+    return { kind: this.kindName, name: this.name, module: this.jsonModule() };
+  }
+
+  private get kindName(): string {
+    switch (backingDescriptorOf(this)?.kind) {
+      case ContextDescriptorKind.Class:
+        return "class";
+      case ContextDescriptorKind.Struct:
+        return "struct";
+      case ContextDescriptorKind.Enum:
+        return "enum";
+      default:
+        return typeKindName(metadataOf(this));
+    }
   }
 
   private jsonModule(): string | null {
-    const kind = this.metadata.kind;
-    if (
-      kind !== MetadataKind.Class &&
-      kind !== MetadataKind.Struct &&
-      kind !== MetadataKind.Enum &&
-      kind !== MetadataKind.Optional
-    ) {
-      return null;
+    if (backingDescriptorOf(this) === null) {
+      const kind = metadataOf(this).kind;
+      if (
+        kind !== MetadataKind.Class &&
+        kind !== MetadataKind.Struct &&
+        kind !== MetadataKind.Enum &&
+        kind !== MetadataKind.Optional
+      ) {
+        return null;
+      }
     }
-    return Process.findModuleByAddress(this.descriptorHandle)?.name ?? null;
+    return this.moduleName;
   }
 
   methods(options: MethodQuery = {}): string[] {
@@ -118,173 +151,189 @@ export class SwiftType {
   }
 
   protocols(): { [name: string]: Protocol } {
-    return protocolsForType(this.descriptorHandle);
+    return protocolsForType(descriptorOf(this).handle);
   }
 
   get properties(): PropertyInfo[] {
     return enumerateProperties(this.name);
   }
-
-  protected get descriptorHandle(): NativePointer {
-    return this.metadata.description.handle;
-  }
 }
 
 export class ValueType extends SwiftType {
-  method(name: string, options: MethodResolveOptions = {}): BoundStaticMethod | BoundAsyncMethod {
-    return bindStaticMethod(this.metadata, name, options);
+  method(name: string, options: MethodResolveOptions = {}): SwiftBoundMethod {
+    return narrowBoundMethod(bindStaticMethod(metadataOf(this), name, lowerResolveOptions(options)));
   }
 
   call(name: string, ...args: SwiftValue[]): CallResult | Promise<CallResult> {
     return this.method(name).call(...args);
   }
 
-  initializer(options: MethodResolveOptions = {}): BoundValueInitializer {
-    return bindValueInitializer(this.metadata, options);
+  initializer(options: MethodResolveOptions = {}): SwiftBoundInitializer {
+    return narrowBoundInitializer(bindValueInitializer(metadataOf(this), lowerResolveOptions(options)));
   }
 
-  init(...args: CallArg[]): SwiftObject | null {
+  init(...args: CallArg[]): SwiftValueObject | null {
     return this.initializer({ arity: args.length }).call(...args);
+  }
+
+  fromJS(value: SwiftValue): SwiftValueObject {
+    return asSwiftObject(ValueInstance.fromJS(metadataOf(this), value));
+  }
+
+  borrow(address: NativePointer): SwiftValueObject {
+    return asSwiftObject(ValueInstance.borrow(metadataOf(this), address));
+  }
+
+  copy(address: NativePointer): SwiftValueObject {
+    return asSwiftObject(ValueInstance.fromCopy(metadataOf(this), address));
+  }
+
+  adopt(address: NativePointer): SwiftValueObject {
+    return asSwiftObject(ValueInstance.adopt(metadataOf(this), address));
   }
 }
 
 export class StructType extends ValueType {
-  new(value: SwiftValue): SwiftObject {
-    return createObject(ValueInstance.fromJS(this.metadata, value));
+  new(value: SwiftValue): SwiftValueObject {
+    return this.fromJS(value);
   }
 
   get fields(): TypeMember[] {
-    return [...enumerateFields(this.metadata.description)].map((f) => ({
-      name: f.name,
-      type: fieldTypeIn(this.metadata, f),
-      isVar: f.isVar,
-    }));
+    const metadata = metadataOf(this);
+    return [...enumerateFields(metadata.description)].map((f) => {
+      const type = fieldTypeIn(metadata, f);
+      return { name: f.name, type: type === null ? null : typeOf(type), isVar: f.isVar };
+    });
   }
 }
 
 export class EnumType extends ValueType {
-  case(name: string, payload?: SwiftValue): SwiftObject {
-    return createObject(ValueInstance.fromJS(this.metadata, payload === undefined ? name : { [name]: payload }));
+  case(name: string, payload?: SwiftValue): SwiftValueObject {
+    return asSwiftObject(ValueInstance.fromJS(metadataOf(this), payload === undefined ? name : { [name]: payload }));
   }
 
   get cases(): TypeMember[] {
-    return [...enumerateFields(this.metadata.description)].map((f) => ({
-      name: f.name,
-      type: f.mangledTypeName !== null ? fieldTypeIn(this.metadata, f) : null,
-      isVar: f.isVar,
-    }));
+    const metadata = metadataOf(this);
+    return [...enumerateFields(metadata.description)].map((f) => {
+      const type = f.mangledTypeName !== null ? fieldTypeIn(metadata, f) : null;
+      return { name: f.name, type: type === null ? null : typeOf(type), isVar: f.isVar };
+    });
   }
 }
 
 export class ObjCClassWrapperType extends SwiftType {
   get objcClass(): NativePointer {
-    return this.metadata.handle.add(Process.pointerSize).readPointer().strip();
+    return metadataOf(this).handle.add(Process.pointerSize).readPointer().strip();
   }
 }
 
 export class ForeignClassType extends SwiftType {
-  get description(): ContextDescriptor {
-    return new ContextDescriptor(this.metadata.handle.add(Process.pointerSize).readPointer().strip());
-  }
-
   get superClass(): ForeignClassType | null {
-    const superclass = this.metadata.handle.add(2 * Process.pointerSize).readPointer().strip();
+    const superclass = metadataOf(this).handle.add(2 * Process.pointerSize).readPointer().strip();
     return superclass.isNull() ? null : new ForeignClassType(new Metadata(superclass));
   }
-
-  protected get descriptorHandle(): NativePointer {
-    return this.description.handle;
-  }
 }
 
-export class ForeignReferenceType extends SwiftType {
-  get description(): ContextDescriptor {
-    return new ContextDescriptor(this.metadata.handle.add(Process.pointerSize).readPointer().strip());
-  }
-
-  protected get descriptorHandle(): NativePointer {
-    return this.description.handle;
-  }
-}
+export class ForeignReferenceType extends SwiftType {}
 
 interface ClassInitializer {
   address: NativePointer;
   argTypes: Metadata[];
+  argLabels: (string | null)[];
+  argTypeNames: string[];
   throws: boolean;
   failable: boolean;
+}
+
+export interface SwiftClassBoundInitializer {
+  readonly address: NativePointer;
+  call(...args: CallArg[]): SwiftClassObject;
 }
 
 function isOptionalTypeName(name: string): boolean {
   return /[?!]$/.test(name) || name.startsWith("Swift.Optional<");
 }
 
+function sameSequence(a: (string | null)[], b: (string | null)[]): boolean {
+  return a.length === b.length && a.every((v, i) => v === b[i]);
+}
+
+function selectInitializer(candidates: ClassInitializer[], options: MethodResolveOptions): ClassInitializer {
+  let matches = candidates;
+  if (options.arity !== undefined) {
+    matches = matches.filter((c) => c.argTypes.length === options.arity);
+  }
+  if (options.labels !== undefined) {
+    matches = matches.filter((c) => sameSequence(c.argLabels, options.labels!));
+  }
+  if (options.argTypes !== undefined) {
+    matches = matches.filter((c) => sameSequence(c.argTypeNames, options.argTypes!));
+  }
+  if (matches.length === 1) {
+    return matches[0];
+  }
+  if (matches.length === 0) {
+    const arities = [...new Set(candidates.map((c) => c.argTypes.length))].sort((a, b) => a - b).join(" or ");
+    throw new Error(`init expects ${arities} argument(s), got ${options.arity}`);
+  }
+  const overloads = matches.map((c) => `init(${c.argLabels.map((l) => `${l ?? "_"}:`).join("")})`).join(", ");
+  throw new Error(`init is ambiguous: ${overloads} (disambiguate with { labels } or { argTypes })`);
+}
+
 export class ClassType extends SwiftType {
   private initializers: ClassInitializer[] | null = null;
-  private vtableEntries: VTableEntry[] | null = null;
-
-  get vtable(): VTableEntry[] {
-    if (this.vtableEntries === null) {
-      this.vtableEntries = readVTableChain(new ClassMetadata(this.metadata.handle));
-    }
-    return this.vtableEntries;
-  }
-
-  protected get descriptorHandle(): NativePointer {
-    return new ClassMetadata(this.metadata.handle).description.handle;
-  }
 
   get superClass(): SwiftType | null {
-    const superclass = new ClassMetadata(this.metadata.handle).superclass;
+    const superclass = new ClassMetadata(metadataOf(this).handle).superclass;
     return superclass !== null && superclass.isTypeMetadata
       ? typeOf(new Metadata(superclass.handle))
       : null;
   }
 
   get isActor(): boolean {
-    return isActor(new ClassMetadata(this.metadata.handle).description);
+    return isActor(descriptorOf(this));
   }
 
   get isDefaultActor(): boolean {
-    return isDefaultActor(new ClassMetadata(this.metadata.handle).description);
+    return isDefaultActor(descriptorOf(this));
   }
 
-  init(...args: CallArg[]): SwiftObject {
-    const candidates = this.resolveInitializers();
-    const matches = candidates.filter((c) => c.argTypes.length === args.length);
-    if (matches.length === 0) {
-      const arities = [...new Set(candidates.map((c) => c.argTypes.length))].sort((a, b) => a - b).join(" or ");
-      throw new Error(`init expects ${arities} argument(s), got ${args.length}`);
-    }
-    if (matches.length > 1) {
-      throw new Error(`init is ambiguous: ${matches.length} initializers take ${args.length} argument(s)`);
-    }
-    const { address, argTypes, throws: canThrow, failable } = matches[0];
-    const call = makeSwiftNativeFunction(address, this.metadata, argTypes, { hasSelf: true, throws: canThrow });
-    // Initializer params are +1/owned: the callee consumes each temp, so they are not destroyed here.
-    const argPtrs = marshalConsumedArgs(argTypes, args);
-    const instance = call(this.metadata.handle, ...argPtrs)!.readPointer();
-    if (failable && instance.isNull()) {
-      throw new Error(`${this.fullName}.init returned nil`);
-    }
-    return createObject(ClassInstance.adopt(instance));
+  init(...args: CallArg[]): SwiftClassObject {
+    return this.initializer({ arity: args.length }).call(...args);
   }
 
-  // +1 raw storage; initialize fields before the wrapper is released (deinit runs over them).
-  alloc(): SwiftObject {
-    const cls = new ClassMetadata(this.metadata.handle);
-    const object = getSwiftCoreApi().swift_allocObject(
-      cls.handle,
-      cls.instanceSize,
-      cls.instanceAlignment - 1
+  initializer(options: MethodResolveOptions = {}): SwiftClassBoundInitializer {
+    const chosen = selectInitializer(this.resolveInitializers(), options);
+    const metadata = metadataOf(this);
+    const fullName = this.fullName;
+    const call = makeSwiftNativeFunction(chosen.address, metadata, chosen.argTypes, {
+      hasSelf: true,
+      throws: chosen.throws,
+    });
+    return {
+      address: chosen.address,
+      call: (...args) => {
+        if (args.length !== chosen.argTypes.length) {
+          throw new Error(`init expects ${chosen.argTypes.length} argument(s), got ${args.length}`);
+        }
+        const argPtrs = marshalConsumedArgs(chosen.argTypes, args);
+        const instance = call(metadata.handle, ...argPtrs)!.readPointer();
+        if (chosen.failable && instance.isNull()) {
+          throw new Error(`${fullName}.init returned nil`);
+        }
+        return asSwiftObject(ClassInstance.adopt(instance));
+      },
+    };
+  }
+
+  method(name: string, options: MethodResolveOptions = {}): SwiftBoundMethod {
+    const resolved = resolveMethod(this.fullName, name, lowerResolveOptions({ ...options, static: true }));
+    const selfMetadata = metadataOf(this).handle;
+    return narrowBoundMethod(
+      resolved.async === true
+        ? new BoundAsyncMethod(resolved, selfMetadata)
+        : new BoundMethod(resolved, selfMetadata)
     );
-    return createObject(ClassInstance.adopt(object));
-  }
-
-  method(name: string, options: MethodResolveOptions = {}): BoundMethod | BoundAsyncMethod {
-    const resolved = resolveMethod(this.fullName, name, { ...options, static: true });
-    return resolved.async === true
-      ? new BoundAsyncMethod(resolved, this.metadata.handle)
-      : new BoundMethod(resolved, this.metadata.handle);
   }
 
   call(name: string, ...args: SwiftValue[]): CallResult | Promise<CallResult> {
@@ -292,7 +341,7 @@ export class ClassType extends SwiftType {
   }
 
   private get fullName(): string {
-    const name = new ClassMetadata(this.metadata.handle).description.fullTypeName;
+    const name = descriptorOf(this).fullTypeName;
     if (name === null) {
       throw new Error("class has no type name");
     }
@@ -303,7 +352,7 @@ export class ClassType extends SwiftType {
     if (this.initializers !== null) {
       return this.initializers;
     }
-    const descriptor = new ClassMetadata(this.metadata.handle).description;
+    const descriptor = descriptorOf(this);
     const fullName = descriptor.fullTypeName;
     if (fullName === null) {
       throw new Error("class has no type name");
@@ -333,6 +382,8 @@ export class ClassType extends SwiftType {
       candidates.push({
         address: e.address,
         argTypes,
+        argLabels: parsed.argLabels,
+        argTypeNames: parsed.argTypeNames,
         throws: parsed.throws,
         failable: parsed.returnTypeName !== null && isOptionalTypeName(parsed.returnTypeName),
       });
@@ -345,52 +396,160 @@ export class ClassType extends SwiftType {
   }
 }
 
-export class TupleType extends SwiftType {
-  get labels(): string | null {
-    return tupleLabels(this.metadata);
-  }
+export interface TupleTypeElement {
+  label: string | null;
+  type: SwiftType;
+}
 
-  get elements(): TupleElement[] {
-    return [...enumerateTupleElements(this.metadata)];
+export class TupleType extends SwiftType {
+  get elements(): TupleTypeElement[] {
+    const metadata = metadataOf(this);
+    // Swift stores the labels as one space-separated string, one token per element (empty = none).
+    const labelString = tupleLabels(metadata);
+    const labels = labelString === null ? [] : labelString.split(" ");
+    return [...enumerateTupleElements(metadata)].map((e, i) => ({
+      label: labels[i] ? labels[i] : null,
+      type: typeOf(e.type),
+    }));
   }
 }
 
 export class MetatypeType extends SwiftType {
   get instanceType(): SwiftType {
-    return typeOf(metatypeInstanceType(this.metadata));
+    return typeOf(metatypeInstanceType(metadataOf(this)));
+  }
+}
+
+export type ParameterConvention = "borrowing" | "consuming" | "inout";
+
+export interface FunctionTypeParameter {
+  type: SwiftType;
+  convention: ParameterConvention;
+  isVariadic: boolean;
+}
+
+export interface FunctionTypeSignature {
+  parameters: FunctionTypeParameter[];
+  result: SwiftType;
+  throws: boolean;
+  isAsync: boolean;
+  isEscaping: boolean;
+}
+
+function parameterConvention(ownership: ParameterOwnership): ParameterConvention {
+  switch (ownership) {
+    case ParameterOwnership.InOut:
+      return "inout";
+    case ParameterOwnership.Owned:
+      return "consuming";
+    default:
+      return "borrowing";
   }
 }
 
 export class FunctionType extends SwiftType {
-  get signature(): FunctionSignature {
-    return readFunctionType(this.metadata);
+  get signature(): FunctionTypeSignature {
+    const raw = readFunctionType(metadataOf(this));
+    return {
+      parameters: raw.parameters.map((p) => ({
+        type: typeOf(p.type),
+        convention: parameterConvention(p.ownership),
+        isVariadic: p.isVariadic,
+      })),
+      result: typeOf(raw.resultType),
+      throws: raw.isThrowing,
+      isAsync: raw.isAsync,
+      isEscaping: raw.isEscaping,
+    };
   }
 }
 
-export type NativeFunctionType =
-  | SwiftType
-  | Protocol
-  | ProtocolComposition
-  | SwiftArgType;
+export function metadataOf(type: SwiftType): Metadata {
+  const state = rawState.get(type)!;
+  if (state.metadata === null) {
+    state.metadata = getMetadata(state.descriptor!);
+  }
+  return state.metadata;
+}
 
-export function swiftNativeFunction(
+export function descriptorOf(type: SwiftType): ContextDescriptor {
+  const state = rawState.get(type)!;
+  return state.descriptor ?? metadataDescriptorOf(type);
+}
+
+function backingDescriptorOf(type: SwiftType): ContextDescriptor | null {
+  return rawState.get(type)!.descriptor;
+}
+
+function metadataDescriptorOf(type: SwiftType): ContextDescriptor {
+  const metadata = metadataOf(type);
+  if (type instanceof ClassType) {
+    return new ClassMetadata(metadata.handle).description;
+  }
+  if (type instanceof ForeignClassType || type instanceof ForeignReferenceType) {
+    return new ContextDescriptor(metadata.handle.add(Process.pointerSize).readPointer().strip());
+  }
+  return metadata.description;
+}
+
+// Not existential: the marshalled path cannot construct protocol-existential arguments nor safely
+// destroy an opaque existential return.
+export type NativeFunctionType = SwiftType;
+
+export interface MarshalledFunctionOptions {
+  throws?: boolean;
+}
+
+function concreteMetadataOf(type: NativeFunctionType, role: string): Metadata {
+  if (!(type instanceof SwiftType)) {
+    throw new Error(`swiftFunction: ${role} is not a SwiftType`);
+  }
+  const metadata = metadataOf(type);
+  if (metadata.kind === MetadataKind.Existential || metadata.kind === MetadataKind.ExtendedExistential) {
+    throw new Error(`swiftFunction: ${role} ${typeName(metadata)} is existential; only concrete types are supported`);
+  }
+  return metadata;
+}
+
+// Best-effort: an address with no exported symbol (stripped/private) is assumed to borrow its
+// arguments, the only convention callBorrowingArgs is safe for. A consuming (__owned) or inout
+// parameter must be bound through /abi's makeSwiftNativeFunction with { consumedArgs }.
+function rejectNonBorrowing(address: NativePointer): void {
+  const symbol = symbolicate(address);
+  if (symbol === null) {
+    return;
+  }
+  const parsed = parseSwiftSignature(symbol.demangled);
+  if (parsed !== null && parsed.kind === "function") {
+    assertBorrowingArgs(parsed.argTypeNames, symbol.demangled);
+  }
+}
+
+export function swiftFunction(
   address: NativePointer,
   returnType: NativeFunctionType | null,
   argTypes: NativeFunctionType[],
-  options: SwiftNativeFunctionOptions = {}
-): SwiftNativeFunction {
-  const lower = (t: NativeFunctionType): SwiftArgType => {
-    if (t instanceof SwiftType) return t.metadata;
-    if (t instanceof ProtocolComposition) return t.metadata;
-    if (t instanceof Protocol) return new ProtocolComposition(t).metadata;
-    return t;
-  };
-  return makeSwiftNativeFunction(
-    address,
-    returnType === null ? null : lower(returnType),
-    argTypes.map(lower),
-    options
-  );
+  options: MarshalledFunctionOptions = {}
+): (...args: CallArg[]) => CallResult {
+  rejectNonBorrowing(address);
+  const argMetadata = argTypes.map((t, i) => concreteMetadataOf(t, `argument type ${i}`));
+  const returnMetadata = returnType === null ? null : concreteMetadataOf(returnType, "return type");
+  const raw = makeSwiftNativeFunction(address, returnMetadata, argMetadata, { throws: options.throws });
+  return (...args: CallArg[]): CallResult =>
+    callBorrowingArgs(argMetadata, args, returnMetadata, (argPtrs) => raw(...argPtrs));
+}
+
+export function typeFromDescriptor(descriptor: ContextDescriptor): SwiftType {
+  switch (descriptor.kind) {
+    case ContextDescriptorKind.Class:
+      return new ClassType(descriptor);
+    case ContextDescriptorKind.Struct:
+      return new StructType(descriptor);
+    case ContextDescriptorKind.Enum:
+      return new EnumType(descriptor);
+    default:
+      throw new Error(`descriptor kind ${descriptor.kind} is not a type`);
+  }
 }
 
 export function typeOf(metadata: Metadata): SwiftType {

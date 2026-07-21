@@ -2,8 +2,9 @@ import { test, expect, describe, beforeEach } from "@frida/injest/agent";
 import { requireClosures } from "./swift.js";
 import { loadFixture, fixtureExport } from "./fixtures/load.js";
 
-import { Swift, ValueInstance } from "../src/index.js";
-import { makeSwiftNativeFunction, indirect, SwiftThrownError } from "../src/runtime/calling-convention.js";
+import { ValueInstance, asSwiftObject, metadataFor, typeOf } from "../src/abi.js";
+import { makeSwiftNativeFunction, indirect } from "../src/runtime/calling-convention.js";
+import { SwiftError } from "../src/runtime/thrown-error.js";
 import { getSwiftCoreApi } from "../src/runtime/api.js";
 import { SwiftClosure, SwiftThrow } from "../src/runtime/closure.js";
 import {
@@ -12,10 +13,11 @@ import {
   INDIRECT,
 } from "../src/runtime/closure-discriminator.js";
 
+import { Swift } from "../src/index.js";
 describe("closure as a Swift argument", (ctx) => {
   requireClosures(ctx);
   test("marshals a closure as a 2-word arg and routes a buffer into its body", () => {
-    const Int = Swift.metadataFor("Swift.Int")!;
+    const Int = metadataFor("Swift.Int")!;
 
     const data = [0x11, 0x22, 0x33, 0x44, 0x55];
     const buffer = Memory.alloc(data.length);
@@ -50,7 +52,7 @@ describe("closure as a Swift argument", (ctx) => {
   });
 
   test("drives a real generic rethrows function with the abstracted discriminator", () => {
-    const Int = Swift.metadataFor("Swift.Int")!;
+    const Int = metadataFor("Swift.Int")!;
 
     const data = [0xde, 0xad, 0xbe, 0xef];
     const buffer = Memory.alloc(data.length);
@@ -88,7 +90,7 @@ describe("closure as a Swift argument", (ctx) => {
 describe("closure result and error routing", (ctx) => {
   requireClosures(ctx);
   test("writes its result through x8 and Swift returns it", () => {
-    const Int = Swift.metadataFor("Swift.Int")!;
+    const Int = metadataFor("Swift.Int")!;
 
     const data = [0xaa, 0xbb];
     const buffer = Memory.alloc(data.length);
@@ -117,7 +119,7 @@ describe("closure result and error routing", (ctx) => {
   });
 
   test("sets x21 so a rethrows function propagates the closure's error", () => {
-    const Int = Swift.metadataFor("Swift.Int")!;
+    const Int = metadataFor("Swift.Int")!;
 
     const data = [0x01, 0x02];
     const buffer = Memory.alloc(data.length);
@@ -140,11 +142,11 @@ describe("closure result and error routing", (ctx) => {
     const countArg = Memory.alloc(8);
     countArg.writeU64(data.length);
 
-    let thrown: SwiftThrownError | null = null;
+    let thrown: SwiftError | null = null;
     try {
       invoke(baseArg, countArg, closure.value());
     } catch (e) {
-      thrown = e as SwiftThrownError;
+      thrown = e as SwiftError;
     }
     expect(thrown).not.toBe(null);
     expect(thrown!.error.equals(errorObj)).toBe(true);
@@ -231,15 +233,14 @@ describe("closure through the $call facade", (ctx) => {
     const buffer = Memory.alloc(data.length);
     buffer.writeByteArray(data);
 
-    const ByteSource = Swift.metadataFor("fixture.ByteSource")!;
+    const ByteSource = metadataFor("fixture.ByteSource")!;
     const self = Memory.alloc(ByteSource.valueWitnesses.stride);
     self.writePointer(buffer);
     self.add(Process.pointerSize).writeU64(data.length);
-    const source = Swift.Object(ValueInstance.borrow(ByteSource, self));
+    const source = asSwiftObject(ValueInstance.borrow(ByteSource, self));
 
     let seen: number[] | null = null;
-    source.$call(
-      "withBytes",
+    source.$method("withBytes", { mutating: false, typeArguments: [] }).call(
       Swift.closure((buf) => {
         seen = Array.from(new Uint8Array(buf.readBytes()));
       })
@@ -257,15 +258,14 @@ describe("closure through the $call facade", (ctx) => {
     const buffer = Memory.alloc(data.length);
     buffer.writeByteArray(data);
 
-    const ByteSource = Swift.metadataFor("fixture.ByteSource")!;
+    const ByteSource = metadataFor("fixture.ByteSource")!;
     const self = Memory.alloc(ByteSource.valueWitnesses.stride);
     self.writePointer(buffer);
     self.add(Process.pointerSize).writeU64(data.length);
-    const source = Swift.Object(ValueInstance.borrow(ByteSource, self));
+    const source = asSwiftObject(ValueInstance.borrow(ByteSource, self));
 
     let seen: number[] | null = null;
-    source.$call(
-      "eachByte",
+    source.$method("eachByte", { mutating: false, typeArguments: [] }).call(
       Swift.closure((buf) => {
         seen = Array.from(new Uint8Array(buf.readBytes()));
       })
@@ -275,15 +275,14 @@ describe("closure through the $call facade", (ctx) => {
   });
 
   test("Swift.closure passed to a non-generic () -> Void method is invoked", () => {
-    const ByteSource = Swift.metadataFor("fixture.ByteSource")!;
+    const ByteSource = metadataFor("fixture.ByteSource")!;
     const self = Memory.alloc(ByteSource.valueWitnesses.stride);
     self.writePointer(Memory.alloc(1));
     self.add(Process.pointerSize).writeU64(0);
-    const source = Swift.Object(ValueInstance.borrow(ByteSource, self));
+    const source = asSwiftObject(ValueInstance.borrow(ByteSource, self));
 
     let called = false;
-    source.$call(
-      "run",
+    source.$method("run", { mutating: false, typeArguments: [] }).call(
       Swift.closure(() => {
         called = true;
       })
@@ -296,7 +295,7 @@ describe("closure through the $call facade", (ctx) => {
 describe("loadable closures (register-passed params and result)", (ctx) => {
   requireClosures(ctx);
   test("marshals a (Int) -> Int closure: value in x0, result in x0", () => {
-    const Int = Swift.metadataFor("Swift.Int")!;
+    const Int = metadataFor("Swift.Int")!;
 
     const discriminator = closureDiscriminator(closureHashString(["$sSi"], ["$sSi"]));
     expect(discriminator).toBe(0x489b);
@@ -311,7 +310,7 @@ describe("loadable closures (register-passed params and result)", (ctx) => {
   });
 
   test("marshals a (Int, Int) -> Int closure across two arg registers", () => {
-    const Int = Swift.metadataFor("Swift.Int")!;
+    const Int = metadataFor("Swift.Int")!;
 
     const discriminator = closureDiscriminator(closureHashString(["$sSi", "$sSi"], ["$sSi"]));
     expect(discriminator).toBe(0x97c8);
@@ -333,7 +332,7 @@ describe("loadable closures (register-passed params and result)", (ctx) => {
   });
 
   test("marshals a (Double) -> Double closure through the v-registers", () => {
-    const Double = Swift.metadataFor("Swift.Double")!;
+    const Double = metadataFor("Swift.Double")!;
 
     const discriminator = closureDiscriminator(closureHashString(["$sSd"], ["$sSd"]));
     expect(discriminator).toBe(0xe4d1);
@@ -346,8 +345,8 @@ describe("loadable closures (register-passed params and result)", (ctx) => {
   });
 
   test("marshals a (Int) -> Bool closure: Swift reads the bool result", () => {
-    const Int = Swift.metadataFor("Swift.Int")!;
-    const Bool = Swift.metadataFor("Swift.Bool")!;
+    const Int = metadataFor("Swift.Int")!;
+    const Bool = metadataFor("Swift.Bool")!;
 
     const discriminator = closureDiscriminator(closureHashString(["$sSi"], ["$sSb"]));
     expect(discriminator).toBe(0xd26c);
@@ -369,23 +368,23 @@ describe("loadable closure through the $call facade", (ctx) => {
   beforeEach(() => { loadFixture(); });
 
   requireClosures(ctx);
-  function byteSource(): ReturnType<typeof Swift.Object> {
-    const ByteSource = Swift.metadataFor("fixture.ByteSource")!;
+  function byteSource(): ReturnType<typeof asSwiftObject> {
+    const ByteSource = metadataFor("fixture.ByteSource")!;
     const self = Memory.alloc(ByteSource.valueWitnesses.stride);
     self.writePointer(Memory.alloc(1));
     self.add(Process.pointerSize).writeU64(0);
-    return Swift.Object(ValueInstance.borrow(ByteSource, self));
+    return asSwiftObject(ValueInstance.borrow(ByteSource, self));
   }
 
   test("Swift.closure (Int) -> Int returns the mapped value", () => {
-    const result = byteSource().$call("apply", 7, Swift.closure((n: number) => Number(n) * 6));
+    const result = byteSource().$method("apply", { mutating: false, typeArguments: [] }).call(7, Swift.closure((n: number) => Number(n) * 6));
     expect(result).toEqual(int64(42));
   });
 
   test("Swift.closure (Int) -> Bool returns the predicate result", () => {
     const source = byteSource();
-    expect(source.$call("check", 9, Swift.closure((n: number) => Number(n) > 5))).toBe(true);
-    expect(source.$call("check", 2, Swift.closure((n: number) => Number(n) > 5))).toBe(false);
+    expect(source.$method("check", { mutating: false, typeArguments: [] }).call(9, Swift.closure((n: number) => Number(n) > 5))).toBe(true);
+    expect(source.$method("check", { mutating: false, typeArguments: [] }).call(2, Swift.closure((n: number) => Number(n) > 5))).toBe(false);
   });
 });
 
@@ -394,8 +393,8 @@ describe("throwing loadable closures", (ctx) => {
 
   requireClosures(ctx);
   test("a non-throwing body returns its result through a throws closure type", () => {
-    const Int = Swift.metadataFor("Swift.Int")!;
-    const Bool = Swift.metadataFor("Swift.Bool")!;
+    const Int = metadataFor("Swift.Int")!;
+    const Bool = metadataFor("Swift.Bool")!;
 
     // throws is ignored in the discriminator, so it matches the non-throwing (Int) -> Bool.
     const discriminator = closureDiscriminator(closureHashString(["$sSi"], ["$sSb"]));
@@ -417,8 +416,8 @@ describe("throwing loadable closures", (ctx) => {
   });
 
   test("a SwiftThrow body sets x21 so the rethrows function propagates the error", () => {
-    const Int = Swift.metadataFor("Swift.Int")!;
-    const Bool = Swift.metadataFor("Swift.Bool")!;
+    const Int = metadataFor("Swift.Int")!;
+    const Bool = metadataFor("Swift.Bool")!;
     const errorObj = Memory.alloc(Process.pointerSize);
 
     const discriminator = closureDiscriminator(closureHashString(["$sSi"], ["$sSb"]));
@@ -432,25 +431,25 @@ describe("throwing loadable closures", (ctx) => {
     const nArg = Memory.alloc(8);
     nArg.writeU64(3);
 
-    let thrown: SwiftThrownError | null = null;
+    let thrown: SwiftError | null = null;
     try {
       invoke(nArg, closure.value());
     } catch (e) {
-      thrown = e as SwiftThrownError;
+      thrown = e as SwiftError;
     }
     expect(thrown).not.toBe(null);
     expect(thrown!.error.equals(errorObj)).toBe(true);
   });
 
   test("Swift.closure passed to a throwing-closure method returns the predicate result", () => {
-    const ByteSource = Swift.metadataFor("fixture.ByteSource")!;
+    const ByteSource = metadataFor("fixture.ByteSource")!;
     const self = Memory.alloc(ByteSource.valueWitnesses.stride);
     self.writePointer(Memory.alloc(1));
     self.add(Process.pointerSize).writeU64(0);
-    const source = Swift.Object(ValueInstance.borrow(ByteSource, self));
+    const source = asSwiftObject(ValueInstance.borrow(ByteSource, self));
 
-    expect(source.$call("tryCheck", 9, Swift.closure((n: number) => Number(n) > 5))).toBe(true);
-    expect(source.$call("tryCheck", 2, Swift.closure((n: number) => Number(n) > 5))).toBe(false);
+    expect(source.$method("tryCheck", { mutating: false, typeArguments: [] }).call(9, Swift.closure((n: number) => Number(n) > 5))).toBe(true);
+    expect(source.$method("tryCheck", { mutating: false, typeArguments: [] }).call(2, Swift.closure((n: number) => Number(n) > 5))).toBe(false);
   });
 });
 
@@ -459,7 +458,7 @@ describe("sized-int and pointer loadable closures", (ctx) => {
 
   requireClosures(ctx);
   test("marshals a (Int32) -> Int32 closure", () => {
-    const Int32 = Swift.metadataFor("Swift.Int32")!;
+    const Int32 = metadataFor("Swift.Int32")!;
 
     const discriminator = closureDiscriminator(closureHashString(["$ss5Int32V"], ["$ss5Int32V"]));
     expect(discriminator).toBe(0x3fe6);
@@ -473,7 +472,7 @@ describe("sized-int and pointer loadable closures", (ctx) => {
   });
 
   test("marshals a (UnsafeRawPointer) -> UnsafeRawPointer closure", () => {
-    const Raw = Swift.metadataFor("Swift.UnsafeRawPointer")!;
+    const Raw = metadataFor("Swift.UnsafeRawPointer")!;
 
     const discriminator = closureDiscriminator(closureHashString(["$sSV"], ["$sSV"]));
     expect(discriminator).toBe(0x6528);
@@ -488,13 +487,13 @@ describe("sized-int and pointer loadable closures", (ctx) => {
   });
 
   test("Swift.closure (Int32) -> Int32 through the facade", () => {
-    const ByteSource = Swift.metadataFor("fixture.ByteSource")!;
+    const ByteSource = metadataFor("fixture.ByteSource")!;
     const self = Memory.alloc(ByteSource.valueWitnesses.stride);
     self.writePointer(Memory.alloc(1));
     self.add(Process.pointerSize).writeU64(0);
-    const source = Swift.Object(ValueInstance.borrow(ByteSource, self));
+    const source = asSwiftObject(ValueInstance.borrow(ByteSource, self));
 
-    expect(source.$call("mapI32", 5, Swift.closure((n: number) => Number(n) + 100))).toBe(105);
+    expect(source.$method("mapI32", { mutating: false, typeArguments: [] }).call(5, Swift.closure((n: number) => Number(n) + 100))).toBe(105);
   });
 });
 
@@ -503,7 +502,7 @@ describe("loadable param with an indirect result", (ctx) => {
 
   requireClosures(ctx);
   test("marshals a (Int) -> R closure writing its result through x8", () => {
-    const Int = Swift.metadataFor("Swift.Int")!;
+    const Int = metadataFor("Swift.Int")!;
 
     const discriminator = closureDiscriminator(closureHashString(["$sSi"], [INDIRECT]));
     expect(discriminator).toBe(0xe7b2);
@@ -528,16 +527,16 @@ describe("loadable param with an indirect result", (ctx) => {
   });
 
   test("Swift.closure (Int) -> R through $method with an explicit type argument", () => {
-    const Int = Swift.metadataFor("Swift.Int")!;
+    const Int = metadataFor("Swift.Int")!;
 
-    const ByteSource = Swift.metadataFor("fixture.ByteSource")!;
+    const ByteSource = metadataFor("fixture.ByteSource")!;
     const self = Memory.alloc(ByteSource.valueWitnesses.stride);
     self.writePointer(Memory.alloc(1));
     self.add(Process.pointerSize).writeU64(0);
-    const source = Swift.Object(ValueInstance.borrow(ByteSource, self));
+    const source = asSwiftObject(ValueInstance.borrow(ByteSource, self));
 
     const result = source
-      .$method("produce", { typeArguments: [Int] })
+      .$method("produce", { typeArguments: [typeOf(Int)], mutating: false })
       .call(6, Swift.closure((n: number) => Number(n) * 7));
     expect(result).toEqual(int64(42));
   });
@@ -547,37 +546,37 @@ describe("String loadable closures through the facade", (ctx) => {
   beforeEach(() => { loadFixture(); });
 
   requireClosures(ctx);
-  function byteSource(): ReturnType<typeof Swift.Object> {
-    const ByteSource = Swift.metadataFor("fixture.ByteSource")!;
+  function byteSource(): ReturnType<typeof asSwiftObject> {
+    const ByteSource = metadataFor("fixture.ByteSource")!;
     const self = Memory.alloc(ByteSource.valueWitnesses.stride);
     self.writePointer(Memory.alloc(1));
     self.add(Process.pointerSize).writeU64(0);
-    return Swift.Object(ValueInstance.borrow(ByteSource, self));
+    return asSwiftObject(ValueInstance.borrow(ByteSource, self));
   }
 
   test("(String) -> String round-trips a small inline string", () => {
-    const result = byteSource().$call("mapStr", "frida", Swift.closure((s: string) => s.toUpperCase()));
+    const result = byteSource().$method("mapStr", { mutating: false, typeArguments: [] }).call("frida", Swift.closure((s: string) => s.toUpperCase()));
     expect(result).toBe("FRIDA");
   });
 
   test("(String) -> String preserves all 16 bytes of a 12-char inline string", () => {
     // 9–15 char strings store content in the high word; pointer-typed words avoid double precision loss.
-    const result = byteSource().$call("mapStr", "abcdefghijkl", Swift.closure((s: string) => s.split("").reverse().join("")));
+    const result = byteSource().$method("mapStr", { mutating: false, typeArguments: [] }).call("abcdefghijkl", Swift.closure((s: string) => s.split("").reverse().join("")));
     expect(result).toBe("lkjihgfedcba");
   });
 
   test("(String) -> String round-trips a heap-allocated string", () => {
     const long = "the quick brown fox jumps over the lazy dog";
-    const result = byteSource().$call("mapStr", long, Swift.closure((s: string) => s.toUpperCase()));
+    const result = byteSource().$method("mapStr", { mutating: false, typeArguments: [] }).call(long, Swift.closure((s: string) => s.toUpperCase()));
     expect(result).toBe(long.toUpperCase());
   });
 
   test("(String) -> Int passes the string and returns a scalar", () => {
-    expect(byteSource().$call("strLen", "héllo", Swift.closure((s: string) => s.length))).toEqual(int64(5));
+    expect(byteSource().$method("strLen", { mutating: false, typeArguments: [] }).call("héllo", Swift.closure((s: string) => s.length))).toEqual(int64(5));
   });
 
   test("(Int) -> String returns a synthesized string", () => {
-    expect(byteSource().$call("label", 7, Swift.closure((n: number) => `n=${n}`))).toBe("n=7");
+    expect(byteSource().$method("label", { mutating: false, typeArguments: [] }).call(7, Swift.closure((n: number) => `n=${n}`))).toBe("n=7");
   });
 });
 

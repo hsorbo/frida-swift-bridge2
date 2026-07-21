@@ -7,6 +7,7 @@ import { getMetadata, getGenericMetadata, Metadata, MetadataKind } from "../src/
 import { ContextDescriptor, ContextDescriptorKind } from "../src/abi/context-descriptor.js";
 import { typeOf } from "../src/runtime/swift-type.js";
 
+import { metadataFor } from "../src/abi.js";
 const FLAG_IS_GENERIC = 0x80;
 
 describe("metadata", () => {
@@ -41,10 +42,10 @@ describe("metadata", () => {
     expect(() => getMetadata(array)).toThrow();
   });
 
-  test("Swift.metadataFor returns null for an unknown type", () => {
+  test("metadataFor returns null for an unknown type", () => {
     requireSwift();
-    expect(Swift.metadataFor("Swift.NoSuchTypeQX")).toBeNull();
-    expect(Swift.metadataFor("Swift.Int")!.typeLayout.size).toBe(8);
+    expect(metadataFor("Swift.NoSuchTypeQX")).toBeNull();
+    expect(metadataFor("Swift.Int")!.typeLayout.size).toBe(8);
   });
 
   test("getGenericMetadata throws for an opaque type descriptor rather than reading a bogus access function", () => {

@@ -1,7 +1,7 @@
 import { test, expect, describe } from "@frida/injest/agent";
 import { loadFixture } from "./fixtures/load.js";
 
-import { findAccessibleFunction, AsyncFunctionPointer } from "../src/index.js";
+import { findAccessibleFunction, AsyncFunctionPointer } from "../src/abi.js";
 
 const ADD_MANGLED = "$s7fixture10CalculatorC3addyS2i_SitYaKFTE";
 

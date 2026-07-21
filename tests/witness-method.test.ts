@@ -1,16 +1,10 @@
 import { test, expect, describe } from "@frida/injest/agent";
 import { loadFixture, loadFixtureSyms, fixtureExport, existentialMetadata } from "./fixtures/load.js";
 
-import {
-  Swift,
-  Metadata,
-  Protocol,
-  projectExistentialValue,
-  readProtocolRequirements,
-  bindWitnessMethodAt,
-} from "../src/index.js";
+import { Metadata, Protocol, projectExistentialValue, readProtocolRequirements, bindWitnessMethodAt, metadataFor } from "../src/abi.js";
 import { makeSwiftNativeFunction } from "../src/runtime/calling-convention.js";
 
+import { Swift } from "../src/index.js";
 function ptrValue(p: NativePointer): NativePointer {
   const cell = Memory.alloc(Process.pointerSize);
   cell.writePointer(p);
@@ -18,7 +12,7 @@ function ptrValue(p: NativePointer): NativePointer {
 }
 
 function store(mod: Module, fn: string, metadata: Metadata): NativePointer {
-  const RawPointer = Swift.metadataFor("Swift.UnsafeMutableRawPointer")!;
+  const RawPointer = metadataFor("Swift.UnsafeMutableRawPointer")!;
   const container = Memory.alloc(metadata.typeLayout.stride);
   makeSwiftNativeFunction(fixtureExport(fn, mod), null, [RawPointer])(ptrValue(container));
   return container;
@@ -81,7 +75,7 @@ describe("witness-table method invocation", () => {
     const greeter = Protocol.find("fixture.Greeter")!;
     const table = greeter.conformanceFor(type)!;
     const witnessIndex = readProtocolRequirements(greeter.descriptor)[0].witnessIndex;
-    const String_ = Swift.metadataFor("Swift.String")!;
+    const String_ = metadataFor("Swift.String")!;
     const bound = bindWitnessMethodAt(table, witnessIndex, value, { argTypes: [], returnType: String_ });
     expect(bound.call()).toBe("Hello, Ada");
   });

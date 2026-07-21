@@ -6,6 +6,7 @@ import { TypeReferenceKind } from "../src/abi/class-descriptor.js";
 import { getClassMetadataBounds } from "../src/abi/class-metadata-bounds.js";
 import { arenaAlloc, arenaString, writeRelativeDirectPointer } from "./arena.js";
 
+import { Swift } from "../src/index.js";
 const CLASS_HAS_RESILIENT_SUPERCLASS = 1 << 13;
 const CLASS_RESILIENT_SUPERCLASS_REFERENCE_KIND_SHIFT = 9;
 

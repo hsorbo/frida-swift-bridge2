@@ -7,6 +7,7 @@ import {
 } from "../src/image/sections.js";
 import { ContextDescriptor } from "../src/abi/context-descriptor.js";
 
+import { Swift } from "../src/index.js";
 describe("mach-o swift sections", () => {
   test("finds __swift5_types in libswiftCore", () => {
     const lib = loadSwiftCore();

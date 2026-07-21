@@ -1,8 +1,8 @@
 import { Metadata, MetadataKind } from "../abi/metadata.js";
 import { enumerateFields, fieldTypeIn } from "../abi/field-descriptor.js";
 import { existentialRepresentation } from "../abi/existential.js";
+import { SwiftError } from "./thrown-error.js";
 import { typeName } from "./type-name.js";
-import { releaseErrorBoxWhenCollected } from "./error-box.js";
 import { signCode } from "../basic/pac.js";
 
 export const MAX_LOADABLE_SIZE = Process.pointerSize * 4;
@@ -219,13 +219,6 @@ function resultPieces(metadata: Metadata): ResultPiece[] {
   return Array.from({ length: words }, (_, i) => ({ reg: "gp", off: i * 8 }));
 }
 
-export class SwiftThrownError extends Error {
-  constructor(readonly error: NativePointer) {
-    super(`Swift function threw (error at ${error})`);
-    this.name = "SwiftThrownError";
-  }
-}
-
 export interface SwiftNativeFunctionOptions {
   hasSelf?: boolean;
   throws?: boolean;
@@ -391,9 +384,7 @@ export function makeSwiftNativeFunction(
     if (throws) {
       const error = resources.errorBuffer!.readPointer();
       if (!error.isNull()) {
-        const thrown = new SwiftThrownError(error);
-        releaseErrorBoxWhenCollected(thrown, error);
-        throw thrown;
+        throw new SwiftError(error, true);
       }
     }
 

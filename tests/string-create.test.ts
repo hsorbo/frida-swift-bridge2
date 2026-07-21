@@ -5,10 +5,11 @@ import { Swift, StructType } from "../src/index.js";
 import { createString, writeString } from "../src/abi/string.js";
 import { readString } from "../src/abi/string.js";
 
+import { metadataFor, typeOf } from "../src/abi.js";
 // createString hands back a +1 String; read its text and settle the +1 (or it leaks __StringStorage).
 function takeText(buf: NativePointer): string | null {
   const text = readString(buf);
-  Swift.metadataFor("Swift.String")!.valueWitnesses.destroy(buf);
+  metadataFor("Swift.String")!.valueWitnesses.destroy(buf);
   return text;
 }
 
@@ -40,14 +41,14 @@ describe("writeValue String support", () => {
   beforeEach(() => { loadFixture(); });
 
   test("ValueInstance.fromJS builds a String value", () => {
-    const v = Swift.typeOf(Swift.metadataFor("Swift.String")!);
+    const v = typeOf(metadataFor("Swift.String")!);
     const value = (v as StructType).new("hello from JS");
     expect(value.$fields).toBe("hello from JS");
     value.$dispose();
   });
 
   test("constructs a struct with a String field", () => {
-    const t = Swift.typeOf(Swift.metadataFor("fixture.PoliteGreeter")!) as StructType;
+    const t = typeOf(metadataFor("fixture.PoliteGreeter")!) as StructType;
     const value = t.new({ name: "Ada" });
     expect(value.$fields).toEqual({ name: "Ada" });
     value.$dispose();

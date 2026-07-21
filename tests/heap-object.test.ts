@@ -1,9 +1,10 @@
 import { test, expect, describe } from "@frida/injest/agent";
 import { loadFixture, fixtureExport } from "./fixtures/load.js";
 
-import { Swift, ClassInstance } from "../src/index.js";
+import { ClassInstance, metadataFor, typeName, metadataOf } from "../src/abi.js";
 import { makeSwiftNativeFunction } from "../src/runtime/calling-convention.js";
 
+import { Swift } from "../src/index.js";
 function intArg(n: number): NativePointer {
   const cell = Memory.alloc(Process.pointerSize);
   cell.writeS64(n);
@@ -12,8 +13,8 @@ function intArg(n: number): NativePointer {
 
 function makeCounter(n: number): ClassInstance {
   loadFixture();
-  const Int = Swift.metadataFor("Swift.Int")!;
-  const Counter = Swift.metadataFor("fixture.Counter")!;
+  const Int = metadataFor("Swift.Int")!;
+  const Counter = metadataFor("fixture.Counter")!;
   const make = makeSwiftNativeFunction(fixtureExport("fixture.makeCounter"), Counter, [Int]);
   return new ClassInstance(make(intArg(n))!.readPointer());
 }
@@ -53,7 +54,7 @@ describe("ClassInstance", () => {
   test("type exposes the instance's SwiftType for symmetric reflection", () => {
     const counter = makeCounter(1);
     expect(counter.type.name).toBe("fixture.Counter");
-    expect(Swift.typeName(counter.type.metadata)).toBe("fixture.Counter");
+    expect(typeName(metadataOf(counter.type))).toBe("fixture.Counter");
   });
 
   test("kind tags the wrapper as an object instance", () => {

@@ -5,11 +5,12 @@ import { Swift } from "../src/index.js";
 import { MetadataKind } from "../src/abi/metadata.js";
 import { enumerateInstanceFields } from "../src/abi/instance.js";
 
+import { metadataFor } from "../src/abi.js";
 describe("instance fields", () => {
   test("reads struct stored properties at their field offsets", () => {
     requireSwift();
-    const int = Swift.metadataFor("Swift.Int")!;
-    const rangeInt = Swift.metadataFor("Swift.Range", [int])!;
+    const int = metadataFor("Swift.Int")!;
+    const rangeInt = metadataFor("Swift.Range", [int])!;
     expect(rangeInt.kind).toBe(MetadataKind.Struct);
 
     const storage = Memory.alloc(rangeInt.typeLayout.stride);
@@ -31,7 +32,7 @@ describe("instance fields", () => {
 
   test("rejects non-struct metadata", () => {
     requireSwift();
-    const optionalInt = Swift.metadataFor("Swift.Optional", [Swift.metadataFor("Swift.Int")!])!;
+    const optionalInt = metadataFor("Swift.Optional", [metadataFor("Swift.Int")!])!;
     expect(() => [...enumerateInstanceFields(optionalInt, Memory.alloc(16))]).toThrow();
   });
 });

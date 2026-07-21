@@ -2,13 +2,13 @@ import { Metadata, MetadataKind } from "../abi/metadata.js";
 import { readValue, embedsManagedReference, SwiftValue } from "../abi/instance.js";
 import { ValueInstance } from "../abi/value.js";
 import { ClassInstance } from "../abi/heap-object.js";
-import { projectErrorExistential } from "../abi/existential.js";
+import { decodeThrownError } from "./thrown-error.js";
 import { shouldPassIndirectly, floatLayout } from "./calling-convention.js";
 import { AsyncFunctionPointer, isAsyncFunctionPointerSymbol } from "../abi/async-function-pointer.js";
 import { AsyncContext } from "../abi/async-context.js";
 import { symbolicate, parseSwiftSignature, resolveType, resolveTypeExpr } from "./symbolication.js";
 import { typeName } from "./type-name.js";
-import { createObject } from "./object-facade.js";
+import { asSwiftObject } from "./object-facade.js";
 import { CallResult } from "./method.js";
 
 export interface SwiftInvocationCallbacks {
@@ -280,7 +280,7 @@ function materializeArgs(
 // it edits the return.
 function decodeReturnValue(metadata: Metadata, address: NativePointer): CallResult {
   if (!metadata.valueWitnesses.isPOD && embedsManagedReference(metadata)) {
-    return createObject(ValueInstance.borrow(metadata, address));
+    return asSwiftObject(ValueInstance.borrow(metadata, address));
   }
   return readValue(metadata, address);
 }
@@ -321,7 +321,7 @@ function materializeReturn(
     return readValue(returnType, scratch);
   }
   if (returnType.kind === MetadataKind.Class) {
-    return createObject(new ClassInstance(gpResult(context, 0)));
+    return asSwiftObject(new ClassInstance(gpResult(context, 0)));
   }
   if (shouldPassIndirectly(returnType)) {
     if (indirectReturn === null) {
@@ -338,13 +338,6 @@ function materializeReturn(
     scratch.add(w * 8).writePointer(gpResult(context, w));
   }
   return decodeReturnValue(returnType, scratch);
-}
-
-function decodeThrownError(errorBox: NativePointer): SwiftValue {
-  const container = Memory.alloc(Process.pointerSize);
-  container.writePointer(errorBox);
-  const { type, value } = projectErrorExistential(container);
-  return readValue(type, value);
 }
 
 interface SwiftInvocationState {

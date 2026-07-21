@@ -14,25 +14,6 @@ public struct LoadableStruct {
     public let d: Int
 }
 
-// Nested type; full name fixture.Outer.Inner.
-public struct Outer {
-    public var tag: Int
-    public struct Inner {
-        public var value: Int
-        public func doubled() -> Int { value * 2 }
-    }
-}
-// Nested type declared in an extension; full name fixture.Outer.FromExt.
-extension Outer {
-    public struct FromExt {
-        public var mark: Int
-        public func tripled() -> Int { mark * 3 }
-    }
-}
-// Nested in a generic-extension context; its extended mangling demangles to Swift.Optional,
-// so the full name is Swift.Optional.ExtensionProbe.
-extension Optional { public struct ExtensionProbe { public var x: Int } }
-
 // A heap-backed String ahead of a narrow int: writing an out-of-range level must be rejected
 // before the String is materialized.
 public struct Badge {
@@ -89,6 +70,14 @@ public func makeString() -> String {
     return "New Cairo"
 }
 
+public func stringLength(_ s: String) -> Int { s.count }
+public func repeatString(_ s: String, _ n: Int) -> Int { s.count * n }
+public func renameRobot(_ r: Robot, _ name: String) { r.name = name }
+
+// Nested in a generic-extension context; its extended mangling demangles to Swift.Optional,
+// so the full name is Swift.Optional.ExtensionProbe.
+extension Optional { public struct ExtensionProbe { public var x: Int } }
+
 // Value-type methods. self routing: mutating/large → x20 pointer; small non-mutating → trailing arg.
 public struct Accumulator {
     public var total: Int
@@ -109,17 +98,26 @@ public struct Accumulator {
     }
 }
 
+// Nested type; full name fixture.Outer.Inner.
+public struct Outer {
+    public var tag: Int
+    public struct Inner {
+        public var value: Int
+        public func doubled() -> Int { value * 2 }
+    }
+}
+
+// Nested type declared in an extension; full name fixture.Outer.FromExt.
+extension Outer {
+    public struct FromExt {
+        public var mark: Int
+        public func tripled() -> Int { mark * 3 }
+    }
+}
+
 public enum FixtureError: Error {
     case boom
 }
-
-// A class-typed error: the thrown existential is the instance itself, so its strong count is a direct
-// witness for whether the bridge releases the +1 error box.
-public final class BoxedError: Error {
-    public let code: Int
-    public init(code: Int) { self.code = code }
-}
-public func throwBoxed(_ code: Int) throws -> Int { throw BoxedError(code: code) }
 
 public func mightThrow(_ code: Int) throws -> Int {
     if code != 0 {
@@ -143,6 +141,10 @@ public func combine(_ i: Int, _ d: Double) -> Double {
 public struct Point {
     public var x: Int
     public var doubled: Int { x * 2 }
+    public var tracked: Int {
+        get { x }
+        _modify { yield &x }
+    }
 }
 
 public struct Rect {
@@ -386,6 +388,8 @@ public func storeNamed(_ p: UnsafeMutableRawPointer) {
     p.assumingMemoryBound(to: (any Named).self).initialize(to: Widget(label: "Bee"))
 }
 
+public func makeNamed(_ label: String) -> any Named { Widget(label: label) }
+
 public struct CodedError: Error {
     public let code: Int
 }
@@ -421,6 +425,13 @@ public final class FailableGadget {
         if id < 0 { return nil }
         self.id = id
     }
+}
+
+public final class Vec2 {
+    public let a: Int
+    public let b: Int
+    public init(x: Int, y: Int) { self.a = x; self.b = y }
+    public init(angle: Int, radius: Int) { self.a = angle * 2; self.b = radius * 3 }
 }
 
 public class Base { public let kind: Int; public init(kind: Int) { self.kind = kind } }
@@ -638,6 +649,8 @@ public final class Cat: Animal {
     public override init() { super.init() }
     public override func speak() -> Int { 9 }
 }
+
+public func describeAnimal(_ a: Animal) -> Int { a.legs() }
 
 // Subclassing ResilientBase cross-module sets hasResilientSuperclass on ConcreteSub itself.
 public final class ConcreteSub: ResilientBase {

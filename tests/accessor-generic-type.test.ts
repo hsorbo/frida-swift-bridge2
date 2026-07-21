@@ -1,10 +1,11 @@
 import { test, expect, describe, beforeEach } from "@frida/injest/agent";
 import { loadFixture } from "./fixtures/load.js";
 
-import { Swift, ValueInstance } from "../src/index.js";
+import { StructType } from "../src/index.js";
+import { metadataFor, typeOf } from "../src/abi.js";
 
 function halver(n: number) {
-  return Swift.Object(ValueInstance.fromJS(Swift.metadataFor("fixture.Halver")!, { n }));
+  return (typeOf(metadataFor("fixture.Halver")!) as StructType).new({ n });
 }
 
 describe("accessor whose type is generic", () => {

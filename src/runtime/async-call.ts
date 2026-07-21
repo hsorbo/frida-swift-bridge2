@@ -1,8 +1,6 @@
 import { AsyncFunctionPointer } from "../abi/async-function-pointer.js";
 import { AsyncTask } from "../abi/async-task.js";
-import { projectErrorExistential } from "../abi/existential.js";
-import { readValue, SwiftValue } from "../abi/instance.js";
-import { releaseErrorBoxWhenCollected } from "./error-box.js";
+import { SwiftError } from "./thrown-error.js";
 import { LIBSWIFT_CORE_NAME, SWIFT_HOST_SUPPORTED } from "./platform.js";
 import { ARM64E_ABI, signCode } from "../basic/pac.js";
 
@@ -55,18 +53,6 @@ export interface AsyncCallOptions {
   result?: AsyncResultShape;
   timeoutMs?: number; // 0 waits forever
   onActor?: SerialExecutorRef;
-}
-
-export class SwiftAsyncThrow extends Error {
-  constructor(readonly value: SwiftValue, errorBox?: NativePointer) {
-    super(`Swift async function threw: ${String(value)}`);
-    this.name = "SwiftAsyncThrow";
-    // The decoded value may hold an unretained reference into the box, so keep the box alive as long
-    // as this error is reachable and release it only when this error is collected.
-    if (errorBox !== undefined) {
-      releaseErrorBoxWhenCollected(this, errorBox);
-    }
-  }
 }
 
 const CONCURRENCY_MODULE = Process.platform === "darwin" ? "libswift_Concurrency.dylib" : "libswift_Concurrency.so";
@@ -429,12 +415,6 @@ function getDriveApi(): DriveApi {
   return driveApi;
 }
 
-function decodeThrownError(errorBox: NativePointer): SwiftValue {
-  const container = Memory.alloc(Process.pointerSize).writePointer(errorBox);
-  const { type, value } = projectErrorExistential(container);
-  return readValue(type, value);
-}
-
 const abandoned = new Set<SynthesizedCall>();
 
 function reapAbandoned(): void {
@@ -481,7 +461,7 @@ function getWaitSemaphore(api: DriveApi): NativePointer {
 function takeResult(call: SynthesizedCall): NativePointer {
   const thrown = call.error.readPointer();
   if (!thrown.isNull()) {
-    throw new SwiftAsyncThrow(decodeThrownError(thrown), thrown);
+    throw new SwiftError(thrown, true);
   }
   return call.result;
 }

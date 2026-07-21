@@ -2,7 +2,7 @@ import { test, expect, describe } from "@frida/injest/agent";
 import { requireSwift } from "./swift.js";
 import { loadFixture } from "./fixtures/load.js";
 
-import { AsyncFunctionPointer, driveAsyncCall, callAsync } from "../src/index.js";
+import { AsyncFunctionPointer, driveAsyncCall, callAsync } from "../src/abi.js";
 
 const STORE_DOUBLE_NOW_AFP = "$s7fixture14storeDoubleNowyyAA8AsyncBoxC_SitYaFTu";
 const STORE_DOUBLE_ASYNC_AFP = "$s7fixture16storeDoubleAsyncyyAA0D3BoxC_SitYaFTu";
@@ -92,7 +92,7 @@ describe("async call", () => {
     expect(Number(result.readS64())).toBe(5);
   });
 
-  test("raises SwiftAsyncThrow when the function throws", () => {
+  test("raises SwiftError when the function throws", () => {
     requireSwift();
     const module = loadFixture();
     expect(() => driveAsyncCall(afp(module, DIVIDE_ASYNC_AFP), [ptr(10), ptr(0)], { throws: true })).toThrow();

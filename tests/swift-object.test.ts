@@ -1,17 +1,18 @@
 import { test, expect, describe, beforeEach } from "@frida/injest/agent";
-import { loadFixture, FIXTURE_MODULE } from "./fixtures/load.js";
+import { loadFixture } from "./fixtures/load.js";
 
 import { Swift, ClassType } from "../src/index.js";
 
+import { metadataFor, typeOf, typeName, metadataOf } from "../src/abi.js";
 function robot(name: string) {
-  return (Swift.typeOf(Swift.metadataFor("fixture.Robot")!) as ClassType).init(name);
+  return (typeOf(metadataFor("fixture.Robot")!) as ClassType).init(name);
 }
 
 function cat() {
-  return (Swift.typeOf(Swift.metadataFor("fixture.Cat")!) as ClassType).init();
+  return (typeOf(metadataFor("fixture.Cat")!) as ClassType).init();
 }
 
-describe("Swift.Object method sugar", () => {
+describe("Swift object method sugar", () => {
   beforeEach(() => { loadFixture(); });
 
   test("calls a method by its bare name", () => {
@@ -21,7 +22,7 @@ describe("Swift.Object method sugar", () => {
 
   test("calls a labelled method and mutates via a void method", () => {
     const o = robot("old");
-    expect(o.merged(robot("Bee").$handle)).toBe("old+Bee");
+    expect(o.merged(robot("Bee"))).toBe("old+Bee");
     o.rename("new");
     expect(o.greet("X")).toBe("Hello X, I am new");
   });
@@ -44,7 +45,7 @@ describe("Swift.Object method sugar", () => {
   });
 });
 
-describe("Swift.Object intrinsics", () => {
+describe("Swift object intrinsics", () => {
   beforeEach(() => { loadFixture(); });
 
   test("$get / $set drive computed properties", () => {
@@ -73,8 +74,8 @@ describe("Swift.Object intrinsics", () => {
     expect(robot("R2").$type.superClass).toBeNull();
   });
 
-  test("$type.moduleName points at the defining image", () => {
-    expect(robot("R2").$type.moduleName).toContain(FIXTURE_MODULE);
+  test("$type.moduleName is the logical Swift module", () => {
+    expect(robot("R2").$type.moduleName).toBe("fixture");
   });
 
   test("methods({ inherited: false }) excludes inherited methods that methods() includes", () => {
@@ -88,7 +89,7 @@ describe("Swift.Object intrinsics", () => {
   test("$type / $handle expose the wrapped object", () => {
     const o = robot("R2");
     expect(o.$type.name).toBe("fixture.Robot");
-    expect(Swift.typeName(o.$type.metadata)).toBe("fixture.Robot");
+    expect(typeName(metadataOf(o.$type))).toBe("fixture.Robot");
     expect(o.$handle.isNull()).toBe(false);
   });
 
@@ -98,16 +99,11 @@ describe("Swift.Object intrinsics", () => {
 
   test("equals compares identity; has reflects reserved + member names", () => {
     const o = robot("R2");
-    expect(o.equals(Swift.Object(o.$handle))).toBe(true);
+    expect(o.equals(Swift.borrowObject(o.$handle))).toBe(true);
     expect(o.equals(robot("R2"))).toBe(false);
     expect("greet" in o).toBe(true);
     expect("$type" in o).toBe(true);
     expect("nope" in o).toBe(false);
-  });
-
-  test("toString renders type and address", () => {
-    const o = robot("R2");
-    expect(o.toString()).toBe(`<fixture.Robot: ${o.$handle}>`);
   });
 
   test("ownKeys enumerates methods and properties consistently with has", () => {
@@ -117,6 +113,11 @@ describe("Swift.Object intrinsics", () => {
     for (const k of keys) {
       expect(k in robot("R2")).toBe(true);
     }
+  });
+
+  test("toString renders type and address", () => {
+    const o = robot("R2");
+    expect(o.toString()).toBe(`<fixture.Robot: ${o.$handle}>`);
   });
 
   test("use after $dispose throws; $dispose is idempotent; toJSON degrades", () => {
@@ -129,28 +130,13 @@ describe("Swift.Object intrinsics", () => {
     expect(() => o.greet("Alice")).toThrow();
     expect(o.toJSON()).toEqual({ kind: "object", handle: o.$handle.toString(), disposed: true });
   });
-
-  test("a detached bound method rejects a call after the receiver is disposed", () => {
-    const r = robot("R2");
-    const m = r.$method("greet");
-    r.$dispose();
-    expect(() => m.call("Ada")).toThrow(/disposed/);
-  });
-
-  test("a borrowed field rejects access after its owning instance is disposed", () => {
-    const r = robot("R2");
-    const f = r.$field("name");
-    r.$dispose();
-    expect(() => f.read()).toThrow(/disposed/);
-    expect(() => f.write("D2")).toThrow(/disposed/);
-  });
 });
 
 function clash(handle: number) {
-  return (Swift.typeOf(Swift.metadataFor("fixture.Clash")!) as ClassType).init(handle);
+  return (typeOf(metadataFor("fixture.Clash")!) as ClassType).init(handle);
 }
 
-describe("Swift.Object collision-proofing", () => {
+describe("Swift object collision-proofing", () => {
   beforeEach(() => { loadFixture(); });
 
   test("bare names reach Swift members that clash with the facade's raw spellings", () => {

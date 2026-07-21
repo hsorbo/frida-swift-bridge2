@@ -11,6 +11,7 @@ import {
   symbolicMangledNameLength,
 } from "../src/abi/field-descriptor.js";
 
+import { metadataFor } from "../src/abi.js";
 describe("symbolic mangled name length", () => {
   test("counts past embedded symbolic-reference payloads with NUL bytes", () => {
     // 'B' then a 0x02 relative reference whose 4-byte payload contains 0x00,
@@ -51,7 +52,7 @@ describe("field descriptor", () => {
     const int = resolveTypeByMangledName({ address: name, length: 2 });
     expect(int).not.toBeNull();
     expect(int!.kind).toBe(MetadataKind.Struct);
-    expect(int!.handle.equals(Swift.metadataFor("Swift.Int")!.handle)).toBeTruthy();
+    expect(int!.handle.equals(metadataFor("Swift.Int")!.handle)).toBeTruthy();
   });
 
   test("resolves a field type carrying a symbolic reference", () => {

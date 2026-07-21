@@ -5,11 +5,12 @@ import { Swift } from "../src/index.js";
 import { MetadataKind } from "../src/abi/metadata.js";
 import { ClassMetadata } from "../src/abi/class-metadata.js";
 
+import { metadataFor } from "../src/abi.js";
 describe("generic class instantiation", () => {
   test("instantiates a generic class metadata via its access function", () => {
     requireSwift();
-    const int = Swift.metadataFor("Swift.Int")!;
-    const storageInt = Swift.metadataFor("Swift._ContiguousArrayStorage", [int]);
+    const int = metadataFor("Swift.Int")!;
+    const storageInt = metadataFor("Swift._ContiguousArrayStorage", [int]);
     if (storageInt === null) {
       throw new Error("Swift._ContiguousArrayStorage not present");
     }
@@ -20,8 +21,8 @@ describe("generic class instantiation", () => {
     expect(cm.instanceSize).toBeGreaterThan(16);
     expect(cm.description.name).toBe("_ContiguousArrayStorage");
 
-    const storageString = Swift.metadataFor("Swift._ContiguousArrayStorage", [
-      Swift.metadataFor("Swift.String")!,
+    const storageString = metadataFor("Swift._ContiguousArrayStorage", [
+      metadataFor("Swift.String")!,
     ])!;
     expect(storageInt.handle.equals(storageString.handle)).toBeFalsy();
   });

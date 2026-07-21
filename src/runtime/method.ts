@@ -3,7 +3,7 @@ import { ContextDescriptor, ContextDescriptorKind } from "../abi/context-descrip
 import { ClassMetadata } from "../abi/class-metadata.js";
 import { readVTableChain } from "../abi/class-descriptor.js";
 import { ClassInstance } from "../abi/heap-object.js";
-import { createObject, SwiftObject, RAW } from "./object-facade.js";
+import { asSwiftObject, SwiftObject, SwiftValueObject, SwiftField, RAW } from "./object-facade.js";
 import { ValueInstance } from "../abi/value.js";
 import { readValue, writeValue, embedsManagedReference, SwiftValue } from "../abi/instance.js";
 import { readEnumCase, projectEnumData, projectBox } from "../abi/enum.js";
@@ -49,6 +49,7 @@ import {
 import { ProtocolRequirement, ProtocolRequirementKind, readProtocolRequirements } from "../abi/protocol-descriptor.js";
 import { WitnessTable } from "../abi/witness-table.js";
 import type { SwiftType } from "./swift-type.js";
+import { metadataOf } from "./swift-type.js";
 
 export type MethodKind = "method" | "init";
 
@@ -58,9 +59,32 @@ export function isSwiftObject(value: CallResult): value is SwiftObject {
   return typeof value === "object" && value !== null && "$kind" in value;
 }
 
-// A JS value, a ValueInstance (byte-copied in, e.g. an Array), a facade (unwrapped in marshalArg),
-// or a closure request marshalled into a function-typed generic parameter.
-export type CallArg = SwiftValue | ValueInstance | SwiftObject | ClosureSpec;
+// A SwiftField ($field view) is a borrowed ValueInstance at runtime, which marshalArg accepts.
+export type CallArg = SwiftValue | SwiftObject | SwiftField | ClosureSpec;
+
+export interface SwiftBoundMethod {
+  readonly address: NativePointer;
+  call(...args: CallArg[]): CallResult | Promise<CallResult>;
+}
+
+export function narrowBoundMethod(binder: SwiftBoundMethod, receiver?: RawInstance): SwiftBoundMethod {
+  return {
+    address: binder.address,
+    call: (...args) => {
+      receiver?.checkLive(); // roots the receiver past its GC release and rejects a disposed one
+      return binder.call(...args);
+    },
+  };
+}
+
+export interface SwiftBoundInitializer {
+  readonly address: NativePointer;
+  call(...args: CallArg[]): SwiftValueObject | null;
+}
+
+export function narrowBoundInitializer(binder: SwiftBoundInitializer): SwiftBoundInitializer {
+  return { address: binder.address, call: (...args) => binder.call(...args) };
+}
 
 export interface RawInstance {
   readonly handle: NativePointer;
@@ -99,19 +123,39 @@ export interface ResolvedMethod {
   asyncFunctionPointer?: AsyncFunctionPointer;
 }
 
-export interface MethodResolveOptions {
+interface BaseResolveOptions {
   arity?: number;
   labels?: (string | null)[]; // null = unlabelled
   argTypes?: string[]; // exact match against the signature's demangled argument-type names
   static?: boolean;
-  typeArguments?: Metadata[]; // present ⇒ resolve a generic method; one entry per generic parameter
-  witnessTables?: NativePointer[]; // overrides the witnesses auto-resolved from the where-clause
+}
+
+export interface MethodResolveOptions extends BaseResolveOptions {
+  typeArguments?: SwiftType[]; // one entry per generic parameter
 }
 
 // mutating is unrecoverable from the symbol; the caller supplies it. It only changes self routing
-// for small loadable receivers — large/non-POD receivers pass self in x20 either way.
+// for small loadable receivers, where it is required — large/non-POD receivers pass self in x20 either way.
 export interface ValueMethodResolveOptions extends MethodResolveOptions {
   mutating?: boolean;
+}
+
+export interface RawMethodResolveOptions extends BaseResolveOptions {
+  typeArguments?: Metadata[];
+  witnessTables?: NativePointer[]; // overrides the witnesses auto-resolved from the where-clause
+}
+
+export interface RawValueMethodResolveOptions extends RawMethodResolveOptions {
+  mutating?: boolean;
+}
+
+export function lowerResolveOptions(stable: ValueMethodResolveOptions): RawValueMethodResolveOptions {
+  const { arity, labels, argTypes, static: isStatic, mutating, typeArguments } = stable;
+  const raw: RawValueMethodResolveOptions = { arity, labels, argTypes, static: isStatic, mutating };
+  if (typeArguments !== undefined) {
+    raw.typeArguments = typeArguments.map((t) => metadataOf(t));
+  }
+  return raw;
 }
 
 interface MethodCandidate {
@@ -127,7 +171,7 @@ export type AccessorKind = "getter" | "setter";
 interface AccessorCandidate {
   address: NativePointer;
   member: string;
-  kind: AccessorKind;
+  kind: AccessorKind | "modify";
   typeName: string;
   isStatic: boolean;
 }
@@ -140,25 +184,10 @@ interface TypeMembers {
 const tableCache = new Map<string, TypeMembers>();
 const invokerCache = new Map<string, SwiftNativeFunction>();
 
-function rawArg(value: CallArg): CallArg | ClassInstance {
+function rawArg(value: CallArg): CallArg | ClassInstance | ValueInstance {
   return value !== null && typeof value === "object"
     ? (value as { [RAW]?: ClassInstance | ValueInstance })[RAW] ?? value
     : value;
-}
-
-// The marshalled path borrows every argument; a consuming (__owned) or inout parameter would
-// double-free or desync self.
-const NON_BORROWING_ARG = /^(?:__owned|inout)\s/;
-
-function assertBorrowingArgs(argTypeNames: string[], selector: string): void {
-  const offending = argTypeNames.find((n) => NON_BORROWING_ARG.test(n));
-  if (offending !== undefined) {
-    throw new Error(
-      `${selector} has a non-borrowing parameter (${offending}); its calling convention is unsupported ` +
-        `by the marshalled API. Bind it through makeSwiftNativeFunction, supplying the ABI signature and ` +
-        `consumedArgs by hand.`
-    );
-  }
 }
 
 function assertClassAssignable(arg: ClassInstance, declared: Metadata): void {
@@ -185,7 +214,7 @@ function marshalArg(metadata: Metadata, value: CallArg): NativePointer {
     assertClassAssignable(arg, metadata);
     buffer.writePointer(arg.handle);
   } else if (metadata.kind === MetadataKind.Class) {
-    buffer.writePointer(arg as NativePointer);
+    throw new Error(`expected a ${typeName(metadata)} object; a raw pointer is only accepted via /abi`);
   } else {
     writeValue(metadata, buffer, arg as SwiftValue);
   }
@@ -224,7 +253,7 @@ function decodeReturn(returnType: Metadata | null, ret: NativePointer | null): C
     return null;
   }
   if (returnType.kind === MetadataKind.Class) {
-    return createObject(ClassInstance.adopt(ret.readPointer()));
+    return asSwiftObject(ClassInstance.adopt(ret.readPointer()));
   }
   if (returnType.kind === MetadataKind.Optional) {
     const some = projectOptionalPayload(returnType, ret);
@@ -236,13 +265,13 @@ function decodeReturn(returnType: Metadata | null, ret: NativePointer | null): C
     returnType.kind === MetadataKind.Existential ||
     returnType.kind === MetadataKind.ExtendedExistential;
   if (isExistential && isClassExistential(returnType)) {
-    return createObject(ClassInstance.adopt(ret.readPointer()));
+    return asSwiftObject(ClassInstance.adopt(ret.readPointer()));
   }
   if (returnType.kind === MetadataKind.Existential && existentialPayloadEmbedsManagedReference(returnType, ret)) {
-    return createObject(ValueInstance.adopt(returnType, ret));
+    return asSwiftObject(ValueInstance.adopt(returnType, ret));
   }
   if (!returnType.valueWitnesses.isPOD && embedsManagedReference(returnType)) {
-    return createObject(ValueInstance.adopt(returnType, ret));
+    return asSwiftObject(ValueInstance.adopt(returnType, ret));
   }
   const value = readValue(returnType, ret);
   if (!returnType.valueWitnesses.isPOD) {
@@ -283,9 +312,7 @@ export function marshalConsumedArgs(argTypes: Metadata[], args: CallArg[]): Nati
   return buffers;
 }
 
-// +0/guaranteed args: the callee borrows, so each non-POD value temp is ours to destroy post-call
-// (try/finally covers a throwing callee). An explicitly-__owned param would double-free — known gap.
-function callBorrowingArgs(
+export function callBorrowingArgs(
   argTypes: Metadata[],
   args: CallArg[],
   returnType: Metadata | null,
@@ -315,13 +342,27 @@ function methodKind(name: string): MethodKind {
   return name === "init" || name === "__allocating_init" ? "init" : "method";
 }
 
+// The marshalled path borrows every argument; a consuming (__owned) or inout parameter would
+// double-free or desync self.
+const NON_BORROWING_ARG = /^(?:__owned|inout)\s/;
+
+export function assertBorrowingArgs(argTypeNames: string[], selector: string): void {
+  const offending = argTypeNames.find((n) => NON_BORROWING_ARG.test(n));
+  if (offending !== undefined) {
+    throw new Error(
+      `${selector} has a non-borrowing parameter (${offending}); its calling convention is unsupported ` +
+        `by the stable API. Bind it through /abi, supplying the ABI signature and ownership by hand.`
+    );
+  }
+}
+
 function sequenceEqual<T>(actual: T[], wanted: T[]): boolean {
   return actual.length === wanted.length && actual.every((value, i) => value === wanted[i]);
 }
 
 function applyOverloadFilters<T extends { isStatic: boolean; signature: SwiftFunctionSignature }>(
   candidates: T[],
-  options: MethodResolveOptions
+  options: RawMethodResolveOptions
 ): T[] {
   if (options.static !== undefined) {
     candidates = candidates.filter((c) => c.isStatic === options.static);
@@ -408,7 +449,7 @@ function typeMembers(fullName: string): TypeMembers {
       if (context === fullName) {
         methods.push({ address, name: signature.name, mangled: name, isStatic, signature });
       }
-    } else if (!initsOnly && signature.kind !== "modify") {
+    } else if (!initsOnly) {
       const { context, isStatic } = stripReceiverKeyword(signature.context);
       if (context === fullName) {
         accessors.push({ address, member: signature.member, kind: signature.kind, typeName: signature.typeName, isStatic });
@@ -460,8 +501,9 @@ export interface PropertyInfo {
   writable: boolean;
 }
 
-// One entry per property: getter and setter symbols merge into a single writable flag. Walks the
-// class chain like enumerateMethods so a subclass property shadows the superclass one of the same name.
+// One entry per property, its accessors merged. writable tracks an exported setter, the only
+// accessor $set resolves (a get/_modify property still gets a synthesized one). Walks the class
+// chain like enumerateMethods so a subclass property shadows the superclass one of the same name.
 export function enumerateProperties(typeName: string): PropertyInfo[] {
   const seen = new Set<string>();
   const properties: PropertyInfo[] = [];
@@ -492,7 +534,7 @@ export function enumerateProperties(typeName: string): PropertyInfo[] {
 export function resolveMethod(
   typeName: string,
   methodName: string,
-  options: MethodResolveOptions = {}
+  options: RawMethodResolveOptions = {}
 ): ResolvedMethod {
   const fullName = canonicalTypeName(typeName);
   for (const className of classChainNames(fullName)) {
@@ -757,7 +799,7 @@ export class BoundStaticMethod {
 export function bindStaticMethod(
   receiver: Metadata,
   name: string,
-  options: MethodResolveOptions = {}
+  options: RawMethodResolveOptions = {}
 ): BoundStaticMethod | BoundAsyncMethod {
   const resolved = resolveMethod(typeName(receiver), name, { ...options, static: true });
   return resolved.async === true ? new BoundAsyncMethod(resolved, null) : new BoundStaticMethod(resolved);
@@ -777,7 +819,7 @@ export class BoundValueInitializer {
     return this.resolved.address;
   }
 
-  call(...args: CallArg[]): SwiftObject | null {
+  call(...args: CallArg[]): SwiftValueObject | null {
     const { argTypes, returnType, selector } = this.resolved;
     if (returnType === null) {
       throw new Error(`${selector} is not a value initializer`);
@@ -793,24 +835,34 @@ export class BoundValueInitializer {
     // A failable initializer (`init?`) returns Optional<Self>.
     if (returnType.kind === MetadataKind.Optional) {
       const some = projectOptionalPayload(returnType, ret);
-      return some === null ? null : createObject(ValueInstance.adopt(some.payloadType, some.address));
+      return some === null ? null : asSwiftObject(ValueInstance.adopt(some.payloadType, some.address));
     }
-    return createObject(ValueInstance.adopt(returnType, ret));
+    return asSwiftObject(ValueInstance.adopt(returnType, ret));
   }
 }
 
 export function bindValueInitializer(
   receiver: Metadata,
-  options: MethodResolveOptions = {}
+  options: RawMethodResolveOptions = {}
 ): BoundValueInitializer {
   return new BoundValueInitializer(resolveMethod(typeName(receiver), "init", options));
 }
 
 export type SelfRouting = { indirect: true } | { indirect: false; receiver: Metadata };
 
-// Value-type self is indirect (x20) when mutating/inout or large/non-POD; else it rides as a trailing arg.
-function valueSelfRouting(receiver: Metadata, mutating: boolean): SelfRouting {
-  return mutating || shouldPassIndirectly(receiver) ? { indirect: true } : { indirect: false, receiver };
+// Value-type self is indirect (x20) when mutating/inout or large/non-POD; else it rides as a trailing
+// arg. Only a small loadable receiver's routing depends on `mutating`, which isn't recoverable from the
+// symbol, so there the caller must state it rather than have us guess non-mutating and corrupt self.
+function valueSelfRouting(receiver: Metadata, selector: string, mutating: boolean | undefined): SelfRouting {
+  if (shouldPassIndirectly(receiver)) {
+    return { indirect: true };
+  }
+  if (mutating === undefined) {
+    throw new Error(
+      `${selector} on small loadable ${typeName(receiver)}: self routing depends on whether it mutates; pass { mutating: true } or { mutating: false }`
+    );
+  }
+  return mutating ? { indirect: true } : { indirect: false, receiver };
 }
 
 function valueInvoker(resolved: ResolvedMethod, receiver: Metadata, indirectSelf: boolean): SwiftNativeFunction {
@@ -838,9 +890,9 @@ export class BoundValueMethod {
     readonly resolved: ResolvedMethod,
     private readonly receiver: Metadata,
     private readonly self: NativePointer,
-    mutating: boolean
+    routing: SelfRouting
   ) {
-    this.indirectSelf = valueSelfRouting(receiver, mutating).indirect;
+    this.indirectSelf = routing.indirect;
     this.fn = valueInvoker(resolved, receiver, this.indirectSelf);
   }
 
@@ -863,13 +915,13 @@ export function bindValueMethod(
   receiver: Metadata,
   self: NativePointer,
   name: string,
-  options: ValueMethodResolveOptions = {}
+  options: RawValueMethodResolveOptions = {}
 ): BoundValueMethod | BoundAsyncMethod {
   const resolved = resolveMethod(typeName(receiver), name, options);
-  if (resolved.async === true) {
-    return new BoundAsyncMethod(resolved, self, valueSelfRouting(receiver, options.mutating === true));
-  }
-  return new BoundValueMethod(resolved, receiver, self, options.mutating === true);
+  const routing = valueSelfRouting(receiver, resolved.selector, options.mutating);
+  return resolved.async === true
+    ? new BoundAsyncMethod(resolved, self, routing)
+    : new BoundValueMethod(resolved, receiver, self, routing);
 }
 
 // buffer: (UnsafeRawBufferPointer) -> @out, via an asm trampoline. loadable: register params and
@@ -1314,7 +1366,7 @@ function argPlanBound(signature: SwiftFunctionSignature): boolean {
     : signature.argTypeNames.some((n) => parseFunctionTypeSpelling(n) !== null);
 }
 
-function planGenericMethod(typeNameArg: string, methodName: string, options: MethodResolveOptions): GenericMethodPlan {
+function planGenericMethod(typeNameArg: string, methodName: string, options: RawMethodResolveOptions): GenericMethodPlan {
   const fullName = canonicalTypeName(typeNameArg);
   const typeArguments = options.typeArguments ?? [];
   const candidates = applyOverloadFilters(
@@ -1358,7 +1410,7 @@ export function bindGenericMethod(
   typeName: string,
   methodName: string,
   self: NativePointer,
-  options: MethodResolveOptions = {}
+  options: RawMethodResolveOptions = {}
 ): GenericBoundMethod | GenericBoundAsyncMethod {
   const plan = planGenericMethod(typeName, methodName, options);
   const routing: SelfRouting = { indirect: true };
@@ -1369,10 +1421,10 @@ export function bindGenericValueMethod(
   receiver: Metadata,
   self: NativePointer,
   methodName: string,
-  options: ValueMethodResolveOptions = {}
+  options: RawValueMethodResolveOptions = {}
 ): GenericBoundMethod | GenericBoundAsyncMethod {
   const plan = planGenericMethod(typeName(receiver), methodName, options);
-  const routing = valueSelfRouting(receiver, options.mutating === true);
+  const routing = valueSelfRouting(receiver, plan.selector, options.mutating);
   return plan.async ? new GenericBoundAsyncMethod(plan, self, routing) : new GenericBoundMethod(plan, self, routing);
 }
 
@@ -1408,7 +1460,7 @@ function genericTypeArguments(receiver: Metadata): { unboundName: string; typePa
 // Methods on a generic type, no method-level generics. self is always indirect (class: object in
 // x20; value: its bytes, address-only in the generic context). A value type trails its Self metadata
 // — the callee reads T's metadata + witnesses from that vector; a class recovers them from the isa.
-function planGenericTypeMethod(receiver: Metadata, methodName: string, options: MethodResolveOptions, trailsSelfMetadata: boolean): GenericMethodPlan {
+function planGenericTypeMethod(receiver: Metadata, methodName: string, options: RawMethodResolveOptions, trailsSelfMetadata: boolean): GenericMethodPlan {
   const { unboundName, typeParams, typeArguments } = genericTypeArguments(receiver);
   const candidates = applyOverloadFilters(
     typeMembers(unboundName).methods.filter(
@@ -1453,7 +1505,7 @@ export function bindGenericTypeValueMethod(
   receiver: Metadata,
   self: NativePointer,
   methodName: string,
-  options: MethodResolveOptions = {}
+  options: RawMethodResolveOptions = {}
 ): GenericBoundMethod | GenericBoundAsyncMethod {
   const plan = planGenericTypeMethod(receiver, methodName, options, true);
   return plan.async
@@ -1465,7 +1517,7 @@ export function bindGenericTypeClassMethod(
   receiver: Metadata,
   self: NativePointer,
   methodName: string,
-  options: MethodResolveOptions = {}
+  options: RawMethodResolveOptions = {}
 ): GenericBoundMethod | GenericBoundAsyncMethod {
   const plan = planGenericTypeMethod(receiver, methodName, options, false);
   return plan.async

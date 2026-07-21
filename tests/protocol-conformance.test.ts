@@ -11,6 +11,7 @@ import {
   conformsToProtocol,
 } from "../src/abi/protocol-conformance.js";
 
+import { metadataFor } from "../src/abi.js";
 describe("protocol conformances", () => {
   test("enumerates conformances whose protocol resolves", () => {
     const lib = loadSwiftCore();
@@ -37,7 +38,7 @@ describe("protocol conformances", () => {
   test("returns a witness table when a type conforms", () => {
     loadSwiftCore();
     const witnessTable = conformsToProtocol(
-      Swift.metadataFor("Swift.Int")!,
+      metadataFor("Swift.Int")!,
       findProtocol("Swift.Hashable")!
     );
     expect(witnessTable).not.toBeNull();
@@ -47,13 +48,13 @@ describe("protocol conformances", () => {
     loadSwiftCore();
     const sequence = findProtocol("Swift.Sequence");
     expect(sequence).not.toBeNull();
-    expect(conformsToProtocol(Swift.metadataFor("Swift.Int")!, sequence!)).toBeNull();
+    expect(conformsToProtocol(metadataFor("Swift.Int")!, sequence!)).toBeNull();
   });
 
   test("instantiates a constrained generic with a witness-table key argument", () => {
     loadSwiftCore();
-    const string = Swift.metadataFor("Swift.String")!;
-    const int = Swift.metadataFor("Swift.Int")!;
+    const string = metadataFor("Swift.String")!;
+    const int = metadataFor("Swift.Int")!;
     const keyHashableWitness = conformsToProtocol(string, findProtocol("Swift.Hashable")!)!;
 
     const dictionary = instantiateGenericMetadata(findType("Swift.Dictionary")!, [

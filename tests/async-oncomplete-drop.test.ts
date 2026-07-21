@@ -2,8 +2,9 @@
 import { test, describe } from "@frida/injest/agent";
 import { requireSwift } from "./swift.js";
 import { loadFixture } from "./fixtures/load.js";
-import { Swift, AsyncFunctionPointer, driveAsyncCall } from "../src/index.js";
+import { AsyncFunctionPointer, driveAsyncCall } from "../src/abi.js";
 
+import { Swift } from "../src/index.js";
 const DIVIDE_ASYNC = "$s7fixture11divideAsyncyS2i_SitYaKF";
 const DIVIDE_ASYNC_AFP = DIVIDE_ASYNC + "Tu";
 

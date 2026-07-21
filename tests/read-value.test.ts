@@ -1,9 +1,10 @@
 import { test, expect, describe } from "@frida/injest/agent";
 import { requireSwift } from "./swift.js";
 
-import { Swift, resolveTypeByMangledName } from "../src/index.js";
+import { resolveTypeByMangledName, metadataFor } from "../src/abi.js";
 import { readValue } from "../src/abi/instance.js";
 
+import { Swift } from "../src/index.js";
 function box(write: (p: NativePointer) => void, size = 8): NativePointer {
   const storage = Memory.alloc(size);
   write(storage);
@@ -20,21 +21,21 @@ function mangledType(mangled: string) {
 describe("readValue", () => {
   test("decodes integer primitives", () => {
     requireSwift();
-    expect(readValue(Swift.metadataFor("Swift.Int")!, box((p) => p.writeS64(-42)))).toEqual(int64(-42));
-    expect(readValue(Swift.metadataFor("Swift.UInt8")!, box((p) => p.writeU8(200)))).toBe(200);
-    expect(readValue(Swift.metadataFor("Swift.Int32")!, box((p) => p.writeS32(-7)))).toBe(-7);
+    expect(readValue(metadataFor("Swift.Int")!, box((p) => p.writeS64(-42)))).toEqual(int64(-42));
+    expect(readValue(metadataFor("Swift.UInt8")!, box((p) => p.writeU8(200)))).toBe(200);
+    expect(readValue(metadataFor("Swift.Int32")!, box((p) => p.writeS32(-7)))).toBe(-7);
   });
 
   test("decodes bool and floating point", () => {
     requireSwift();
-    expect(readValue(Swift.metadataFor("Swift.Bool")!, box((p) => p.writeU8(1)))).toBe(true);
-    expect(readValue(Swift.metadataFor("Swift.Bool")!, box((p) => p.writeU8(0)))).toBe(false);
-    expect(readValue(Swift.metadataFor("Swift.Double")!, box((p) => p.writeDouble(3.5)))).toBe(3.5);
+    expect(readValue(metadataFor("Swift.Bool")!, box((p) => p.writeU8(1)))).toBe(true);
+    expect(readValue(metadataFor("Swift.Bool")!, box((p) => p.writeU8(0)))).toBe(false);
+    expect(readValue(metadataFor("Swift.Double")!, box((p) => p.writeDouble(3.5)))).toBe(3.5);
   });
 
   test("recurses into nested struct fields", () => {
     requireSwift();
-    const rangeInt = Swift.metadataFor("Swift.Range", [Swift.metadataFor("Swift.Int")!])!;
+    const rangeInt = metadataFor("Swift.Range", [metadataFor("Swift.Int")!])!;
     const storage = Memory.alloc(rangeInt.typeLayout.stride);
     storage.writeU64(10);
     storage.add(8).writeU64(20);
@@ -52,7 +53,7 @@ describe("readValue", () => {
 
   test("returns a class-typed field as its reference pointer", () => {
     requireSwift();
-    const klass = Swift.metadataFor("Swift.__RawSetStorage")!;
+    const klass = metadataFor("Swift.__RawSetStorage")!;
     const slot = Memory.alloc(Process.pointerSize);
     slot.writePointer(ptr("0x1234"));
     expect((readValue(klass, slot) as NativePointer).equals(ptr("0x1234"))).toBeTruthy();

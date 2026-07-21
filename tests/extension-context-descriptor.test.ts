@@ -70,6 +70,7 @@ describe("extension context descriptor", () => {
     expect(extendedTypeName(ext)).toBeNull();
     expect(new ContextDescriptor(nested).fullTypeName).toBeNull();
   });
+
   test("returns null for a zero ExtendedContext offset", () => {
     const descriptor = Memory.alloc(0xc);
     descriptor.writeU32(ContextDescriptorKind.Extension);

@@ -1,19 +1,18 @@
 import { test, expect, describe, beforeEach } from "@frida/injest/agent";
 import { loadFixture } from "./fixtures/load.js";
 
-import { Swift, ClassType, Metadata, MethodDescriptorKind, VTableEntry } from "../src/index.js";
+import { ClassType, ClassInstance, ClassMetadata, Metadata, MethodDescriptorKind, VTableEntry, readVTableChain, metadataFor, typeOf, metadataOf } from "../src/abi.js";
 import { resolveMethod, enumerateMethods } from "../src/runtime/method.js";
-
 function animalType(): ClassType {
-  return Swift.typeOf(Swift.metadataFor("fixture.Animal")!) as ClassType;
+  return typeOf(metadataFor("fixture.Animal")!) as ClassType;
 }
 
 function catType(): ClassType {
-  return Swift.typeOf(Swift.metadataFor("fixture.Cat")!) as ClassType;
+  return typeOf(metadataFor("fixture.Cat")!) as ClassType;
 }
 
 function Int(): Metadata {
-  return Swift.metadataFor("Swift.Int")!;
+  return metadataFor("Swift.Int")!;
 }
 
 describe("inherited methods (symbol route)", () => {
@@ -49,28 +48,34 @@ describe("live polymorphic dispatch (metadata vtable)", () => {
   // The slot that Animal declares speak in; the same word in any subclass metadata holds its override.
   function speakSlot(): number {
     const impl = resolveMethod("fixture.Animal", "speak", { static: false }).address;
-    return animalType().vtable.find((e) => e.declaredImpl.equals(impl))!.metadataOffset;
+    return readVTableChain(new ClassMetadata(metadataOf(animalType()).handle)).find(
+      (e) => e.declaredImpl.equals(impl)
+    )!.metadataOffset;
   }
 
   test("a base slot reaches the most-derived override", () => {
     const slot = speakSlot();
-    expect(catType().init().$vtableMethod(slot, { returnType: Int(), argTypes: [] }).call()).toEqual(int64(9)); // Cat.speak
-    expect(animalType().init().$vtableMethod(slot, { returnType: Int(), argTypes: [] }).call()).toEqual(int64(1)); // Animal.speak
+    const cat = catType().init();
+    const animal = animalType().init();
+    expect(new ClassInstance(cat.$handle).vtableMethod(slot, { returnType: Int(), argTypes: [] }).call()).toEqual(int64(9)); // Cat.speak
+    expect(new ClassInstance(animal.$handle).vtableMethod(slot, { returnType: Int(), argTypes: [] }).call()).toEqual(int64(1)); // Animal.speak
   });
 
   test("the live impl differs from the descriptor's declared impl", () => {
     const declared = resolveMethod("fixture.Animal", "speak", { static: false }).address;
     const overridden = resolveMethod("fixture.Cat", "speak", { static: false }).address;
     const slot = speakSlot();
-    const live = catType().init().$vtableMethod(slot, { returnType: Int(), argTypes: [] }).address;
+    const cat = catType().init();
+    const live = new ClassInstance(cat.$handle).vtableMethod(slot, { returnType: Int(), argTypes: [] }).address;
     expect(live.equals(overridden)).toBe(true);
     expect(live.equals(declared)).toBe(false);
   });
 
   test("the subclass vtable surfaces inherited slots", () => {
-    const instanceMethods = catType()
-      .init()
-      .$vtable.filter((e: VTableEntry) => e.kind === MethodDescriptorKind.Method && e.isInstance);
+    const cat = catType().init();
+    const instanceMethods = new ClassInstance(cat.$handle).vtable.filter(
+      (e: VTableEntry) => e.kind === MethodDescriptorKind.Method && e.isInstance
+    );
     expect(instanceMethods.length).toBe(2); // speak + legs, both from Animal's descriptor
   });
 });

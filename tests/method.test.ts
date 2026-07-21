@@ -1,7 +1,7 @@
 import { test, expect, describe, beforeEach } from "@frida/injest/agent";
 import { loadFixture } from "./fixtures/load.js";
 
-import { Swift, ClassType, ClassInstance, StructType, SwiftObject } from "../src/index.js";
+import { Swift, ClassType, StructType, SwiftObject } from "../src/index.js";
 import {
   resolveMethod,
   enumerateMethods,
@@ -9,8 +9,9 @@ import {
 } from "../src/runtime/method.js";
 import { parseSwiftSignature, type SwiftFunctionSignature } from "../src/runtime/symbolication.js";
 
+import { ClassInstance, metadataFor, typeOf, typeName } from "../src/abi.js";
 function robotType(): ClassType {
-  return Swift.typeOf(Swift.metadataFor("fixture.Robot")!) as ClassType;
+  return typeOf(metadataFor("fixture.Robot")!) as ClassType;
 }
 
 describe("parser labels", () => {
@@ -42,20 +43,20 @@ describe("resolveMethod", () => {
     expect(m.address.isNull()).toBe(false);
     expect(m.isStatic).toBe(false);
     expect(m.selector).toBe("greet(_:)");
-    expect(Swift.typeName(m.argTypes[0])).toBe("Swift.String");
-    expect(Swift.typeName(m.returnType!)).toBe("Swift.String");
+    expect(typeName(m.argTypes[0])).toBe("Swift.String");
+    expect(typeName(m.returnType!)).toBe("Swift.String");
+  });
+
+  test("rejects a consuming parameter, directing to /abi", () => {
+    expect(() => resolveMethod("fixture.Robot", "absorb")).toThrow(
+      /non-borrowing parameter.*unsupported.*\/abi/s
+    );
   });
 
   test("distinguishes a static method", () => {
     const m = resolveMethod("fixture.Robot", "make", { static: true });
     expect(m.isStatic).toBe(true);
-    expect(Swift.typeName(m.returnType!)).toBe("fixture.Robot");
-  });
-
-  test("rejects a consuming parameter, directing to the raw ABI binder", () => {
-    expect(() => resolveMethod("fixture.Robot", "absorb")).toThrow(
-      /non-borrowing parameter.*unsupported.*makeSwiftNativeFunction/s
-    );
+    expect(typeName(m.returnType!)).toBe("fixture.Robot");
   });
 
   test("throws on an ambiguous overload, resolves by arity", () => {
@@ -75,9 +76,9 @@ describe("resolveMethod", () => {
     expect(() => resolveMethod("fixture.Robot", "tagged")).toThrow();
     expect(() => resolveMethod("fixture.Robot", "tagged", { labels: [null] })).toThrow();
     const i = resolveMethod("fixture.Robot", "tagged", { argTypes: ["Swift.Int"] });
-    expect(Swift.typeName(i.argTypes[0])).toBe("Swift.Int");
+    expect(typeName(i.argTypes[0])).toBe("Swift.Int");
     const s = resolveMethod("fixture.Robot", "tagged", { argTypes: ["Swift.String"] });
-    expect(Swift.typeName(s.argTypes[0])).toBe("Swift.String");
+    expect(typeName(s.argTypes[0])).toBe("Swift.String");
   });
 });
 
@@ -120,9 +121,17 @@ describe("enumerateProperties", () => {
     expect(props.filter((p) => p.name === "x").length).toBe(1);
   });
 
+  test("writable tracks an exported setter, which a modify-backed property still has", () => {
+    const props = enumerateProperties("fixture.Point");
+    // get + _modify: the compiler synthesizes a setter, so $set can resolve it.
+    expect(props.find((p) => p.name === "tracked")!.writable).toBe(true);
+    // get only, no modify: no setter to resolve.
+    expect(props.find((p) => p.name === "doubled")!.writable).toBe(false);
+  });
+
   test("is exposed on the type wrapper as .properties", () => {
-    const point = Swift.typeOf(Swift.metadataFor("fixture.Point")!) as StructType;
-    expect(point.properties.map((p) => p.name).sort()).toEqual(["doubled", "x"]);
+    const point = typeOf(metadataFor("fixture.Point")!) as StructType;
+    expect(point.properties.map((p) => p.name).sort()).toEqual(["doubled", "tracked", "x"]);
   });
 
   test("lists class properties with their types", () => {
@@ -151,18 +160,13 @@ describe("ClassInstance method invocation", () => {
   test("passes a class-typed argument", () => {
     const a = robotType().init("Ada");
     const b = robotType().init("Bee");
-    expect(a.$call("merged", b.$handle)).toBe("Ada+Bee");
-  });
-
-  test("rejects a class argument whose type is not the declared class", () => {
-    const a = robotType().init("Ada");
-    const token = (Swift.typeOf(Swift.metadataFor("fixture.Token")!) as ClassType).init(1);
-    expect(() => a.$call("merged", token)).toThrow(/expected fixture.Robot/);
+    expect(a.$call("merged", b)).toBe("Ada+Bee");
   });
 
   test("adopts a class-existential return, keeping the reference alive past the call", () => {
     const named = robotType().init("R2").$call("alias") as SwiftObject;
     expect(named.$kind).toBe("object");
+    // Adopted from the container's +1 class ref, not released by the container destroy.
     expect(named.$get("label")).toBe("R2");
     const view = new ClassInstance(named.$handle);
     view.retain();
@@ -219,7 +223,7 @@ describe("ClassInstance computed property", () => {
   });
 
   test("gets and sets a property inherited from a superclass", () => {
-    const pup = (Swift.typeOf(Swift.metadataFor("fixture.Pup")!) as ClassType).init("Rex", 4);
+    const pup = (typeOf(metadataFor("fixture.Pup")!) as ClassType).init("Rex", 4);
     expect(pup.$get("legs")).toEqual(int64(4));
     pup.$set("legs", 3);
     expect(pup.$get("legs")).toEqual(int64(3));

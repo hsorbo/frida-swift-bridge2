@@ -1,14 +1,15 @@
 import { test, expect, describe, beforeEach } from "@frida/injest/agent";
 import { loadFixture } from "./fixtures/load.js";
 
-import { Swift, StructType, SwiftObject } from "../src/index.js";
+import { Swift, StructType, SwiftValueObject } from "../src/index.js";
 
+import { metadataFor, typeOf } from "../src/abi.js";
 function bag(): StructType {
-  return Swift.typeOf(Swift.metadataFor("fixture.Bag")!) as StructType;
+  return typeOf(metadataFor("fixture.Bag")!) as StructType;
 }
 
-function decoded(method: string): SwiftObject {
-  const result = bag().call(method) as SwiftObject;
+function decoded(method: string): SwiftValueObject {
+  const result = bag().call(method) as SwiftValueObject;
   expect(result.$kind).toBe("value");
   return result;
 }

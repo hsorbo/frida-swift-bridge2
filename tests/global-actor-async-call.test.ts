@@ -1,16 +1,16 @@
 import { test, expect, describe, beforeEach } from "@frida/injest/agent";
 import { loadFixture } from "./fixtures/load.js";
 
-import { Swift, ClassType, AsyncFunctionPointer, driveAsyncCall } from "../src/index.js";
+import { ClassType, AsyncFunctionPointer, driveAsyncCall, metadataFor, typeOf } from "../src/abi.js";
 
 const GA_FREE_ASYNC_AFP = "$s7fixture11gaFreeAsyncyS2iYaFTu";
 
 function gaHolder(v: number) {
-  return (Swift.typeOf(Swift.metadataFor("fixture.GAHolder")!) as ClassType).init(v);
+  return (typeOf(metadataFor("fixture.GAHolder")!) as ClassType).init(v);
 }
 
 function wholeGAHolder(v: number) {
-  return (Swift.typeOf(Swift.metadataFor("fixture.WholeGAHolder")!) as ClassType).init(v);
+  return (typeOf(metadataFor("fixture.WholeGAHolder")!) as ClassType).init(v);
 }
 
 // A generic global actor's executor is its default-actor singleton, drained by the cooperative pool;
@@ -26,7 +26,7 @@ describe("generic global-actor async calling", () => {
   });
 
   test("a @globalActor-isolated method on a plain class is neither actor nor default actor", () => {
-    const t = Swift.typeOf(Swift.metadataFor("fixture.GAHolder")!) as ClassType;
+    const t = typeOf(metadataFor("fixture.GAHolder")!) as ClassType;
     expect(t.isActor).toBe(false);
     expect(t.isDefaultActor).toBe(false);
   });

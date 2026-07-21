@@ -1,19 +1,22 @@
 import { test, expect, describe, beforeEach } from "@frida/injest/agent";
 import { loadFixture } from "./fixtures/load.js";
 
-import { Swift, ClassType, Metadata, MethodDescriptorKind, readVTable } from "../src/index.js";
+import { ClassType, ClassInstance, ClassMetadata, Metadata, MethodDescriptorKind, readVTable, readVTableChain, findType, metadataFor, typeOf, metadataOf } from "../src/abi.js";
 import { resolveMethod } from "../src/runtime/method.js";
 
+import { Swift } from "../src/index.js";
 function dispatcherType(): ClassType {
-  return Swift.typeOf(Swift.metadataFor("fixture.Dispatcher")!) as ClassType;
+  return typeOf(metadataFor("fixture.Dispatcher")!) as ClassType;
 }
 
 function Int(): Metadata {
-  return Swift.metadataFor("Swift.Int")!;
+  return metadataFor("Swift.Int")!;
 }
 
 function instanceMethods(type: ClassType) {
-  return type.vtable.filter((e) => e.kind === MethodDescriptorKind.Method && e.isInstance);
+  return readVTableChain(new ClassMetadata(metadataOf(type).handle)).filter(
+    (e) => e.kind === MethodDescriptorKind.Method && e.isInstance
+  );
 }
 
 describe("vtable route", () => {
@@ -37,8 +40,9 @@ describe("vtable route", () => {
   test("invokes each slot by offset, reaching the non-exported impl", () => {
     const type = dispatcherType();
     const obj = type.init();
+    const inst = new ClassInstance(obj.$handle);
     const results = instanceMethods(type)
-      .map((e) => obj.$vtableMethod(e.metadataOffset, { returnType: Int(), argTypes: [Int()] }).call(10) as number)
+      .map((e) => inst.vtableMethod(e.metadataOffset, { returnType: Int(), argTypes: [Int()] }).call(10) as number)
       .sort((a, b) => a - b);
     expect(results).toEqual([int64(11), int64(30)]); // pub(10)=11, hidden(10)=30
   });
@@ -46,14 +50,15 @@ describe("vtable route", () => {
   test("the exported slot's impl matches the symbol route", () => {
     const type = dispatcherType();
     const obj = type.init();
+    const inst = new ClassInstance(obj.$handle);
     const pub = instanceMethods(type).find(
-      (e) => (obj.$vtableMethod(e.metadataOffset, { returnType: Int(), argTypes: [Int()] }).call(10) as Int64).equals(11)
+      (e) => (inst.vtableMethod(e.metadataOffset, { returnType: Int(), argTypes: [Int()] }).call(10) as Int64).equals(11)
     )!;
     const viaSymbol = resolveMethod("fixture.Dispatcher", "pub", { static: false });
     expect(pub.declaredImpl.equals(viaSymbol.address)).toBe(true);
   });
 
   test("throws for a class whose vtable offset is not fixed", () => {
-    expect(() => readVTable(Swift.findType("fixture.GenericHolder")!)).toThrow(/generic/);
+    expect(() => readVTable(findType("fixture.GenericHolder")!)).toThrow(/generic/);
   });
 });

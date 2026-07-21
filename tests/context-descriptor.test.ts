@@ -7,6 +7,7 @@ import {
   ContextDescriptorKind,
 } from "../src/abi/context-descriptor.js";
 
+import { Swift } from "../src/index.js";
 function indexByName(lib: Module): Map<string, ContextDescriptor> {
   const byName = new Map<string, ContextDescriptor>();
   for (const ptr of enumerateTypeContextDescriptors(lib)) {

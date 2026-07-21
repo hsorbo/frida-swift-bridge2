@@ -1,12 +1,12 @@
 import { test, expect, describe, beforeEach } from "@frida/injest/agent";
 import { loadFixture } from "./fixtures/load.js";
 
-import { Swift, ClassType, SwiftAsyncThrow } from "../src/index.js";
+import { ClassType, SwiftError, metadataFor, typeOf } from "../src/abi.js";
 
 declare function gc(): void;
 
 function ticker() {
-  return (Swift.typeOf(Swift.metadataFor("fixture.Ticker")!) as ClassType).init();
+  return (typeOf(metadataFor("fixture.Ticker")!) as ClassType).init();
 }
 
 describe("actor-isolated async calling", () => {
@@ -54,8 +54,8 @@ describe("actor-isolated async calling", () => {
     expect(await ticker().advanceOrThrowAsync(3)).toEqual(int64(3));
   });
 
-  test("rejects with SwiftAsyncThrow when the actor method throws", async () => {
-    await expect(ticker().advanceOrThrowAsync(0)).rejects.toThrow(SwiftAsyncThrow);
+  test("rejects with SwiftError when the actor method throws", async () => {
+    await expect(ticker().advanceOrThrowAsync(0)).rejects.toThrow(SwiftError);
   });
 
   test("serializes concurrent calls on the actor: 20 × advance() ⇒ {1..20}", async () => {
@@ -67,7 +67,7 @@ describe("actor-isolated async calling", () => {
 });
 
 function customTicker() {
-  return (Swift.typeOf(Swift.metadataFor("fixture.CustomExecutorTicker")!) as ClassType).init();
+  return (typeOf(metadataFor("fixture.CustomExecutorTicker")!) as ClassType).init();
 }
 
 describe("custom-executor actor async calling", () => {
@@ -76,7 +76,7 @@ describe("custom-executor actor async calling", () => {
   });
 
   test("a custom-executor actor is an actor but not a default actor", () => {
-    const t = Swift.typeOf(Swift.metadataFor("fixture.CustomExecutorTicker")!) as ClassType;
+    const t = typeOf(metadataFor("fixture.CustomExecutorTicker")!) as ClassType;
     expect(t.isActor).toBe(true);
     expect(t.isDefaultActor).toBe(false);
   });

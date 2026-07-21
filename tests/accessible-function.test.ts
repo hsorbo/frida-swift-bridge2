@@ -1,12 +1,9 @@
 import { test, expect, describe, beforeEach } from "@frida/injest/agent";
 import { loadFixture } from "./fixtures/load.js";
 
-import {
-  AccessibleFunctionRecord,
-  enumerateAccessibleFunctions,
-  findAccessibleFunction,
-} from "../src/index.js";
+import { AccessibleFunctionRecord, enumerateAccessibleFunctions, findAccessibleFunction } from "../src/abi.js";
 
+import { Swift } from "../src/index.js";
 const ADD_MANGLED = "$s7fixture10CalculatorC3addyS2i_SitYaKFTE";
 const ADD_DEMANGLED =
   "distributed thunk fixture.Calculator.add(Swift.Int, Swift.Int) async throws -> Swift.Int";

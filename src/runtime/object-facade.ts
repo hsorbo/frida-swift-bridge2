@@ -3,15 +3,13 @@ import { ValueInstance } from "../abi/value.js";
 import { Metadata } from "../abi/metadata.js";
 import { SwiftValue } from "../abi/instance.js";
 import {
-  BoundMethod,
-  BoundValueMethod,
-  BoundAsyncMethod,
-  GenericBoundMethod,
-  GenericBoundAsyncMethod,
+  SwiftBoundMethod,
+  narrowBoundMethod,
   CallResult,
   CallArg,
   MethodResolveOptions,
   ValueMethodResolveOptions,
+  lowerResolveOptions,
   enumerateMethods,
   enumerateProperties,
 } from "./method.js";
@@ -37,10 +35,6 @@ const RESERVED = new Set([
   "$set",
   "$field",
   "$container",
-  "$vtable",
-  "$vtableMethod",
-  "$retain",
-  "$release",
   "$dispose",
 ]);
 
@@ -49,27 +43,55 @@ const POISON = new Set(["then", "catch", "finally"]);
 
 export const RAW: unique symbol = Symbol("swift.raw");
 
-export interface SwiftObject {
-  readonly $kind: "object" | "value";
+export type SwiftClassBoundMethod = SwiftBoundMethod;
+export type SwiftValueBoundMethod = SwiftBoundMethod;
+
+// The borrowed ValueInstance structurally implements this; $field returns it as-is so it stays a
+// real ValueInstance, reachable through /abi. Its raw ops are just hidden behind this narrow type.
+export interface SwiftField {
+  readonly handle: NativePointer;
+  readonly type: SwiftType;
+  read(): SwiftValue;
+  write(value: SwiftValue): void;
+}
+
+export interface SwiftObjectBase {
   readonly $type: SwiftType;
   readonly $handle: NativePointer;
   readonly $className: string;
   readonly $fields: { [name: string]: SwiftValue } | SwiftValue;
   readonly $owned: boolean;
-  $call(name: string, ...args: CallArg[]): CallResult | Promise<CallResult>;
-  $method(name: string, options?: MethodResolveOptions): BoundMethod | BoundValueMethod | GenericBoundMethod | GenericBoundAsyncMethod | BoundAsyncMethod;
+  $call(method: string, ...args: CallArg[]): CallResult | Promise<CallResult>;
   $get(name: string): CallResult;
   $set(name: string, value: CallArg): void;
-  $field(name: string): ValueInstance;
-  $container(): SwiftValue;
-  $retain(): SwiftObject;
-  $release(): void;
+  $field(name: string): SwiftField;
   $dispose(): void;
-  equals(other: SwiftObject | ClassInstance | ValueInstance | NativePointer): boolean;
+  equals(other: SwiftObject | NativePointer): boolean;
   toString(): string;
   [Symbol.dispose](): void;
+  // Raw ClassInstance ops live under /abi; never a member the index sugar can launder into `any`.
+  $retain?: never;
+  $release?: never;
+  $retainCount?: never;
+  $isUniquelyReferenced?: never;
+  $vtable?: never;
+  $vtableMethod?: never;
   [key: string]: any;
 }
+
+export interface SwiftClassObject extends SwiftObjectBase {
+  readonly $kind: "object";
+  $method(name: string, options?: MethodResolveOptions): SwiftClassBoundMethod;
+  $container?: never;
+}
+
+export interface SwiftValueObject extends SwiftObjectBase {
+  readonly $kind: "value";
+  $method(name: string, options?: ValueMethodResolveOptions): SwiftValueBoundMethod;
+  $container(): SwiftValue;
+}
+
+export type SwiftObject = SwiftClassObject | SwiftValueObject;
 
 function handleOf(other: SwiftObject | ClassInstance | ValueInstance | NativePointer): NativePointer {
   if (other instanceof NativePointer) return other;
@@ -85,7 +107,10 @@ interface MemberIndex {
 
 // One facade for class and value alike; $kind discriminates. The proxy roots its target, so an
 // owned target's +1 releases only when the proxy is GC'd.
-export function createObject(source: NativePointer | ClassInstance | ValueInstance): SwiftObject {
+export function asSwiftObject(source: ClassInstance | NativePointer): SwiftClassObject;
+export function asSwiftObject(source: ValueInstance): SwiftValueObject;
+export function asSwiftObject(source: NativePointer | ClassInstance | ValueInstance): SwiftObject;
+export function asSwiftObject(source: NativePointer | ClassInstance | ValueInstance): SwiftObject {
   const target =
     source instanceof ClassInstance || source instanceof ValueInstance
       ? source
@@ -102,10 +127,12 @@ export function createObject(source: NativePointer | ClassInstance | ValueInstan
   const readProperty = (name: string): CallResult => (isValue ? value.get(name) : object.get(name));
   const writeProperty = (name: string, v: CallArg): void =>
     isValue ? value.set(name, v) : object.set(name, v);
-  const method = (name: string, options: ValueMethodResolveOptions = {}) =>
-    isValue ? value.method(name, options) : object.method(name, options);
+  const method = (name: string, options: ValueMethodResolveOptions = {}) => {
+    const raw = lowerResolveOptions(options);
+    return isValue ? value.method(name, raw) : object.method(name, raw);
+  };
   const invoke = (name: string, args: CallArg[]): CallResult | Promise<CallResult> => {
-    const options: MethodResolveOptions = { arity: args.length };
+    const options: ValueMethodResolveOptions = { arity: args.length };
     if (args.some((a) => a instanceof ClosureSpec)) {
       options.typeArguments = []; // generic path; planGenericMethod infers the closure-result R
     }
@@ -163,17 +190,8 @@ export function createObject(source: NativePointer | ClassInstance | ValueInstan
         case "$call":
           return (name: string, ...args: CallArg[]) => invoke(name, args);
         case "$method":
-          return (name: string, options: MethodResolveOptions = {}) => {
-            const bound = method(name, options) as {
-              call(...args: CallArg[]): CallResult | Promise<CallResult>;
-            };
-            const dispatch = bound.call.bind(bound);
-            bound.call = (...args: CallArg[]) => {
-              target.checkLive();
-              return dispatch(...args);
-            };
-            return bound;
-          };
+          return (name: string, options: ValueMethodResolveOptions = {}) =>
+            narrowBoundMethod(method(name, options), target);
         case "$get":
           return (name: string) => readProperty(name);
         case "$set":
@@ -184,25 +202,6 @@ export function createObject(source: NativePointer | ClassInstance | ValueInstan
           return () => {
             if (!isValue) throw new Error("$container is only valid on value instances");
             return value.container();
-          };
-        case "$vtable":
-          if (isValue) throw new Error("$vtable is only valid on class instances");
-          return object.vtable;
-        case "$vtableMethod":
-          return (offset: number, signature: Parameters<ClassInstance["vtableMethod"]>[1]) => {
-            if (isValue) throw new Error("$vtableMethod is only valid on class instances");
-            return object.vtableMethod(offset, signature);
-          };
-        case "$retain":
-          return () => {
-            if (isValue) throw new Error("$retain is only valid on class instances");
-            object.retain();
-            return proxy;
-          };
-        case "$release":
-          return () => {
-            if (isValue) throw new Error("$release is only valid on class instances");
-            object.release();
           };
         case "$dispose":
           return () => target.dispose();

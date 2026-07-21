@@ -19,10 +19,28 @@ import {
 import { NamedRequirement, namedProtocolRequirements } from "./method.js";
 import { GenericRequirementDescriptor } from "../abi/generic-requirement-descriptor.js";
 import { WitnessTable } from "../abi/witness-table.js";
+import { SwiftType, typeFromDescriptor } from "./swift-type.js";
 
 const OFFSETOF_NUM_REQUIREMENTS = 0x10;
 
-export class Protocol {
+// The stable root's view of a protocol: identity plus conformer enumeration. Raw requirement,
+// witness-table, and descriptor inspection stay on the full class, reachable only through /abi.
+export interface StableProtocol {
+  readonly name: string;
+  readonly moduleName: string | null;
+  readonly fullName: string;
+  readonly isClassOnly: boolean;
+  conformingTypes(): SwiftType[];
+  toJSON(): { kind: "protocol"; name: string; isClassOnly: boolean; numRequirements: number };
+}
+
+export interface StableProtocolComposition {
+  readonly protocols: StableProtocol[];
+  readonly numProtocols: number;
+  readonly isClassOnly: boolean;
+}
+
+export class Protocol implements StableProtocol {
   constructor(readonly descriptor: ContextDescriptor) {}
 
   static find(name: string): Protocol | null {
@@ -84,8 +102,8 @@ export class Protocol {
     return table === null ? null : new WitnessTable(table, type);
   }
 
-  conformingTypes(): ContextDescriptor[] {
-    return conformingTypes(this.descriptor);
+  conformingTypes(): SwiftType[] {
+    return conformingTypes(this.descriptor).map((d) => typeFromDescriptor(d));
   }
 }
 
@@ -108,7 +126,7 @@ export function protocolsForType(typeDescriptor: NativePointer): { [name: string
   return map;
 }
 
-export class ProtocolComposition {
+export class ProtocolComposition implements StableProtocolComposition {
   readonly protocols: Protocol[];
   private cachedMetadata: Metadata | null = null;
 

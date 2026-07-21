@@ -51,6 +51,6 @@ public struct ResilientHolder {
         if id < 0 { return nil }
         self.token = ResilientToken(id: id)
     }
-    public static func make(_ id: Int) -> ResilientHolder? { ResilientHolder(id: id) }
-    public func tokenId() -> Int { token.id }
 }
+public func makeHolder(_ id: Int) -> ResilientHolder? { ResilientHolder(id: id) }
+public func holderTokenId(_ h: ResilientHolder) -> Int { h.token.id }

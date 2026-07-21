@@ -1,18 +1,9 @@
 import { test, expect, describe, beforeEach } from "@frida/injest/agent";
 import { loadFixture, loadFixtureSyms, fixtureExport, existentialMetadata } from "./fixtures/load.js";
 
-import {
-  Swift,
-  MetadataKind,
-  ClassType,
-  Protocol,
-  ProtocolComposition,
-  ProtocolRequirementKind,
-  WitnessTable,
-  readString,
-  readValue,
-} from "../src/index.js";
+import { MetadataKind, ClassType, Protocol, ProtocolComposition, ProtocolRequirementKind, WitnessTable, readString, readValue, makeSwiftNativeFunction, metadataFor, typeOf } from "../src/abi.js";
 
+import { Swift } from "../src/index.js";
 describe("Protocol", () => {
   beforeEach(() => { loadFixture(); });
 
@@ -43,8 +34,8 @@ describe("Protocol", () => {
 
   test("conformanceFor yields a witness table for a conformer and null otherwise", () => {
     const scalable = Protocol.find("fixture.Scalable")!;
-    const Int = Swift.metadataFor("Swift.Int")!;
-    const Bool = Swift.metadataFor("Swift.Bool")!;
+    const Int = metadataFor("Swift.Int")!;
+    const Bool = metadataFor("Swift.Bool")!;
     expect(scalable.conformanceFor(Int) instanceof WitnessTable).toBe(true);
     expect(scalable.conformanceFor(Bool)).toBeNull();
   });
@@ -74,13 +65,13 @@ describe("Protocol.conformingTypes", () => {
 
   test("is the inverse of protocols(): Scalable includes its retroactive Swift.Int conformance", () => {
     const scalable = Protocol.find("fixture.Scalable")!;
-    const names = scalable.conformingTypes().map((d) => d.fullTypeName);
+    const names = scalable.conformingTypes().map((t) => t.name);
     expect(names).toContain("Swift.Int");
   });
 
   test("Greeter's conforming types include Person", () => {
     const greeter = Protocol.find("fixture.Greeter")!;
-    const names = greeter.conformingTypes().map((d) => d.fullTypeName);
+    const names = greeter.conformingTypes().map((t) => t.name);
     expect(names).toContain("fixture.Person");
   });
 });
@@ -120,7 +111,7 @@ describe("protocols()", () => {
   beforeEach(() => { loadFixture(); });
 
   test("a type reports its declared conformances as a name->Protocol map", () => {
-    const person = Swift.typeOf(Swift.metadataFor("fixture.Person")!);
+    const person = typeOf(metadataFor("fixture.Person")!);
     const protocols = person.protocols();
     expect(Object.keys(protocols).sort()).toEqual(["fixture.Aged", "fixture.Greeter"]);
     expect(protocols["fixture.Greeter"] instanceof Protocol).toBe(true);
@@ -128,12 +119,12 @@ describe("protocols()", () => {
   });
 
   test("includes a retroactive conformance declared in another module", () => {
-    const int = Swift.typeOf(Swift.metadataFor("Swift.Int")!);
+    const int = typeOf(metadataFor("Swift.Int")!);
     expect(Object.keys(int.protocols())).toContain("fixture.Scalable");
   });
 
   test("is reachable through the object facade's $type", () => {
-    const widget = (Swift.typeOf(Swift.metadataFor("fixture.Widget")!) as ClassType).init("w");
+    const widget = (typeOf(metadataFor("fixture.Widget")!) as ClassType).init("w");
     expect(Object.keys(widget.$type.protocols())).toContain("fixture.Named");
   });
 });
@@ -171,30 +162,30 @@ describe("ProtocolComposition", () => {
   });
 });
 
-describe("Swift.NativeFunction with protocol types", () => {
+describe("makeSwiftNativeFunction with existential metadata", () => {
   test("a ProtocolComposition drives an existential return then argument", () => {
-    const String_ = Swift.metadataFor("Swift.String")!;
+    const String_ = metadataFor("Swift.String")!;
     const Greeter = ProtocolComposition.fromSignature("fixture.Greeter");
-    const make = Swift.NativeFunction(fixtureExport("fixture.makeGreeterExistential"), Greeter, []);
+    const make = makeSwiftNativeFunction(fixtureExport("fixture.makeGreeterExistential"), Greeter.metadata, []);
     const g = make()!;
     expect(readValue(Greeter.metadata, g)).toEqual({ name: "Ada" });
-    const greet = Swift.NativeFunction(fixtureExport("fixture.greetExistential"), String_, [Greeter]);
+    const greet = makeSwiftNativeFunction(fixtureExport("fixture.greetExistential"), String_, [Greeter.metadata]);
     expect(readString(greet(g)!)).toBe("Hello, Ada");
   });
 
-  test("a bare Protocol is lowered to its single-protocol existential", () => {
-    const String_ = Swift.metadataFor("Swift.String")!;
-    const greeter = Protocol.find("fixture.Greeter")!;
-    const make = Swift.NativeFunction(fixtureExport("fixture.makeGreeterExistential"), greeter, []);
-    const greet = Swift.NativeFunction(fixtureExport("fixture.greetExistential"), String_, [greeter]);
+  test("a bare Protocol lowers to its single-protocol existential metadata", () => {
+    const String_ = metadataFor("Swift.String")!;
+    const greeter = new ProtocolComposition(Protocol.find("fixture.Greeter")!).metadata;
+    const make = makeSwiftNativeFunction(fixtureExport("fixture.makeGreeterExistential"), greeter, []);
+    const greet = makeSwiftNativeFunction(fixtureExport("fixture.greetExistential"), String_, [greeter]);
     expect(readString(greet(make()!)!)).toBe("Hello, Ada");
   });
 
   test("a composition existential round-trips through describeGreeterAged", () => {
-    const String_ = Swift.metadataFor("Swift.String")!;
+    const String_ = metadataFor("Swift.String")!;
     const ga = ProtocolComposition.fromSignature("fixture.Greeter & fixture.Aged");
-    const make = Swift.NativeFunction(fixtureExport("fixture.makeGreeterAged"), ga, []);
-    const describe = Swift.NativeFunction(fixtureExport("fixture.describeGreeterAged"), String_, [ga]);
+    const make = makeSwiftNativeFunction(fixtureExport("fixture.makeGreeterAged"), ga.metadata, []);
+    const describe = makeSwiftNativeFunction(fixtureExport("fixture.describeGreeterAged"), String_, [ga.metadata]);
     expect(readString(describe(make()!)!)).toBe("Hi, Cy (9)");
   });
 });

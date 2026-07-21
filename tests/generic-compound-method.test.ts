@@ -1,35 +1,36 @@
 import { test, expect, describe, beforeEach } from "@frida/injest/agent";
 import { loadFixture, fixtureExport } from "./fixtures/load.js";
 
-import { Swift, ClassType, ValueInstance } from "../src/index.js";
+import { ClassType, ValueInstance, asSwiftObject, metadataFor, typeOf } from "../src/abi.js";
 import { makeSwiftNativeFunction } from "../src/runtime/calling-convention.js";
 
+import { Swift } from "../src/index.js";
 function box() {
-  return (Swift.typeOf(Swift.metadataFor("fixture.Box")!) as ClassType).init();
+  return (typeOf(metadataFor("fixture.Box")!) as ClassType).init();
 }
 
 describe("compound generic-using exprs in generic methods", () => {
   beforeEach(() => { loadFixture(); });
 
   test("T? argument and return pass indirectly (Optional payload is address-only)", () => {
-    const Int = Swift.metadataFor("Swift.Int")!;
-    const roundOpt = box().$method("roundOpt", { typeArguments: [Int] });
+    const Int = metadataFor("Swift.Int")!;
+    const roundOpt = box().$method("roundOpt", { typeArguments: [typeOf(Int)] });
     // The `.some`/`"none"` spelling is the argument representation; a decoded Optional return unwraps.
     expect(roundOpt.call({ some: 9 })).toEqual(int64(9));
     expect(roundOpt.call("none")).toBeNull();
   });
 
   test("T? round-trips a non-POD payload through the indirect path", () => {
-    const Str = Swift.metadataFor("Swift.String")!;
-    expect(box().$method("roundOpt", { typeArguments: [Str] }).call({ some: "hi" })).toBe("hi");
+    const Str = metadataFor("Swift.String")!;
+    expect(box().$method("roundOpt", { typeArguments: [typeOf(Str)] }).call({ some: "hi" })).toBe("hi");
   });
 
   test("[T] is a fixed-layout Array passed/returned directly", () => {
-    const Int = Swift.metadataFor("Swift.Int")!;
-    const ArrInt = Swift.metadataFor("Swift.Array", [Int])!;
+    const Int = metadataFor("Swift.Int")!;
+    const ArrInt = metadataFor("Swift.Array", [Int])!;
 
     // [T]-return planning binds and calls through GenericBoundMethod.
-    const hi = box().$method("tripled", { typeArguments: [Int] }).call(7);
+    const hi = box().$method("tripled", { typeArguments: [typeOf(Int)] }).call(7);
     expect(hi !== null && typeof hi === "object").toBe(true);
 
     // ABI proof, decode-free: tripled<Int>(7) returns [7,7,7] direct, firstGeneric<Int> reads xs[0].
@@ -52,6 +53,6 @@ describe("compound generic-using exprs in generic methods", () => {
 
     // The Array is opaque to the JS writers; as a ValueInstance it byte-copies through a high-level .call() arg.
     const arr = ValueInstance.fromCopy(ArrInt, arrPtr);
-    expect(box().$method("sumInts").call(arr)).toEqual(int64(21));
+    expect(box().$method("sumInts").call(asSwiftObject(arr))).toEqual(int64(21));
   });
 });

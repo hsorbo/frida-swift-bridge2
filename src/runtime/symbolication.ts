@@ -263,6 +263,19 @@ function resolveProtocolExistential(name: string): Metadata | null {
   return getExistentialTypeMetadata(protocols);
 }
 
+export function metadataFor(name: string, typeArguments: Metadata[] = []): Metadata | null {
+  if (name === "Swift.Void" || name === "()") {
+    return voidMetadata();
+  }
+  const descriptor = findType(name);
+  if (descriptor === null) {
+    return null;
+  }
+  return typeArguments.length > 0
+    ? buildGenericMetadata(descriptor, typeArguments)
+    : getMetadata(descriptor);
+}
+
 let voidMetadataCache: Metadata | null = null;
 
 // The empty tuple ("yt"); not a nominal type, so findType can't reach it.
