@@ -63,10 +63,12 @@ export class ClassInstance implements RawInstance {
   }
 
   get metadata(): ClassMetadata {
+    this.checkLive();
     return classMetadataOf(this.handle);
   }
 
   get dynamicType(): Metadata {
+    this.checkLive();
     return dynamicTypeOf(this.handle);
   }
 
@@ -82,7 +84,10 @@ export class ClassInstance implements RawInstance {
     return this.handle.equals(other instanceof NativePointer ? other : other.handle);
   }
 
-  toJSON(): { kind: "object"; type: string; handle: string } {
+  toJSON(): { kind: "object"; type?: string; handle: string; disposed?: true } {
+    if (this.state !== null && this.state.disposed) {
+      return { kind: "object", handle: this.handle.toString(), disposed: true };
+    }
     return { kind: "object", type: typeName(this.dynamicType), handle: this.handle.toString() };
   }
 
@@ -121,6 +126,7 @@ export class ClassInstance implements RawInstance {
   }
 
   field(name: string): ValueInstance {
+    this.checkLive();
     for (const f of enumerateClassInstanceFields(this.handle)) {
       if (f.name === name) {
         if (f.type === null) {
@@ -133,6 +139,7 @@ export class ClassInstance implements RawInstance {
   }
 
   read(): { [field: string]: SwiftValue } {
+    this.checkLive();
     return readObject(this.handle);
   }
 
@@ -194,5 +201,11 @@ export class ClassInstance implements RawInstance {
       throw new Error("ClassInstance: class has no type name");
     }
     return name;
+  }
+
+  private checkLive(): void {
+    if (this.state !== null && this.state.disposed) {
+      throw new Error("ClassInstance has been disposed");
+    }
   }
 }

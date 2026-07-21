@@ -118,6 +118,17 @@ describe("Swift.Object intrinsics", () => {
       expect(k in robot("R2")).toBe(true);
     }
   });
+
+  test("use after $dispose throws; $dispose is idempotent; toJSON degrades", () => {
+    const o = robot("R2");
+    o.$dispose();
+    o.$dispose();
+    expect(() => o.$fields).toThrow();
+    expect(() => o.$field("name")).toThrow();
+    expect(() => o.$type).toThrow();
+    expect(() => o.greet("Alice")).toThrow();
+    expect(o.toJSON()).toEqual({ kind: "object", handle: o.$handle.toString(), disposed: true });
+  });
 });
 
 function clash(handle: number) {
