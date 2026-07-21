@@ -408,6 +408,16 @@ public struct Person: Greeter, Aged {
 public func makeGreeterAged() -> any Greeter & Aged { Person(name: "Cy", age: 9) }
 public func describeGreeterAged(_ v: any Greeter & Aged) -> String { "\(v.greet()) (\(v.age))" }
 
+public final class LoudGreeter: Greeter {
+    public let name: String
+    public init(name: String) { self.name = name }
+    public func greet() -> String { "HEY \(name)" }
+}
+public struct GreeterBox {
+    public static func wrap(_ g: LoudGreeter) -> any Greeter { g }
+    public static func wrapPerson(_ name: String, _ age: Int) -> any Greeter { Person(name: name, age: age) }
+}
+
 // describe() has a default; displayName never does.
 public protocol Labeled {
     var displayName: String { get }
