@@ -65,6 +65,7 @@ export interface RawInstance {
   call(name: string, ...args: CallArg[]): CallResult | Promise<CallResult>;
   field(name: string): ValueInstance;
   dispose(): void;
+  checkLive(): void;
   [Symbol.dispose](): void;
 }
 

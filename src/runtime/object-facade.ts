@@ -163,7 +163,17 @@ export function createObject(source: NativePointer | ClassInstance | ValueInstan
         case "$call":
           return (name: string, ...args: CallArg[]) => invoke(name, args);
         case "$method":
-          return (name: string, options: MethodResolveOptions = {}) => method(name, options);
+          return (name: string, options: MethodResolveOptions = {}) => {
+            const bound = method(name, options) as {
+              call(...args: CallArg[]): CallResult | Promise<CallResult>;
+            };
+            const dispatch = bound.call.bind(bound);
+            bound.call = (...args: CallArg[]) => {
+              target.checkLive();
+              return dispatch(...args);
+            };
+            return bound;
+          };
         case "$get":
           return (name: string) => readProperty(name);
         case "$set":

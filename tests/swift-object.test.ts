@@ -129,6 +129,21 @@ describe("Swift.Object intrinsics", () => {
     expect(() => o.greet("Alice")).toThrow();
     expect(o.toJSON()).toEqual({ kind: "object", handle: o.$handle.toString(), disposed: true });
   });
+
+  test("a detached bound method rejects a call after the receiver is disposed", () => {
+    const r = robot("R2");
+    const m = r.$method("greet");
+    r.$dispose();
+    expect(() => m.call("Ada")).toThrow(/disposed/);
+  });
+
+  test("a borrowed field rejects access after its owning instance is disposed", () => {
+    const r = robot("R2");
+    const f = r.$field("name");
+    r.$dispose();
+    expect(() => f.read()).toThrow(/disposed/);
+    expect(() => f.write("D2")).toThrow(/disposed/);
+  });
 });
 
 function clash(handle: number) {
