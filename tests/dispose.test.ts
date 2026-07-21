@@ -18,7 +18,7 @@ describe("Symbol.dispose", () => {
     {
       using v = ValueInstance.fromJS(Swift.metadataFor("Swift.Int")!, 7);
       captured = v;
-      expect(v.read()).toBe(7);
+      expect(v.read()).toEqual(int64(7));
     }
     expect(() => captured.read()).toThrow();
   });

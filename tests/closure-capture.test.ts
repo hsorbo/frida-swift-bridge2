@@ -140,7 +140,7 @@ describe("closure capture values (live runtime)", () => {
     storeCapturing(7);
     const context = capturingContext() as NativePointer;
 
-    expect(readCaptures(context)).toEqual([7, "-fixture"]);
+    expect(readCaptures(context)).toEqual([int64(7), "-fixture"]);
   });
 
   test("decodes a captured struct", () => {
@@ -156,7 +156,7 @@ describe("closure capture values (live runtime)", () => {
     storeStructCapturing(1, 2, 3, 4);
     const context = structCapturingContext() as NativePointer;
 
-    expect(readCaptures(context)).toEqual([{ a: 1, b: 2, c: 3, d: 4 }]);
+    expect(readCaptures(context)).toEqual([{ a: int64(1), b: int64(2), c: int64(3), d: int64(4) }]);
   });
 
   test("decodes a captured class reference", () => {
@@ -169,7 +169,7 @@ describe("closure capture values (live runtime)", () => {
 
     const values = readCaptures(context);
     expect(values).not.toBeNull();
-    expect(readObject(values![0] as NativePointer)).toEqual({ kind: 42 });
+    expect(readObject(values![0] as NativePointer)).toEqual({ kind: int64(42) });
   });
 
   test("agrees on offsets and values for a mixed Bool/Int/class capture list", () => {
@@ -192,8 +192,8 @@ describe("closure capture values (live runtime)", () => {
 
     const values = readCaptures(context)!;
     expect(values[0]).toBe(true);
-    expect(values[1]).toBe(5);
-    expect(readObject(values[2] as NativePointer)).toEqual({ kind: 9 });
+    expect(values[1]).toEqual(int64(5));
+    expect(readObject(values[2] as NativePointer)).toEqual({ kind: int64(9) });
   });
 
   test("returns null for a closure whose captures depend on a generic parameter", () => {
@@ -267,7 +267,7 @@ describe("closure capture values (live runtime)", () => {
 
     const after = readCaptures(context)!;
     expect(after[0]).toBe(before[0]);
-    expect(after[1]).toBe(before[1]);
+    expect(after[1]).toEqual(before[1]);
     expect((after[2] as NativePointer).equals(before[2] as NativePointer)).toBeTruthy();
   });
 });

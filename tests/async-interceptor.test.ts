@@ -36,7 +36,7 @@ describe("async interceptor", () => {
     });
     try {
       expect(drive(21)).toBe(42);
-      expect(arg).toBe(21);
+      expect(arg).toEqual(int64(21));
       expect(context).toBeDefined();
       expect(context!.isNull()).toBe(false);
     } finally {
@@ -81,7 +81,7 @@ describe("async interceptor", () => {
     });
     try {
       expect(drive(21)).toBe(42);
-      expect(result).toBe(42);
+      expect(result).toEqual(int64(42));
     } finally {
       listener.detach();
     }
@@ -113,7 +113,7 @@ describe("async interceptor", () => {
       expect(seen[0]).toBe("enter");
       expect(seen).toContain("suspend");
       expect(seen).toContain("complete");
-      expect(result).toBe(18);
+      expect(result).toEqual(int64(18));
     } finally {
       listener.detach();
     }
@@ -132,8 +132,8 @@ describe("async interceptor", () => {
     try {
       driveAsyncCall(afp(module, MAKE_QUAD_ASYNC_AFP), [ptr(10)], { result: { kind: "indirect", stride: 40 } });
       expect(quad).toBeDefined();
-      expect(quad!.a).toBe(10);
-      expect(quad!.e).toBe(14);
+      expect(quad!.a).toEqual(int64(10));
+      expect(quad!.e).toEqual(int64(14));
     } finally {
       listener.detach();
     }

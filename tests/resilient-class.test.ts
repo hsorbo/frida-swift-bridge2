@@ -22,8 +22,8 @@ describe("resilient superclass (cross-module fixture)", () => {
 
   test("reads both the inherited and the subclass's own stored property", () => {
     const obj = concreteSubType().init(3, 4);
-    expect(obj.$field("tag").read()).toBe(3);
-    expect(obj.$field("extra").read()).toBe(4);
+    expect(obj.$field("tag").read()).toEqual(int64(3));
+    expect(obj.$field("extra").read()).toEqual(int64(4));
   });
 
   test("a base slot reaches the most-derived override", () => {

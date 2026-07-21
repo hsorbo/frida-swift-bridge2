@@ -37,7 +37,7 @@ describe("type wrappers", () => {
     expect(t.fields.map((f) => f.name)).toEqual(["a", "b", "c", "d"]);
     expect(t.fields.every((f) => !f.isVar)).toBe(true);
     const v = t.new({ a: 1, b: 2, c: 3, d: 4 });
-    expect(v.$fields).toEqual({ a: 1, b: 2, c: 3, d: 4 });
+    expect(v.$fields).toEqual({ a: int64(1), b: int64(2), c: int64(3), d: int64(4) });
     v.$dispose();
   });
 
@@ -45,7 +45,7 @@ describe("type wrappers", () => {
     const t = Swift.typeOf(Swift.metadataFor("fixture.Pick")!) as EnumType;
     expect(t.cases.map((c) => c.name).sort()).toEqual(["empty", "value"]);
     const payload = t.case("value", 7);
-    expect(payload.$fields).toEqual({ value: 7 });
+    expect(payload.$fields).toEqual({ value: int64(7) });
     payload.$dispose();
     const empty = t.case("empty");
     expect(empty.$fields).toBe("empty");
@@ -55,8 +55,8 @@ describe("type wrappers", () => {
   test("ClassType.init runs the real initializer", () => {
     const t = Swift.typeOf(Swift.metadataFor("fixture.Counter")!) as ClassType;
     const obj = t.init(9);
-    expect(obj.$field("count").read()).toBe(9);
-    expect(obj.$fields).toEqual({ count: 9 });
+    expect(obj.$field("count").read()).toEqual(int64(9));
+    expect(obj.$fields).toEqual({ count: int64(9) });
   });
 
   test("ClassType.alloc returns raw storage we can write", () => {
@@ -65,7 +65,7 @@ describe("type wrappers", () => {
     expect(obj.$handle.isNull()).toBe(false);
     expect(obj.$owned).toBe(true);
     obj.$field("count").write(3);
-    expect(obj.$field("count").read()).toBe(3);
+    expect(obj.$field("count").read()).toEqual(int64(3));
   });
 
   test("typeOf dispatches by metadata kind", () => {

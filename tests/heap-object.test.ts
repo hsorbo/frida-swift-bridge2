@@ -21,10 +21,10 @@ function makeCounter(n: number): ClassInstance {
 describe("ClassInstance", () => {
   test("reads and writes a class stored property", () => {
     const counter = makeCounter(5);
-    expect(counter.field("count").read()).toBe(5);
+    expect(counter.field("count").read()).toEqual(int64(5));
     counter.field("count").write(15);
-    expect(counter.field("count").read()).toBe(15);
-    expect(counter.read()).toEqual({ count: 15 });
+    expect(counter.field("count").read()).toEqual(int64(15));
+    expect(counter.read()).toEqual({ count: int64(15) });
   });
 
   test("retain/release adjust the strong reference count", () => {

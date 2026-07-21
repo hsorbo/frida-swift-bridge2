@@ -13,17 +13,17 @@ describe("actor-isolated async calling", () => {
   });
 
   test("drives an actor-isolated async method: advance() ⇒ 1", async () => {
-    expect(await ticker().advance()).toBe(1);
+    expect(await ticker().advance()).toEqual(int64(1));
   });
 
   test("actor state persists across calls: advance() twice ⇒ 1, 2", async () => {
     const t = ticker();
-    expect(await t.advance()).toBe(1);
-    expect(await t.advance()).toBe(2);
+    expect(await t.advance()).toEqual(int64(1));
+    expect(await t.advance()).toEqual(int64(2));
   });
 
   test("passes a gp argument: advance(by: 5) ⇒ 5", async () => {
-    expect(await ticker().advance(5)).toBe(5);
+    expect(await ticker().advance(5)).toEqual(int64(5));
   });
 
   test("passes and returns a Double: scaledCountAsync(1.5) after two ticks ⇒ 3.0", async () => {
@@ -40,7 +40,7 @@ describe("actor-isolated async calling", () => {
   });
 
   test("resolves an async throwing actor method that does not throw: advanceOrThrowAsync(3) ⇒ 3", async () => {
-    expect(await ticker().advanceOrThrowAsync(3)).toBe(3);
+    expect(await ticker().advanceOrThrowAsync(3)).toEqual(int64(3));
   });
 
   test("rejects with SwiftAsyncThrow when the actor method throws", async () => {
@@ -50,8 +50,8 @@ describe("actor-isolated async calling", () => {
   test("serializes concurrent calls on the actor: 20 × advance() ⇒ {1..20}", async () => {
     const t = ticker();
     const results = await Promise.all(Array.from({ length: 20 }, () => t.advance()));
-    expect(new Set(results)).toEqual(new Set(Array.from({ length: 20 }, (_, i) => i + 1)));
-    expect(await t.$get("count")).toBe(20);
+    expect(new Set(results)).toEqual(new Set(Array.from({ length: 20 }, (_, i) => int64(i + 1))));
+    expect(await t.$get("count")).toEqual(int64(20));
   });
 });
 
@@ -72,14 +72,14 @@ describe("custom-executor actor async calling", () => {
 
   test("drives a custom-executor actor's async method: advance() ⇒ 1, 2", async () => {
     const t = customTicker();
-    expect(await t.advance()).toBe(1);
-    expect(await t.advance()).toBe(2);
+    expect(await t.advance()).toEqual(int64(1));
+    expect(await t.advance()).toEqual(int64(2));
   });
 
   test("serializes concurrent calls on a custom executor: 20 × advance() ⇒ {1..20}", async () => {
     const t = customTicker();
     const results = await Promise.all(Array.from({ length: 20 }, () => t.advance()));
-    expect(new Set(results)).toEqual(new Set(Array.from({ length: 20 }, (_, i) => i + 1)));
-    expect(await t.$get("count")).toBe(20);
+    expect(new Set(results)).toEqual(new Set(Array.from({ length: 20 }, (_, i) => int64(i + 1))));
+    expect(await t.$get("count")).toEqual(int64(20));
   });
 });

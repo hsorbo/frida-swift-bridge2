@@ -20,7 +20,7 @@ describe("inherited methods (symbol route)", () => {
   beforeEach(() => { loadFixture(); });
 
   test("calls a method inherited from the superclass", () => {
-    expect(catType().init().$call("legs")).toBe(4); // Cat has no legs symbol; declared on Animal
+    expect(catType().init().$call("legs")).toEqual(int64(4)); // Cat has no legs symbol; declared on Animal
   });
 
   test("resolveMethod finds the inherited impl declared on the superclass", () => {
@@ -39,7 +39,7 @@ describe("inherited methods (symbol route)", () => {
   test("the facade exposes inherited methods", () => {
     const cat = catType().init();
     expect(cat.$type.methods()).toContain("legs()");
-    expect(cat.legs()).toBe(4);
+    expect(cat.legs()).toEqual(int64(4));
   });
 });
 
@@ -54,8 +54,8 @@ describe("live polymorphic dispatch (metadata vtable)", () => {
 
   test("a base slot reaches the most-derived override", () => {
     const slot = speakSlot();
-    expect(catType().init().$vtableMethod(slot, { returnType: Int(), argTypes: [] }).call()).toBe(9); // Cat.speak
-    expect(animalType().init().$vtableMethod(slot, { returnType: Int(), argTypes: [] }).call()).toBe(1); // Animal.speak
+    expect(catType().init().$vtableMethod(slot, { returnType: Int(), argTypes: [] }).call()).toEqual(int64(9)); // Cat.speak
+    expect(animalType().init().$vtableMethod(slot, { returnType: Int(), argTypes: [] }).call()).toEqual(int64(1)); // Animal.speak
   });
 
   test("the live impl differs from the descriptor's declared impl", () => {

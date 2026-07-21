@@ -32,22 +32,22 @@ describe("generic global-actor async calling", () => {
   });
 
   test("drives a @globalActor-isolated method on a plain class: gaMethodAsync(1) ⇒ 11", async () => {
-    expect(await gaHolder(10).gaMethodAsync(1)).toBe(11);
+    expect(await gaHolder(10).gaMethodAsync(1)).toEqual(int64(11));
   });
 
   test("a @globalActor-isolated method mutates instance state across calls", async () => {
     const h = gaHolder(10);
-    expect(await h.gaMethodAsync(1)).toBe(11);
-    expect(await h.gaMethodAsync(2)).toBe(13);
+    expect(await h.gaMethodAsync(1)).toEqual(int64(11));
+    expect(await h.gaMethodAsync(2)).toEqual(int64(13));
   });
 
   test("drives a method on a whole-type @globalActor-isolated class: bumpAsync(1) ⇒ 11", async () => {
-    expect(await wholeGAHolder(10).bumpAsync(1)).toBe(11);
+    expect(await wholeGAHolder(10).bumpAsync(1)).toEqual(int64(11));
   });
 
   test("serializes concurrent calls on a global actor: 20 × gaMethodAsync(1)", async () => {
     const h = gaHolder(0);
     const results = await Promise.all(Array.from({ length: 20 }, () => h.gaMethodAsync(1)));
-    expect(new Set(results)).toEqual(new Set(Array.from({ length: 20 }, (_, i) => i + 1)));
+    expect(new Set(results)).toEqual(new Set(Array.from({ length: 20 }, (_, i) => int64(i + 1))));
   });
 });
