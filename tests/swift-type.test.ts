@@ -75,6 +75,14 @@ describe("type wrappers", () => {
     expect(t.initializer({ labels: ["angle", "radius"] }).call(1, 2).$fields).toEqual({ a: int64(2), b: int64(6) });
   });
 
+  test("ClassType.init selects a labeled overload from a { label: value } object", () => {
+    const t = typeOf(metadataFor("fixture.Vec2")!) as ClassType;
+    expect(t.init({ x: 1, y: 2 }).$fields).toEqual({ a: int64(1), b: int64(2) });
+    expect(t.init({ angle: 1, radius: 2 }).$fields).toEqual({ a: int64(2), b: int64(6) });
+    // keys matching no initializer fall back to positional: the lone object counts as one argument
+    expect(() => t.init({ foo: 1, bar: 2 })).toThrow(/got 1/);
+  });
+
   test("swift_allocObject returns raw storage we can write", () => {
     const t = typeOf(metadataFor("fixture.Counter")!) as ClassType;
     const cls = new ClassMetadata(metadataOf(t).handle);
