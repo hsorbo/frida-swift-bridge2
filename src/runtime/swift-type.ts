@@ -5,7 +5,7 @@ import { isActor, isDefaultActor, readVTableChain, VTableEntry } from "../abi/cl
 import { ValueInstance } from "../abi/value.js";
 import { ClassInstance } from "../abi/heap-object.js";
 import { createObject, SwiftObject } from "./object-facade.js";
-import { writeValue, SwiftValue } from "../abi/instance.js";
+import { SwiftValue } from "../abi/instance.js";
 import { enumerateFields, fieldTypeIn } from "../abi/field-descriptor.js";
 import {
   makeSwiftNativeFunction,
@@ -19,6 +19,7 @@ import {
   BoundStaticMethod,
   BoundAsyncMethod,
   BoundValueInitializer,
+  marshalConsumedArgs,
   CallArg,
   CallResult,
   MethodResolveOptions,
@@ -236,7 +237,7 @@ export class ClassType extends SwiftType {
     return isDefaultActor(new ClassMetadata(this.metadata.handle).description);
   }
 
-  init(...args: SwiftValue[]): SwiftObject {
+  init(...args: CallArg[]): SwiftObject {
     const candidates = this.resolveInitializers();
     const matches = candidates.filter((c) => c.argTypes.length === args.length);
     if (matches.length === 0) {
@@ -249,11 +250,7 @@ export class ClassType extends SwiftType {
     const { address, argTypes } = matches[0];
     const call = makeSwiftNativeFunction(address, this.metadata, argTypes, { hasSelf: true });
     // Initializer params are +1/owned: the callee consumes each temp, so they are not destroyed here.
-    const argPtrs = args.map((value, i) => {
-      const buffer = Memory.alloc(argTypes[i].typeLayout.stride);
-      writeValue(argTypes[i], buffer, value);
-      return buffer;
-    });
+    const argPtrs = marshalConsumedArgs(argTypes, args);
     return createObject(ClassInstance.adopt(call(this.metadata.handle, ...argPtrs)!.readPointer()));
   }
 

@@ -389,6 +389,25 @@ public struct Wrapper {
 extension Wrapper {
     public static func make(_ t: Token) -> Wrapper { Wrapper(token: t, a: 1, b: 2, c: 3, d: 4) }
 }
+// A non-POD (Wrapper) init parameter ahead of a scalar: a scalar marshalling failure must not leak
+// the copied Wrapper temp.
+public struct Keeper {
+    public var w: Wrapper
+    public var tag: Int
+    public init(_ w: Wrapper, tag: Int) { self.w = w; self.tag = tag }
+}
+// A consuming class init parameter: the stored token needs an owning +1 added before transfer.
+public struct TokenBox {
+    public var token: Token
+    public var tag: Int
+    public init(_ token: Token, tag: Int) { self.token = token; self.tag = tag }
+}
+// Class analogue of Keeper/TokenBox, plus a class-valued var for the +1 setter path.
+public final class Kennel {
+    public var w: Wrapper
+    public var occupant: Token
+    public init(_ w: Wrapper, occupant: Token) { self.w = w; self.occupant = occupant }
+}
 public func makeToken(_ id: Int) -> Token { Token(id: id) }
 public func makeWrapper(_ t: Token) -> Wrapper { Wrapper(token: t, a: 1, b: 2, c: 3, d: 4) }
 @inline(never)
