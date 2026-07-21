@@ -471,6 +471,13 @@ public func makeWrapper(_ t: Token) -> Wrapper { Wrapper(token: t, a: 1, b: 2, c
 @inline(never)
 public func consumeWrapper(_ w: __owned Wrapper) -> Int { w.token.id }
 
+// A non-consuming init param demangles as `init(name: __shared Swift.String)`; resolving it exercises
+// the borrow-modifier strip in the arg-type resolver.
+public struct SharedName {
+    public let length: Int
+    public init(name: __shared String) { length = name.count }
+}
+
 public struct DoublePair { public var x: Double; public var y: Double }
 public func makeDoublePair() -> DoublePair { DoublePair(x: 1.5, y: 2.5) }
 public func sumDoublePair(_ p: DoublePair) -> Double { p.x + p.y }
