@@ -511,6 +511,7 @@ public final class Robot {
     public func rename(to newName: String) { name = newName }
     public static func make(name: String) -> Robot { Robot(name: name) }
     public func merged(with other: Robot) -> String { "\(name)+\(other.name)" }
+    public func absorb(_ other: __owned Robot) -> String { other.name }
     public func alias() -> any Named { Widget(label: name) }
     public func at(_ x: Int) -> Int { x }
     public func at(_ x: Int, _ y: Int) -> Int { x + y }
