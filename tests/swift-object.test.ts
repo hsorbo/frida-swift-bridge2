@@ -109,6 +109,15 @@ describe("Swift.Object intrinsics", () => {
     const o = robot("R2");
     expect(o.toString()).toBe(`<fixture.Robot: ${o.$handle}>`);
   });
+
+  test("ownKeys enumerates methods and properties consistently with has", () => {
+    const keys = Object.keys(robot("R2"));
+    expect(keys).toContain("greet"); // method
+    expect(keys).toContain("badge"); // property, formerly absent from ownKeys
+    for (const k of keys) {
+      expect(k in robot("R2")).toBe(true);
+    }
+  });
 });
 
 function clash(handle: number) {
