@@ -43,14 +43,14 @@ describe("registry", () => {
     expect(int!.fullTypeName).toBe("Swift.Int");
   });
 
-  test("names nested and extension-nested types by their full path, unnameable ones as null", () => {
+  test("names nested and extension-nested types by their full path", () => {
     const mod = loadFixture();
     const descriptors = [...enumerateTypes(mod)];
     const byLeaf = (leaf: string) => descriptors.find((d) => d.name === leaf);
     expect(byLeaf("Inner")!.fullTypeName).toBe("fixture.Outer.Inner");
     expect(byLeaf("FromExt")!.fullTypeName).toBe("fixture.Outer.FromExt");
-    // Nested in an extension of the generic Optional: the mangling is unsupported, so it has no name.
-    expect(byLeaf("ExtensionProbe")!.fullTypeName).toBeNull();
+    // Nested in an extension of the generic Optional: named by demangling the extended context.
+    expect(byLeaf("ExtensionProbe")!.fullTypeName).toBe("Swift.Optional.ExtensionProbe");
   });
 
   test("finds a type by a uniquely-resolving simple name", () => {
@@ -68,9 +68,12 @@ describe("registry", () => {
     expect(findType("fixturesyms.LoadableStruct")!.fullTypeName).toBe("fixturesyms.LoadableStruct");
   });
 
-  test("bare lookup skips unnameable extension-nested descriptors", () => {
+  test("resolves an extension-nested type under its extended type's demangled name", () => {
     loadFixture();
-    expect(findType("ExtensionProbe")).toBeNull();
+    const qualified = findType("Swift.Optional.ExtensionProbe");
+    expect(qualified).not.toBeNull();
+    expect(qualified!.fullTypeName).toBe("Swift.Optional.ExtensionProbe");
+    expect(findType("ExtensionProbe")!.fullTypeName).toBe("Swift.Optional.ExtensionProbe");
   });
 
   test("returns null for an unknown type", () => {

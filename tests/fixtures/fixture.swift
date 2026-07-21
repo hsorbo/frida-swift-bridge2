@@ -29,7 +29,8 @@ extension Outer {
         public func tripled() -> Int { mark * 3 }
     }
 }
-// Nested in a generic-extension context whose mangling the bridge does not resolve: unnameable.
+// Nested in a generic-extension context; its extended mangling demangles to Swift.Optional,
+// so the full name is Swift.Optional.ExtensionProbe.
 extension Optional { public struct ExtensionProbe { public var x: Int } }
 
 // A heap-backed String ahead of a narrow int: writing an out-of-range level must be rejected

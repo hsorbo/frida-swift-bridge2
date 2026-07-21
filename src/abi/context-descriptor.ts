@@ -2,6 +2,7 @@ import {
   RelativeDirectPointer,
   RelativeIndirectablePointer,
 } from "../basic/relative-pointer.js";
+import { extendedTypeName } from "./extension-context-descriptor.js";
 
 export enum ContextDescriptorKind {
   Module = 0,
@@ -127,7 +128,7 @@ export class ContextDescriptor {
         continue;
       }
       if (ctx.kind === ContextDescriptorKind.Extension) {
-        const extended = ctx.extendedTypeDescriptor?.fullTypeName ?? null;
+        const extended = extendedTypeName(ctx);
         return extended === null ? null : `${extended}.${components.join(".")}`;
       }
       break;
