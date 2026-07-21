@@ -231,7 +231,8 @@ export function createObject(source: NativePointer | ClassInstance | ValueInstan
       return false;
     },
     ownKeys() {
-      return ["$handle", ...members().methods];
+      const m = members();
+      return ["$handle", ...m.methods, ...m.properties];
     },
     getOwnPropertyDescriptor() {
       return { writable: false, configurable: true, enumerable: true };
