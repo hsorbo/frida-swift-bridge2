@@ -1,6 +1,6 @@
 import { test, expect, describe } from "@frida/injest/agent";
 import { requireSwift, SWIFTCORE_MODULE } from "./swift.js";
-import { loadResilient, RESILIENT_MODULE } from "./fixtures/load.js";
+import { loadResilient, RESILIENT_MODULE, loadFixture } from "./fixtures/load.js";
 
 import { Swift } from "../src/index.js";
 import {
@@ -41,6 +41,16 @@ describe("registry", () => {
     expect(int).not.toBeNull();
     expect(int!.kind).toBe(ContextDescriptorKind.Struct);
     expect(int!.fullTypeName).toBe("Swift.Int");
+  });
+
+  test("names nested and extension-nested types by their full path, unnameable ones as null", () => {
+    const mod = loadFixture();
+    const descriptors = [...enumerateTypes(mod)];
+    const byLeaf = (leaf: string) => descriptors.find((d) => d.name === leaf);
+    expect(byLeaf("Inner")!.fullTypeName).toBe("fixture.Outer.Inner");
+    expect(byLeaf("FromExt")!.fullTypeName).toBe("fixture.Outer.FromExt");
+    // Nested in an extension of the generic Optional: the mangling is unsupported, so it has no name.
+    expect(byLeaf("ExtensionProbe")!.fullTypeName).toBeNull();
   });
 
   test("finds a type by simple name", () => {
