@@ -14,6 +14,13 @@ public struct LoadableStruct {
     public let d: Int
 }
 
+// A heap-backed String ahead of a narrow int: writing an out-of-range level must be rejected
+// before the String is materialized.
+public struct Badge {
+    public let title: String
+    public let level: UInt8
+}
+
 // 5 words: passed indirectly by the calling convention, stored out-of-line.
 public struct BigStruct {
     public let a: Int
