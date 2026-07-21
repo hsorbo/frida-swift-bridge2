@@ -1452,17 +1452,24 @@ interface ResolvedAccessor {
   kind: AccessorKind;
 }
 
+// Instance accessors only, walking the superclass chain like enumerateProperties so a subclass
+// shadows an inherited property and a static accessor of the same name is never mistaken for it.
 function resolveAccessor(typeName: string, member: string, kind: AccessorKind): ResolvedAccessor {
   const fullName = canonicalTypeName(typeName);
-  const candidate = typeMembers(fullName).accessors.find((a) => a.member === member && a.kind === kind);
-  if (candidate === undefined) {
-    throw new Error(`no ${kind} for ${member} on ${fullName}`);
+  for (const className of classChainNames(fullName)) {
+    const candidate = typeMembers(className).accessors.find(
+      (a) => a.member === member && a.kind === kind && !a.isStatic
+    );
+    if (candidate === undefined) {
+      continue;
+    }
+    const type = resolveType(candidate.typeName);
+    if (type === null) {
+      throw new Error(`cannot resolve ${kind} type ${candidate.typeName} of ${className}.${member}`);
+    }
+    return { address: candidate.address, type, kind };
   }
-  const type = resolveType(candidate.typeName);
-  if (type === null) {
-    throw new Error(`cannot resolve ${kind} type ${candidate.typeName} of ${fullName}.${member}`);
-  }
-  return { address: candidate.address, type, kind };
+  throw new Error(`no ${kind} for ${member} on ${fullName}`);
 }
 
 function invokerForAccessor(accessor: ResolvedAccessor): SwiftNativeFunction {
