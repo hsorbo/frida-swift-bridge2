@@ -82,11 +82,14 @@ export function symbolicate(address: NativePointer): SwiftSymbol | null {
 }
 
 export function parseSwiftSignature(demangled: string): ParsedSwiftSignature | null {
-  const accessor = parseAccessor(demangled);
+  // A cross-module extension member is prefixed `(extension in Module):`; drop it so the leading paren
+  // is not mistaken for the argument list and the context is the bare receiver type.
+  const s = demangled.replace(/^\(extension in [^)]+\):/, "");
+  const accessor = parseAccessor(s);
   if (accessor !== null) {
     return accessor;
   }
-  return parseFunction(demangled);
+  return parseFunction(s);
 }
 
 function parseAccessor(s: string): SwiftAccessorSignature | null {
@@ -237,7 +240,7 @@ export function resolveFunctionSignature(
 
 export function resolveType(name: string): Metadata | null {
   if (name.startsWith("__C.")) {
-    return resolveObjCClass(name);
+    return resolveObjCType(name);
   }
   const descriptor = findType(name);
   if (descriptor !== null) {
@@ -250,13 +253,18 @@ export function resolveType(name: string): Metadata | null {
   return resolveProtocolExistential(name);
 }
 
-// A __C class has no Swift descriptor; resolve it through its `So<len><name>C` mangling.
-function resolveObjCClass(name: string): Metadata | null {
+// A __C type has no Swift descriptor; resolve it through its `So<len><name>C` (class) or
+// `So<len><name>_p` (protocol existential) mangling.
+function resolveObjCType(name: string): Metadata | null {
   const ident = name.slice("__C.".length);
   if (!/^[A-Za-z_]\w*$/.test(ident)) {
     return null;
   }
-  const mangled = `So${ident.length}${ident}C`;
+  const prefix = `So${ident.length}${ident}`;
+  return resolveMangled(`${prefix}C`) ?? resolveMangled(`${prefix}_p`);
+}
+
+function resolveMangled(mangled: string): Metadata | null {
   return resolveTypeByMangledName({ address: Memory.allocUtf8String(mangled), length: mangled.length });
 }
 

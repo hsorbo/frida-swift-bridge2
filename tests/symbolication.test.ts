@@ -38,6 +38,17 @@ describe("parseSwiftSignature", () => {
     expect(s.returnTypeName).toBe("Swift.Int");
   });
 
+  test("drops a cross-module extension prefix and parses the member", () => {
+    const s = parseSwiftSignature(
+      "(extension in Foundation):__C.NSURLSession.data(from: Foundation.URL) async throws -> Foundation.Data"
+    ) as SwiftFunctionSignature;
+    expect(s.kind).toBe("function");
+    expect(s.context).toBe("__C.NSURLSession");
+    expect(s.name).toBe("data");
+    expect(s.async).toBe(true);
+    expect(s.argLabels).toEqual(["from"]);
+  });
+
   test("parses a method with labeled args and a nominal return type", () => {
     const s = parseSwiftSignature(
       "fixture.Point.translated(dx: Swift.Int, dy: Swift.Int) -> fixture.Point"
@@ -224,5 +235,15 @@ describe("resolveType ObjC classes", () => {
     expect(
       metadata!.kind === MetadataKind.ObjCClassWrapper || metadata!.kind === MetadataKind.Class
     ).toBeTruthy();
+  });
+
+  test("resolves an imported __C protocol to an existential", (ctx) => {
+    requireDarwin(ctx);
+    if (Process.findModuleByName("Foundation") === null) {
+      Module.load("/System/Library/Frameworks/Foundation.framework/Foundation");
+    }
+    const metadata = resolveType("__C.NSCopying");
+    expect(metadata).not.toBeNull();
+    expect(metadata!.kind).toBe(MetadataKind.Existential);
   });
 });
