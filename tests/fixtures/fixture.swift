@@ -134,6 +134,13 @@ public struct Rect {
     }
 }
 
+public struct Ranged {
+    public var lo: Int
+    public var hi: Int
+    public init(lo: Int) { self.lo = lo; self.hi = lo }
+    public init(lo: Int, hi: Int) { self.lo = lo; self.hi = hi }
+}
+
 public final class Gadget {
     public var value: Int
     public init(value: Int) { self.value = value }
