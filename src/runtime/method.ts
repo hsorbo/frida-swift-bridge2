@@ -446,6 +446,9 @@ function typeMembers(fullName: string): TypeMembers {
     if (demangled === null) {
       return;
     }
+    if (!demangled.includes(fullName)) {
+      return;
+    }
     const signature = parseSwiftSignature(demangled);
     if (signature === null) {
       return;
