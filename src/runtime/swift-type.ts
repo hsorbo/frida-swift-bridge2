@@ -26,6 +26,7 @@ import {
   bindValueInitializer,
   callBorrowingArgs,
   enumerateMethods,
+  ModuleScope,
   enumerateProperties,
   lowerResolveOptions,
   resolveMethod,
@@ -181,9 +182,11 @@ export class ValueType extends SwiftType {
   }
 
   private hasInitializer(labels: string[]): boolean {
-    return enumerateMethods(this.name, "definingModule").some(
-      (m) => m.name === "init" && sameSequence(m.argLabels, labels)
-    );
+    const declares = (modules: ModuleScope): boolean =>
+      enumerateMethods(this.name, modules).some(
+        (m) => m.name === "init" && sameSequence(m.argLabels, labels)
+      );
+    return declares("definingModule") || declares("allLoadedModules");
   }
 
   fromJS(value: SwiftValue): SwiftValueObject {
@@ -290,7 +293,7 @@ function sameSequence(a: (string | null)[], b: (string | null)[]): boolean {
   return a.length === b.length && a.every((v, i) => v === b[i]);
 }
 
-function selectInitializer(candidates: ClassInitializer[], options: MethodResolveOptions): ClassInitializer {
+function matchInitializers(candidates: ClassInitializer[], options: MethodResolveOptions): ClassInitializer[] {
   let matches = candidates;
   if (options.arity !== undefined) {
     matches = matches.filter((c) => c.argTypes.length === options.arity);
@@ -301,6 +304,14 @@ function selectInitializer(candidates: ClassInitializer[], options: MethodResolv
   if (options.argTypes !== undefined) {
     matches = matches.filter((c) => sameSequence(c.argTypeNames, options.argTypes!));
   }
+  return matches;
+}
+
+function selectInitializer(candidates: ClassInitializer[], options: MethodResolveOptions): ClassInitializer {
+  if (candidates.length === 0) {
+    throw new Error("no initializer found");
+  }
+  const matches = matchInitializers(candidates, options);
   if (matches.length === 1) {
     return matches[0];
   }
@@ -312,8 +323,10 @@ function selectInitializer(candidates: ClassInitializer[], options: MethodResolv
   throw new Error(`init is ambiguous: ${overloads} (disambiguate with { labels } or { argTypes })`);
 }
 
+const ALLOCATING_CONSTRUCTOR = "fC";
+
 export class ClassType extends SwiftType {
-  private initializers: ClassInitializer[] | null = null;
+  private initializers = new Map<ModuleScope, ClassInitializer[]>();
 
   get superClass(): SwiftType | null {
     const superclass = new ClassMetadata(metadataOf(this).handle).superclass;
@@ -339,11 +352,15 @@ export class ClassType extends SwiftType {
   }
 
   private hasInitializer(labels: string[]): boolean {
-    return this.resolveInitializers().some((c) => sameSequence(c.argLabels, labels));
+    const declares = (modules: ModuleScope): boolean =>
+      this.resolveInitializers(modules).some((c) => sameSequence(c.argLabels, labels));
+    return declares("definingModule") || declares("allLoadedModules");
   }
 
   initializer(options: MethodResolveOptions = {}): SwiftClassBoundInitializer {
-    const chosen = selectInitializer(this.resolveInitializers(), options);
+    const own = matchInitializers(this.resolveInitializers("definingModule"), options);
+    const chosen =
+      own.length === 1 ? own[0] : selectInitializer(this.resolveInitializers("allLoadedModules"), options);
     const metadata = metadataOf(this);
     const fullName = this.fullName;
     const call = makeSwiftNativeFunction(chosen.address, metadata, chosen.argTypes, {
@@ -388,50 +405,28 @@ export class ClassType extends SwiftType {
     return name;
   }
 
-  private resolveInitializers(): ClassInitializer[] {
-    if (this.initializers !== null) {
-      return this.initializers;
+  private resolveInitializers(modules: ModuleScope): ClassInitializer[] {
+    const cached = this.initializers.get(modules);
+    if (cached !== undefined) {
+      return cached;
     }
-    const descriptor = descriptorOf(this);
-    const fullName = descriptor.fullTypeName;
-    if (fullName === null) {
-      throw new Error("class has no type name");
-    }
-    const module = Process.findModuleByAddress(descriptor.handle);
-    if (module === null) {
-      throw new Error(`no module owns ${fullName}`);
-    }
-    const prefix = `${fullName}.__allocating_init`;
-    const candidates: ClassInitializer[] = [];
-    for (const e of module.enumerateExports()) {
-      const demangled = demangle(e.name);
-      if (demangled === null || !demangled.startsWith(prefix)) {
-        continue;
-      }
-      const parsed = parseSwiftSignature(demangled);
-      if (parsed === null || parsed.kind !== "function") {
-        continue;
-      }
-      const argTypes = parsed.argTypeNames.map((n) => {
-        const metadata = resolveType(n);
-        if (metadata === null) {
-          throw new Error(`cannot resolve init argument type ${n}`);
-        }
-        return metadata;
-      });
-      candidates.push({
-        address: e.address,
-        argTypes,
-        argLabels: parsed.argLabels,
-        argTypeNames: parsed.argTypeNames,
-        throws: parsed.throws,
-        failable: parsed.returnTypeName !== null && isOptionalTypeName(parsed.returnTypeName),
-      });
-    }
-    if (candidates.length === 0) {
-      throw new Error(`no __allocating_init found for ${fullName}`);
-    }
-    this.initializers = candidates;
+    const candidates = enumerateMethods(this.name, modules, "thisType")
+      .filter((m) => m.mangled.endsWith(ALLOCATING_CONSTRUCTOR))
+      .map((m) => ({
+        address: m.address,
+        argTypes: m.argTypeNames.map((n) => {
+          const metadata = resolveType(n);
+          if (metadata === null) {
+            throw new Error(`cannot resolve init argument type ${n}`);
+          }
+          return metadata;
+        }),
+        argLabels: m.argLabels,
+        argTypeNames: m.argTypeNames,
+        throws: m.throws,
+        failable: m.returnTypeName !== null && isOptionalTypeName(m.returnTypeName),
+      }));
+    this.initializers.set(modules, candidates);
     return candidates;
   }
 }

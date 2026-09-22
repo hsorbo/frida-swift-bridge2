@@ -34,6 +34,17 @@ describe("a type extended from another module", () => {
     expect(pairOfInt.new({ first: 1, second: 2 }).labelled()).toBe("pair");
   });
 
+  test("an initializer added to a class is selected by its labels", () => {
+    const robot = (Swift.type("fixture.Robot") as ClassType).init({ badge: "7" });
+    expect(robot.name).toBe("R-7");
+  });
+
+  test("an initializer added to a value type is selected by its labels", () => {
+    const ranged = (Swift.type("fixture.Ranged") as StructType).init({ span: 5 })!;
+    expect(Number(ranged.lo)).toBe(0);
+    expect(Number(ranged.hi)).toBe(5);
+  });
+
   test("they are callable and readable through the facade", () => {
     const robot = (Swift.type("fixture.Robot") as ClassType).init("R2");
     expect(robot.fly()).toBe("fly R2");

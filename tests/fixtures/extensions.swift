@@ -9,3 +9,11 @@ public extension Robot {
 public extension Pair {
     func labelled() -> String { "pair" }
 }
+
+public extension Ranged {
+    init(span: Int) { self.init(lo: 0, hi: span) }
+}
+
+public extension Robot {
+    convenience init(badge: String) { self.init(name: "R-\(badge)") }
+}
