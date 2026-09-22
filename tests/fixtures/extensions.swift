@@ -5,3 +5,7 @@ public extension Robot {
 
     var wingspan: Int { name.count }
 }
+
+public extension Pair {
+    func labelled() -> String { "pair" }
+}

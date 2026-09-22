@@ -425,13 +425,66 @@ function classChainNames(fullName: string): string[] {
 // say) diverges for all of a type's symbols or none, so an empty scan is what signals the retry.
 function mangledTypeToken(descriptor: ContextDescriptor): string | null {
   if (descriptor.isGeneric) {
-    return null;
+    return buildMangledTypeToken(descriptor);
   }
   try {
     return mangledTypeName(getMetadata(descriptor));
   } catch {
     return null;
   }
+}
+
+const MANGLED_KIND_CHARS: { [kind: number]: string } = {
+  [ContextDescriptorKind.Class]: "C",
+  [ContextDescriptorKind.Struct]: "V",
+  [ContextDescriptorKind.Enum]: "O",
+};
+
+function buildMangledTypeToken(descriptor: ContextDescriptor): string | null {
+  let token = "";
+  for (let context: ContextDescriptor | null = descriptor; context !== null; context = context.parent) {
+    const name = context.name;
+    if (name === null) {
+      return null;
+    }
+    if (context.kind === ContextDescriptorKind.Module) {
+      return `${name.length}${name}${token}`;
+    }
+    const kindChar = MANGLED_KIND_CHARS[context.kind];
+    if (kindChar === undefined) {
+      return null;
+    }
+    token = `${name.length}${name}${kindChar}${token}`;
+  }
+  return null;
+}
+
+const provenTokens = new Map<string, string | null>();
+
+function provenToken(fullName: string, descriptor: ContextDescriptor, owner: Module): string | null {
+  const cached = provenTokens.get(fullName);
+  if (cached !== undefined) {
+    return cached;
+  }
+  const token = mangledTypeToken(descriptor);
+  const proven =
+    token === null || !descriptor.isGeneric || carriesToken(owner, token) ? token : null;
+  provenTokens.set(fullName, proven);
+  return proven;
+}
+
+function carriesToken(module: Module, token: string): boolean {
+  for (const e of module.enumerateExports()) {
+    if (e.name.includes(token)) {
+      return true;
+    }
+  }
+  for (const s of module.enumerateSymbols()) {
+    if (s.name.includes(token)) {
+      return true;
+    }
+  }
+  return false;
 }
 
 const foreignScans = new Map<string, TypeMembers>();
@@ -442,9 +495,12 @@ function foreignMembers(fullName: string): TypeMembers {
   const methods: MethodCandidate[] = [];
   const accessors: AccessorCandidate[] = [];
   const descriptor = findType(fullName)!;
-  const token = mangledTypeToken(descriptor);
   const owner = Process.findModuleByAddress(descriptor.handle);
-  if (token === null || owner === null) {
+  if (owner === null) {
+    return { methods, accessors };
+  }
+  const token = provenToken(fullName, descriptor, owner);
+  if (token === null) {
     return { methods, accessors };
   }
   for (const module of Process.enumerateModules()) {
@@ -1584,6 +1640,17 @@ function inferClosureTypeArguments(signature: SwiftFunctionSignature): Metadata[
   });
 }
 
+function matchingMethods(
+  fullName: string,
+  options: RawMethodResolveOptions,
+  match: (candidate: MethodCandidate) => boolean
+): MethodCandidate[] {
+  const own = applyOverloadFilters(definingModuleMembers(fullName).methods.filter(match), options);
+  return own.length > 0
+    ? own
+    : applyOverloadFilters(allLoadedModuleMembers(fullName).methods.filter(match), options);
+}
+
 // planGenericMethod also binds a non-generic method whose closure parameter needs ArgPlan lowering.
 function argPlanBound(signature: SwiftFunctionSignature): boolean {
   return signature.genericParams.length > 0
@@ -1594,9 +1661,10 @@ function argPlanBound(signature: SwiftFunctionSignature): boolean {
 function planGenericMethod(typeNameArg: string, methodName: string, options: RawMethodResolveOptions): GenericMethodPlan {
   const fullName = canonicalTypeName(typeNameArg);
   const typeArguments = options.typeArguments ?? [];
-  const candidates = applyOverloadFilters(
-    definingModuleMembers(fullName).methods.filter((c) => c.name === methodName && argPlanBound(c.signature)),
-    options
+  const candidates = matchingMethods(
+    fullName,
+    options,
+    (c) => c.name === methodName && argPlanBound(c.signature)
   );
   if (candidates.length === 0) {
     throw new Error(`no generic or closure-taking method ${methodName} on ${fullName}`);
@@ -1687,11 +1755,10 @@ function genericTypeArguments(receiver: Metadata): { unboundName: string; typePa
 // — the callee reads T's metadata + witnesses from that vector; a class recovers them from the isa.
 function planGenericTypeMethod(receiver: Metadata, methodName: string, options: RawMethodResolveOptions, trailsSelfMetadata: boolean): GenericMethodPlan {
   const { unboundName, typeParams, typeArguments } = genericTypeArguments(receiver);
-  const candidates = applyOverloadFilters(
-    definingModuleMembers(unboundName).methods.filter(
-      (c) => c.name === methodName && c.signature.genericParams.length === 0 && c.signature.simpleGenerics
-    ),
-    options
+  const candidates = matchingMethods(
+    unboundName,
+    options,
+    (c) => c.name === methodName && c.signature.genericParams.length === 0 && c.signature.simpleGenerics
   );
   if (candidates.length === 0) {
     throw new Error(`no method ${methodName} on ${unboundName}`);
