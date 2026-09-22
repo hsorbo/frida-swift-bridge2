@@ -62,7 +62,7 @@ describe("@MainActor async calling (needs a pumping main runloop)", () => {
   });
 
   test.skip("resolves a @MainActor method via the facade: mainMethodAsync(1) ⇒ 11", async () => {
-    const h = (Swift.typeOf(Swift.metadataFor("fixture.MainHolder")!) as ClassType).init(10);
-    expect(await h.mainMethodAsync(1)).toBe(11);
+    const h = (typeOf(metadataFor("fixture.MainHolder")!) as ClassType).init(10);
+    expect(await h.mainMethodAsync(1)).toEqual(int64(11));
   });
 });
