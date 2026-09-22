@@ -8,9 +8,6 @@ const K_CF_STRING_ENCODING_UTF8 = 0x08000100;
 // Create a heap (non-tagged) NSString/CFString. Returns null if CoreFoundation
 // can't be loaded in the test process.
 function makeCocoaString(text: string): NativePointer | null {
-  if (Process.arch !== "arm64" || Process.platform !== "darwin") {
-    return null;
-  }
   let cf: Module;
   try {
     cf =
