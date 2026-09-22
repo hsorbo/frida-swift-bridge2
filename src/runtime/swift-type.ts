@@ -145,7 +145,7 @@ export class SwiftType {
 
   methods(options: MethodQuery = {}): string[] {
     const { static: wantStatic = false, inherited = true } = options;
-    return enumerateMethods(this.name, !inherited)
+    return enumerateMethods(this.name, inherited ? "withSuperclasses" : "thisType")
       .filter((m) => m.kind === "method" && m.isStatic === wantStatic)
       .map((m) => m.selector);
   }

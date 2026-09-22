@@ -504,11 +504,16 @@ function scanMembers(module: Module, fullName: string, token: string | null): Ty
   return { methods, accessors };
 }
 
-export function enumerateMethods(typeName: string, ownOnly = false): MethodInfo[] {
+export type TypeScope = "thisType" | "withSuperclasses";
+
+export function enumerateMethods(
+  typeName: string,
+  types: TypeScope = "withSuperclasses"
+): MethodInfo[] {
   const seen = new Set<string>();
   const methods: MethodInfo[] = [];
   const fullName = canonicalTypeName(typeName);
-  for (const className of ownOnly ? [fullName] : classChainNames(fullName)) {
+  for (const className of types === "withSuperclasses" ? classChainNames(fullName) : [fullName]) {
     for (const c of typeMembers(className).methods) {
       const key = `${c.isStatic ? "s" : "i"}:${c.signature.selector}`;
       if (seen.has(key)) {
