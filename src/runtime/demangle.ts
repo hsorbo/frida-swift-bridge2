@@ -8,6 +8,31 @@ export function isSwiftSymbol(name: string): boolean {
 
 const cache = new Map<string, string | null>();
 
+let output = Memory.alloc(4096);
+let outputSize = 4096;
+const outputSizeCell = Memory.alloc(Process.pointerSize);
+
+// Called without an output buffer, swift_demangle strdup()s its result and hands over ownership.
+// Lending it one keeps the C side allocation-free; it then truncates a name that doesn't fit and
+// writes back the size it wanted, so an outgrown buffer costs one retry.
+function demangleUncached(mangled: string): string | null {
+  const namePtr = Memory.allocUtf8String(mangled);
+  const api = getSwiftCoreApi();
+  for (;;) {
+    outputSizeCell.writeULong(outputSize);
+    const result = api.swift_demangle(namePtr, mangled.length, output, outputSizeCell, 0);
+    if (result.isNull()) {
+      return null;
+    }
+    const needed = Number(outputSizeCell.readULong());
+    if (needed <= outputSize) {
+      return output.readUtf8String();
+    }
+    outputSize = needed;
+    output = Memory.alloc(outputSize);
+  }
+}
+
 export function demangle(mangled: string): string | null {
   if (!isSwiftSymbol(mangled)) {
     return null;
@@ -18,15 +43,7 @@ export function demangle(mangled: string): string | null {
     return cached;
   }
 
-  const namePtr = Memory.allocUtf8String(mangled);
-  const resultPtr = getSwiftCoreApi().swift_demangle(
-    namePtr,
-    mangled.length,
-    ptr(0),
-    ptr(0),
-    0
-  );
-  const result = resultPtr.isNull() ? null : resultPtr.readUtf8String();
+  const result = demangleUncached(mangled);
 
   cache.set(mangled, result);
   return result;
