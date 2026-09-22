@@ -145,7 +145,7 @@ export class SwiftType {
 
   methods(options: MethodQuery = {}): string[] {
     const { static: wantStatic = false, inherited = true } = options;
-    return enumerateMethods(this.name, inherited ? "withSuperclasses" : "thisType")
+    return enumerateMethods(this.name, "allLoadedModules", inherited ? "withSuperclasses" : "thisType")
       .filter((m) => m.kind === "method" && m.isStatic === wantStatic)
       .map((m) => m.selector);
   }
@@ -181,7 +181,7 @@ export class ValueType extends SwiftType {
   }
 
   private hasInitializer(labels: string[]): boolean {
-    return enumerateMethods(this.name).some(
+    return enumerateMethods(this.name, "definingModule").some(
       (m) => m.name === "init" && sameSequence(m.argLabels, labels)
     );
   }

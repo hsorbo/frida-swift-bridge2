@@ -400,7 +400,7 @@ function canonicalTypeName(typeName: string): string {
   return full;
 }
 
-// typeMembers keys a method to its declaring class, so inherited ones need the superclass chain.
+// A member is keyed to its declaring class, so inherited ones need the superclass chain.
 // Most-derived first; non-class/generic types collapse to one level.
 function classChainNames(fullName: string): string[] {
   const descriptor = findType(fullName);
@@ -434,8 +434,49 @@ function mangledTypeToken(descriptor: ContextDescriptor): string | null {
   }
 }
 
-// Misses members defined in an extension in a different module than the type.
-function typeMembers(fullName: string): TypeMembers {
+const foreignScans = new Map<string, TypeMembers>();
+
+// Keyed on the module, not on the answer: a loaded module's symbols can't change, while
+// "type T has no member m" stops being true as soon as another module is loaded.
+function foreignMembers(fullName: string): TypeMembers {
+  const methods: MethodCandidate[] = [];
+  const accessors: AccessorCandidate[] = [];
+  const descriptor = findType(fullName)!;
+  const token = mangledTypeToken(descriptor);
+  const owner = Process.findModuleByAddress(descriptor.handle);
+  if (token === null || owner === null) {
+    return { methods, accessors };
+  }
+  for (const module of Process.enumerateModules()) {
+    if (module.base.equals(owner.base)) {
+      continue;
+    }
+    const key = `${module.path}@${module.base}|${token}`;
+    let found = foreignScans.get(key);
+    if (found === undefined) {
+      found = scanMembers([module], fullName, token, false);
+      foreignScans.set(key, found);
+    }
+    methods.push(...found.methods);
+    accessors.push(...found.accessors);
+  }
+  return { methods, accessors };
+}
+
+export type ModuleScope = "definingModule" | "allLoadedModules";
+
+type MemberSource = (fullName: string) => TypeMembers;
+
+function allLoadedModuleMembers(fullName: string): TypeMembers {
+  const own = definingModuleMembers(fullName);
+  const foreign = foreignMembers(fullName);
+  return {
+    methods: [...own.methods, ...foreign.methods],
+    accessors: [...own.accessors, ...foreign.accessors],
+  };
+}
+
+function definingModuleMembers(fullName: string): TypeMembers {
   const cached = tableCache.get(fullName);
   if (cached !== undefined) {
     return cached;
@@ -446,15 +487,20 @@ function typeMembers(fullName: string): TypeMembers {
     throw new Error(`no module owns ${fullName}`);
   }
   const token = mangledTypeToken(descriptor);
-  let members = scanMembers(module, fullName, token);
+  let members = scanMembers([module], fullName, token, true);
   if (token !== null && members.methods.length === 0 && members.accessors.length === 0) {
-    members = scanMembers(module, fullName, null);
+    members = scanMembers([module], fullName, null, true);
   }
   tableCache.set(fullName, members);
   return members;
 }
 
-function scanMembers(module: Module, fullName: string, token: string | null): TypeMembers {
+function scanMembers(
+  modules: Module[],
+  fullName: string,
+  token: string | null,
+  withSymbols: boolean
+): TypeMembers {
   const methods: MethodCandidate[] = [];
   const accessors: AccessorCandidate[] = [];
   const seen = new Set<string>();
@@ -495,26 +541,37 @@ function scanMembers(module: Module, fullName: string, token: string | null): Ty
       }
     }
   };
-  for (const e of module.enumerateExports()) {
-    consider(e.name, e.address, false);
-  }
-  for (const s of module.enumerateSymbols()) {
-    consider(s.name, s.address, true);
+  for (const module of modules) {
+    for (const e of module.enumerateExports()) {
+      consider(e.name, e.address, false);
+    }
+    if (!withSymbols) {
+      continue;
+    }
+    for (const s of module.enumerateSymbols()) {
+      consider(s.name, s.address, true);
+    }
   }
   return { methods, accessors };
 }
 
 export type TypeScope = "thisType" | "withSuperclasses";
 
+function memberSource(modules: ModuleScope): MemberSource {
+  return modules === "definingModule" ? definingModuleMembers : allLoadedModuleMembers;
+}
+
 export function enumerateMethods(
   typeName: string,
+  modules: ModuleScope = "allLoadedModules",
   types: TypeScope = "withSuperclasses"
 ): MethodInfo[] {
+  const members = memberSource(modules);
   const seen = new Set<string>();
   const methods: MethodInfo[] = [];
   const fullName = canonicalTypeName(typeName);
   for (const className of types === "withSuperclasses" ? classChainNames(fullName) : [fullName]) {
-    for (const c of typeMembers(className).methods) {
+    for (const c of members(className).methods) {
       const key = `${c.isStatic ? "s" : "i"}:${c.signature.selector}`;
       if (seen.has(key)) {
         continue;
@@ -546,12 +603,16 @@ export interface PropertyInfo {
 // One entry per property, its accessors merged. writable tracks an exported setter, the only
 // accessor $set resolves (a get/_modify property still gets a synthesized one). Walks the class
 // chain like enumerateMethods so a subclass property shadows the superclass one of the same name.
-export function enumerateProperties(typeName: string): PropertyInfo[] {
+export function enumerateProperties(
+  typeName: string,
+  modules: ModuleScope = "allLoadedModules"
+): PropertyInfo[] {
+  const members = memberSource(modules);
   const seen = new Set<string>();
   const properties: PropertyInfo[] = [];
   for (const className of classChainNames(canonicalTypeName(typeName))) {
     const atThisLevel = new Map<string, PropertyInfo>();
-    for (const a of typeMembers(className).accessors) {
+    for (const a of members(className).accessors) {
       const key = `${a.isStatic ? "s" : "i"}:${a.member}`;
       if (seen.has(key)) {
         continue;
@@ -579,9 +640,24 @@ export function resolveMethod(
   options: RawMethodResolveOptions = {}
 ): ResolvedMethod {
   const fullName = canonicalTypeName(typeName);
+  const resolved =
+    resolveMethodIn(fullName, methodName, options, definingModuleMembers) ??
+    resolveMethodIn(fullName, methodName, options, allLoadedModuleMembers);
+  if (resolved === null) {
+    throw new Error(`no method ${methodName} on ${fullName}`);
+  }
+  return resolved;
+}
+
+function resolveMethodIn(
+  fullName: string,
+  methodName: string,
+  options: RawMethodResolveOptions,
+  members: MemberSource
+): ResolvedMethod | null {
   for (const className of classChainNames(fullName)) {
     const candidates = applyOverloadFilters(
-      typeMembers(className).methods.filter(
+      members(className).methods.filter(
         (c) => c.name === methodName && c.signature.genericParams.length === 0
       ),
       options
@@ -626,7 +702,7 @@ export function resolveMethod(
     }
     return { address, argTypes, returnType, throws: signature.throws, isStatic, selector: signature.selector, async: signature.async, asyncFunctionPointer };
   }
-  throw new Error(`no method ${methodName} on ${fullName}`);
+  return null;
 }
 
 // Keyed by full signature, not bare address: an index invocation must not reuse a symbol-route
@@ -1519,7 +1595,7 @@ function planGenericMethod(typeNameArg: string, methodName: string, options: Raw
   const fullName = canonicalTypeName(typeNameArg);
   const typeArguments = options.typeArguments ?? [];
   const candidates = applyOverloadFilters(
-    typeMembers(fullName).methods.filter((c) => c.name === methodName && argPlanBound(c.signature)),
+    definingModuleMembers(fullName).methods.filter((c) => c.name === methodName && argPlanBound(c.signature)),
     options
   );
   if (candidates.length === 0) {
@@ -1612,7 +1688,7 @@ function genericTypeArguments(receiver: Metadata): { unboundName: string; typePa
 function planGenericTypeMethod(receiver: Metadata, methodName: string, options: RawMethodResolveOptions, trailsSelfMetadata: boolean): GenericMethodPlan {
   const { unboundName, typeParams, typeArguments } = genericTypeArguments(receiver);
   const candidates = applyOverloadFilters(
-    typeMembers(unboundName).methods.filter(
+    definingModuleMembers(unboundName).methods.filter(
       (c) => c.name === methodName && c.signature.genericParams.length === 0 && c.signature.simpleGenerics
     ),
     options
@@ -1684,8 +1760,23 @@ interface ResolvedAccessor {
 // shadows an inherited property and a static accessor of the same name is never mistaken for it.
 function resolveAccessor(typeName: string, member: string, kind: AccessorKind): ResolvedAccessor {
   const fullName = canonicalTypeName(typeName);
+  const resolved =
+    resolveAccessorIn(fullName, member, kind, definingModuleMembers) ??
+    resolveAccessorIn(fullName, member, kind, allLoadedModuleMembers);
+  if (resolved === null) {
+    throw new Error(`no ${kind} for ${member} on ${fullName}`);
+  }
+  return resolved;
+}
+
+function resolveAccessorIn(
+  fullName: string,
+  member: string,
+  kind: AccessorKind,
+  members: MemberSource
+): ResolvedAccessor | null {
   for (const className of classChainNames(fullName)) {
-    const candidate = typeMembers(className).accessors.find(
+    const candidate = members(className).accessors.find(
       (a) => a.member === member && a.kind === kind && !a.isStatic
     );
     if (candidate === undefined) {
@@ -1698,7 +1789,7 @@ function resolveAccessor(typeName: string, member: string, kind: AccessorKind): 
     }
     return { address: candidate.address, type, kind };
   }
-  throw new Error(`no ${kind} for ${member} on ${fullName}`);
+  return null;
 }
 
 // A getter borrows self, so a small loadable value receiver rides in registers by value — passed as a

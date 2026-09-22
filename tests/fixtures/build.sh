@@ -10,11 +10,11 @@ paths="$fixtures/paths.ts"
 bytes="$fixtures/bytes.ts"
 
 emit_paths() {
-  printf 'export const FIXTURE_DYLIB = "%s";\nexport const RESILIENT_DYLIB = "%s";\nexport const FIXTURESYMS_DYLIB = "%s";\n' "$1" "$2" "$3" >"$paths"
+  printf 'export const FIXTURE_DYLIB = "%s";\nexport const RESILIENT_DYLIB = "%s";\nexport const FIXTURESYMS_DYLIB = "%s";\nexport const EXTENSIONS_DYLIB = "%s";\n' "$1" "$2" "$3" "$4" >"$paths"
 }
 
 emit_empty_bytes() {
-  printf 'export const FIXTURE_B64 = "";\nexport const RESILIENT_B64 = "";\nexport const FIXTURESYMS_B64 = "";\n' >"$bytes"
+  printf 'export const FIXTURE_B64 = "";\nexport const RESILIENT_B64 = "";\nexport const FIXTURESYMS_B64 = "";\nexport const EXTENSIONS_B64 = "";\n' >"$bytes"
 }
 
 # EMBED_FIXTURES base64s the dylibs into bytes.ts for remote targets that lack the
@@ -28,13 +28,14 @@ emit_bytes() {
     printf 'export const FIXTURE_B64 = "'; base64 <"$1" | tr -d '\n'
     printf '";\nexport const RESILIENT_B64 = "'; base64 <"$2" | tr -d '\n'
     printf '";\nexport const FIXTURESYMS_B64 = "'; base64 <"$3" | tr -d '\n'
+    printf '";\nexport const EXTENSIONS_B64 = "'; base64 <"$4" | tr -d '\n'
     printf '";\n'
   } >"$bytes"
 }
 
 if ! command -v swiftc >/dev/null 2>&1; then
   echo "build fixtures: swiftc not found; skipping Swift fixture build"
-  emit_paths "" "" ""
+  emit_paths "" "" "" ""
   emit_empty_bytes
   exit 0
 fi
@@ -58,6 +59,7 @@ case "$platform" in
     fixture_out="$fixtures/fixture.dylib"
     resilient_out="$fixtures/resilient.dylib"
     fixturesyms_out="$fixtures/fixturesyms.dylib"
+    extensions_out="$fixtures/extensions.dylib"
 
     for arch in arm64 arm64e; do
       mkdir -p "$work/$arch"
@@ -69,29 +71,41 @@ case "$platform" in
 
       for mod in fixture fixturesyms; do
         xcrun -sdk iphoneos swiftc -target "${arch}-apple-ios${dep}" \
-          -emit-library -module-name "$mod" "$fixtures/fixture.swift" \
+          -emit-library -emit-module -module-name "$mod" "$fixtures/fixture.swift" \
           -I "$work/$arch" "$work/$arch/resilient.dylib" -o "$work/$arch/$mod.dylib" \
+          -emit-module-path "$work/$arch/$mod.swiftmodule" \
+          -Xlinker -install_name -Xlinker "@rpath/$mod.dylib" \
           -Xlinker -rpath -Xlinker @loader_path
       done
+
+      xcrun -sdk iphoneos swiftc -target "${arch}-apple-ios${dep}" \
+        -emit-library -module-name extensions "$fixtures/extensions.swift" \
+        -I "$work/$arch" "$work/$arch/fixture.dylib" "$work/$arch/resilient.dylib" \
+        -o "$work/$arch/extensions.dylib" \
+        -Xlinker -install_name -Xlinker @rpath/extensions.dylib \
+        -Xlinker -rpath -Xlinker @loader_path
     done
 
     lipo -create "$work/arm64/resilient.dylib"   "$work/arm64e/resilient.dylib"   -output "$resilient_out"
     lipo -create "$work/arm64/fixture.dylib"     "$work/arm64e/fixture.dylib"     -output "$fixture_out"
     lipo -create "$work/arm64/fixturesyms.dylib" "$work/arm64e/fixturesyms.dylib" -output "$fixturesyms_out"
+    lipo -create "$work/arm64/extensions.dylib"   "$work/arm64e/extensions.dylib"   -output "$extensions_out"
     rm -rf "$work"
 
-    xcrun strip -x "$fixture_out" "$resilient_out"
+    xcrun strip -x "$fixture_out" "$resilient_out" "$extensions_out"
     codesign -s - -f "$fixture_out"
     codesign -s - -f "$fixturesyms_out"
     codesign -s - -f "$resilient_out"
+    codesign -s - -f "$extensions_out"
 
-    emit_paths "$fixture_out" "$resilient_out" "$fixturesyms_out"
-    emit_bytes "$fixture_out" "$resilient_out" "$fixturesyms_out"
+    emit_paths "$fixture_out" "$resilient_out" "$fixturesyms_out" "$extensions_out"
+    emit_bytes "$fixture_out" "$resilient_out" "$fixturesyms_out" "$extensions_out"
     ;;
   macos)
     fixture_out="$fixtures/fixture.dylib"
     resilient_out="$fixtures/resilient.dylib"
     fixturesyms_out="$fixtures/fixturesyms.dylib"
+    extensions_out="$fixtures/extensions.dylib"
 
     # ARCH=arm64e pins the arm64e slice so fixtures match an arm64e (PAC) host.
     if [ -n "$ARCH" ]; then
@@ -104,18 +118,24 @@ case "$platform" in
       "$fixtures/resilient.swift" -o "$resilient_out" \
       -Xlinker -install_name -Xlinker "$resilient_out"
 
-    swiftc $target_flag -emit-library -module-name fixture "$fixtures/fixture.swift" -I "$fixtures" "$resilient_out" -o "$fixture_out"
+    swiftc $target_flag -emit-library -emit-module -module-name fixture "$fixtures/fixture.swift" -I "$fixtures" "$resilient_out" -o "$fixture_out"
     xcrun strip -x "$fixture_out"
     codesign -s - -f "$fixture_out"
 
     swiftc $target_flag -emit-library -module-name fixturesyms "$fixtures/fixture.swift" -I "$fixtures" "$resilient_out" -o "$fixturesyms_out"
     codesign -s - -f "$fixturesyms_out"
 
+    swiftc $target_flag -emit-library -module-name extensions "$fixtures/extensions.swift" \
+      -I "$fixtures" "$fixture_out" "$resilient_out" -o "$extensions_out" \
+      -Xlinker -install_name -Xlinker "$extensions_out"
+    xcrun strip -x "$extensions_out"
+    codesign -s - -f "$extensions_out"
+
     xcrun strip -x "$resilient_out"
     codesign -s - -f "$resilient_out"
 
-    emit_paths "$fixture_out" "$resilient_out" "$fixturesyms_out"
-    emit_bytes "$fixture_out" "$resilient_out" "$fixturesyms_out"
+    emit_paths "$fixture_out" "$resilient_out" "$fixturesyms_out" "$extensions_out"
+    emit_bytes "$fixture_out" "$resilient_out" "$fixturesyms_out" "$extensions_out"
 
     if [ "$ARCH" = "arm64e" ]; then
       host_out="$fixtures/host"
@@ -127,19 +147,23 @@ case "$platform" in
     fixture_out="$fixtures/fixture.so"
     resilient_out="$fixtures/resilient.so"
     fixturesyms_out="$fixtures/fixturesyms.so"
+    extensions_out="$fixtures/extensions.so"
 
     swiftc -emit-library -emit-module -enable-library-evolution -module-name resilient \
       "$fixtures/resilient.swift" -o "$resilient_out" \
       -Xlinker -soname -Xlinker "$resilient_out"
 
-    swiftc -emit-library -module-name fixture "$fixtures/fixture.swift" -I "$fixtures" "$resilient_out" -o "$fixture_out"
+    swiftc -emit-library -emit-module -module-name fixture "$fixtures/fixture.swift" -I "$fixtures" "$resilient_out" -o "$fixture_out"
     swiftc -emit-library -module-name fixturesyms "$fixtures/fixture.swift" -I "$fixtures" "$resilient_out" -o "$fixturesyms_out"
+    swiftc -emit-library -module-name extensions "$fixtures/extensions.swift" -I "$fixtures" \
+      "$fixture_out" "$resilient_out" -o "$extensions_out" \
+      -Xlinker -soname -Xlinker "$extensions_out"
 
     # Also proves section discovery is symbol-independent.
-    strip "$fixture_out" "$resilient_out"
+    strip "$fixture_out" "$resilient_out" "$extensions_out"
 
-    emit_paths "$fixture_out" "$resilient_out" "$fixturesyms_out"
-    emit_bytes "$fixture_out" "$resilient_out" "$fixturesyms_out"
+    emit_paths "$fixture_out" "$resilient_out" "$fixturesyms_out" "$extensions_out"
+    emit_bytes "$fixture_out" "$resilient_out" "$fixturesyms_out" "$extensions_out"
     ;;
   *)
     echo "build fixtures: unsupported platform $platform" >&2

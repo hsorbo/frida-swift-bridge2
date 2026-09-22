@@ -12,6 +12,7 @@ import {
   lowerResolveOptions,
   enumerateMethods,
   enumerateProperties,
+  ModuleScope,
 } from "./method.js";
 import { typeName } from "./type-name.js";
 import { SwiftType } from "./swift-type.js";
@@ -140,19 +141,30 @@ export function asSwiftObject(source: NativePointer | ClassInstance | ValueInsta
   };
 
   let index: MemberIndex | null = null;
+  let searchedAllModules = false;
+  const buildIndex = (modules: ModuleScope): MemberIndex => ({
+    methods: new Set(
+      enumerateMethods(fullName(), modules)
+        .filter((m) => m.kind === "method" && !m.isStatic)
+        .map((m) => m.name)
+    ),
+    properties: new Set(
+      enumerateProperties(fullName(), modules).filter((p) => !p.isStatic).map((p) => p.name)
+    ),
+  });
   const members = (): MemberIndex => {
     if (index === null) {
-      index = {
-        methods: new Set(
-          enumerateMethods(fullName())
-            .filter((m) => m.kind === "method" && !m.isStatic)
-            .map((m) => m.name)
-        ),
-        properties: new Set(
-          enumerateProperties(fullName()).filter((p) => !p.isStatic).map((p) => p.name)
-        ),
-      };
+      index = buildIndex("definingModule");
     }
+    return index;
+  };
+  const membersIncludingOtherModules = (key: string): MemberIndex => {
+    const own = members();
+    if (own.methods.has(key) || own.properties.has(key) || searchedAllModules) {
+      return own;
+    }
+    searchedAllModules = true;
+    index = buildIndex("allLoadedModules");
     return index;
   };
 
@@ -222,7 +234,7 @@ export function asSwiftObject(source: NativePointer | ClassInstance | ValueInsta
       if (POISON.has(key)) {
         return undefined;
       }
-      const m = members();
+      const m = membersIncludingOtherModules(key);
       if (m.properties.has(key)) {
         return readProperty(key);
       }
