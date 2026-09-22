@@ -237,7 +237,7 @@ export {
   descriptorOf,
 } from "./runtime/swift-type.js";
 export { SwiftValue } from "./abi/instance.js";
-export { typeName } from "./runtime/type-name.js";
+export { typeName, mangledTypeName } from "./runtime/type-name.js";
 export { Protocol, ProtocolComposition } from "./runtime/protocol.js";
 export {
   FunctionType as FunctionSignature,

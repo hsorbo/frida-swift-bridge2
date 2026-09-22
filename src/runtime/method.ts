@@ -33,7 +33,7 @@ import { AsyncFunctionPointer, findAsyncFunctionPointer } from "../abi/async-fun
 import { callAsync, AsyncCallOptions, AsyncResultShape, AsyncFloatArg, SerialExecutorRef } from "./async-call.js";
 import { SwiftClosure, ClosureSpec, ClosureBody, LoadableClosureBody, SwiftThrow } from "./closure.js";
 import { closureDiscriminator, closureHashString, INDIRECT } from "./closure-discriminator.js";
-import { typeName } from "./type-name.js";
+import { typeName, mangledTypeName } from "./type-name.js";
 import { readString, createString } from "../abi/string.js";
 import {
   isClassExistential,
@@ -420,6 +420,20 @@ function classChainNames(fullName: string): string[] {
   return names.length === 0 ? [fullName] : names;
 }
 
+// Every entity symbol leads with its context's mangled node, so the raw name can be tested for it
+// before demangling. A spelling the runtime and the compiler disagree on (a private discriminator,
+// say) diverges for all of a type's symbols or none, so an empty scan is what signals the retry.
+function mangledTypeToken(descriptor: ContextDescriptor): string | null {
+  if (descriptor.isGeneric) {
+    return null;
+  }
+  try {
+    return mangledTypeName(getMetadata(descriptor));
+  } catch {
+    return null;
+  }
+}
+
 // Misses members defined in an extension in a different module than the type.
 function typeMembers(fullName: string): TypeMembers {
   const cached = tableCache.get(fullName);
@@ -431,6 +445,16 @@ function typeMembers(fullName: string): TypeMembers {
   if (module === null) {
     throw new Error(`no module owns ${fullName}`);
   }
+  const token = mangledTypeToken(descriptor);
+  let members = scanMembers(module, fullName, token);
+  if (token !== null && members.methods.length === 0 && members.accessors.length === 0) {
+    members = scanMembers(module, fullName, null);
+  }
+  tableCache.set(fullName, members);
+  return members;
+}
+
+function scanMembers(module: Module, fullName: string, token: string | null): TypeMembers {
   const methods: MethodCandidate[] = [];
   const accessors: AccessorCandidate[] = [];
   const seen = new Set<string>();
@@ -438,6 +462,9 @@ function typeMembers(fullName: string): TypeMembers {
   // export trie in non-library-evolution builds, but regular non-exported methods stay reachable only
   // via the vtable, not the symbol route. The export trie carries everything else.
   const consider = (name: string, address: NativePointer, initsOnly: boolean): void => {
+    if (token !== null && !name.includes(token)) {
+      return;
+    }
     if (address.isNull() || seen.has(address.toString())) {
       return;
     }
@@ -474,9 +501,7 @@ function typeMembers(fullName: string): TypeMembers {
   for (const s of module.enumerateSymbols()) {
     consider(s.name, s.address, true);
   }
-  const members: TypeMembers = { methods, accessors };
-  tableCache.set(fullName, members);
-  return members;
+  return { methods, accessors };
 }
 
 export function enumerateMethods(typeName: string, ownOnly = false): MethodInfo[] {

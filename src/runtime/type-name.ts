@@ -8,3 +8,8 @@ export function typeName(metadata: Metadata, qualified = true): string {
   );
   return data.readUtf8String(Number(length)) ?? "";
 }
+
+export function mangledTypeName(metadata: Metadata): string | null {
+  const [data, length] = getSwiftCoreApi().swift_getMangledTypeName(metadata.handle);
+  return data.isNull() ? null : data.readUtf8String(Number(length));
+}

@@ -41,6 +41,7 @@ export interface SwiftCoreApi {
     [NativePointerValue, NativePointerValue, NativePointerValue]
   >;
   swift_getTypeName: NativeFunction<[NativePointer, UInt64], [NativePointerValue, number]>;
+  swift_getMangledTypeName: NativeFunction<[NativePointer, UInt64], [NativePointerValue]>;
   swift_allocObject: NativeFunction<
     NativePointer,
     [NativePointerValue, number | UInt64, number | UInt64]
@@ -121,6 +122,11 @@ export function getSwiftCoreApi(): SwiftCoreApi {
       lib.getExportByName("swift_getTypeName"),
       ["pointer", "size_t"],
       ["pointer", "bool"]
+    ),
+    swift_getMangledTypeName: new NativeFunction(
+      lib.getExportByName("swift_getMangledTypeName"),
+      ["pointer", "size_t"],
+      ["pointer"]
     ),
     swift_allocObject: new NativeFunction(
       lib.getExportByName("swift_allocObject"),
