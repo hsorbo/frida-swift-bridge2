@@ -17,9 +17,3 @@ public extension Ranged {
 public extension Robot {
     convenience init(badge: String) { self.init(name: "R-\(badge)") }
 }
-
-public protocol Flyable {
-    func fly() -> String
-}
-
-extension Robot: Flyable {}

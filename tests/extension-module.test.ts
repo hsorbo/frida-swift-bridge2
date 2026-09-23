@@ -1,11 +1,10 @@
 import { test, expect, describe, beforeEach } from "@frida/injest/agent";
-import { loadFixture, loadExtensions, EXTENSIONS_MODULE } from "./fixtures/load.js";
+import { loadFixture, loadNoMetadata, loadConformance, NOMETADATA_MODULE, CONFORMANCE_MODULE } from "./fixtures/load.js";
 
 import { Swift, ClassType, StructType } from "../src/index.js";
 import { enumerateMethods, enumerateProperties, resolveMethod } from "../src/runtime/method.js";
 import { metadataFor, typeOf } from "../src/abi.js";
-import { enumerateSwiftModules } from "../src/reflection/registry.js";
-import { getSwiftSection } from "../src/image/sections.js";
+import { enumerateSwiftModules, enumerateTypes } from "../src/reflection/registry.js";
 
 // Runs before anything in this process loads the extending module, so it must come first.
 describe("a module loaded after the search has already run", () => {
@@ -14,7 +13,7 @@ describe("a module loaded after the search has already run", () => {
     expect(() => resolveMethod("fixture.Robot", "fly")).toThrow();
     expect(enumerateMethods("fixture.Robot").some((m) => m.name === "fly")).toBeFalsy();
 
-    loadExtensions();
+    loadNoMetadata();
 
     expect(resolveMethod("fixture.Robot", "fly").selector).toBe("fly()");
     expect((Swift.type("fixture.Robot") as ClassType).init("R2").fly()).toBe("fly R2");
@@ -22,7 +21,7 @@ describe("a module loaded after the search has already run", () => {
 });
 
 describe("a type extended from another module", () => {
-  beforeEach(() => { loadExtensions(); });
+  beforeEach(() => { loadNoMetadata(); });
 
   test("member discovery reaches them", () => {
     expect(enumerateMethods("fixture.Robot").some((m) => m.name === "fly")).toBeTruthy();
@@ -54,26 +53,35 @@ describe("a type extended from another module", () => {
   });
 });
 
+describe("a module of extensions alone", () => {
+  beforeEach(() => { loadNoMetadata(); });
+
+  test("carries no Swift metadata, so only the symbol route reaches it", () => {
+    const nometadata = Process.getModuleByName(NOMETADATA_MODULE);
+    expect([...enumerateSwiftModules()].some((m) => m.path === nometadata.path)).toBeFalsy();
+  });
+});
+
 describe("a module that declares conformances but no types", () => {
-  beforeEach(() => { loadExtensions(); });
+  beforeEach(() => { loadConformance(); });
 
   test("it is scanned although it has no type descriptors", () => {
-    const extensions = Process.getModuleByName(EXTENSIONS_MODULE);
-    expect(getSwiftSection(extensions, "__swift5_types")).toBeNull();
-    expect([...enumerateSwiftModules()].some((m) => m.path === extensions.path)).toBeTruthy();
+    const conformance = Process.getModuleByName(CONFORMANCE_MODULE);
+    expect([...enumerateTypes(conformance)].length).toBe(0);
+    expect([...enumerateSwiftModules()].some((m) => m.path === conformance.path)).toBeTruthy();
   });
 
   test("the protocol it declares resolves by name", () => {
-    expect(Swift.Protocol.find("extensions.Flyable")!.fullName).toBe("extensions.Flyable");
+    expect(Swift.Protocol.find("conformance.Flyable")!.fullName).toBe("conformance.Flyable");
   });
 
   test("the type it extends reports the conformance", () => {
     const protocols = (Swift.type("fixture.Robot") as ClassType).protocols();
-    expect(Object.keys(protocols)).toContain("extensions.Flyable");
+    expect(Object.keys(protocols)).toContain("conformance.Flyable");
   });
 
   test("the protocol reports the type it was conformed to", () => {
-    const flyable = Swift.Protocol.find("extensions.Flyable")!;
+    const flyable = Swift.Protocol.find("conformance.Flyable")!;
     expect(flyable.conformingTypes().map((t) => t.name)).toContain("fixture.Robot");
   });
 });
