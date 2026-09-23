@@ -18,6 +18,15 @@ describe("a module loaded after the search has already run", () => {
     expect(resolveMethod("fixture.Robot", "fly").selector).toBe("fly()");
     expect((Swift.type("fixture.Robot") as ClassType).init("R2").fly()).toBe("fly R2");
   });
+
+  test("its conformances are missing until it loads, then reported without a flush", () => {
+    const robot = Swift.type("fixture.Robot") as ClassType;
+    expect(Object.keys(robot.protocols())).not.toContain("conformance.Flyable");
+
+    loadConformance();
+
+    expect(Object.keys(robot.protocols())).toContain("conformance.Flyable");
+  });
 });
 
 describe("a type extended from another module", () => {

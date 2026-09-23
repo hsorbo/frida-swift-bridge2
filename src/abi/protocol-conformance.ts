@@ -172,60 +172,66 @@ export function conformsToProtocol(
   return witnessTable.isNull() ? null : witnessTable;
 }
 
-const conformingProtocolsCache = new Map<string, ContextDescriptor[]>();
-
-// Scans every Swift module so retroactive conformances declared outside the type's own module are
-// included; memoized per type descriptor since the first pass is the costly part.
-export function conformingProtocols(typeDescriptor: NativePointer): ContextDescriptor[] {
-  const key = typeDescriptor.toString();
-  const cached = conformingProtocolsCache.get(key);
-  if (cached !== undefined) {
-    return cached;
-  }
-  const protocols: ContextDescriptor[] = [];
-  const seen = new Set<string>();
-  for (const module of enumerateSwiftModules()) {
-    for (const conformance of enumerateProtocolConformances(module)) {
-      const descriptor = conformance.typeDescriptor;
-      if (descriptor === null || !descriptor.equals(typeDescriptor)) {
-        continue;
-      }
-      const protocol = conformance.protocol;
-      if (protocol === null || seen.has(protocol.handle.toString())) {
-        continue;
-      }
-      seen.add(protocol.handle.toString());
-      protocols.push(protocol);
-    }
-  }
-  conformingProtocolsCache.set(key, protocols);
-  return protocols;
+interface ConformanceIndex {
+  protocolsByType: Map<string, ContextDescriptor[]>;
+  typesByProtocol: Map<string, ContextDescriptor[]>;
 }
 
-const conformingTypesCache = new Map<string, ContextDescriptor[]>();
+const conformanceIndexes = new Map<string, ConformanceIndex>();
+
+// Keyed on the module, not on the answer: "T conforms to nothing" stops being true as soon as a
+// module declaring a retroactive conformance is loaded.
+function conformanceIndexOf(module: Module): ConformanceIndex {
+  const key = `${module.path}@${module.base}`;
+  let index = conformanceIndexes.get(key);
+  if (index === undefined) {
+    index = { protocolsByType: new Map(), typesByProtocol: new Map() };
+    for (const conformance of enumerateProtocolConformances(module)) {
+      const type = conformance.typeDescriptor;
+      const protocol = conformance.protocol;
+      if (type === null || protocol === null) {
+        continue;
+      }
+      appendTo(index.protocolsByType, type.toString(), protocol);
+      appendTo(index.typesByProtocol, protocol.handle.toString(), new ContextDescriptor(type));
+    }
+    conformanceIndexes.set(key, index);
+  }
+  return index;
+}
+
+function appendTo(map: Map<string, ContextDescriptor[]>, key: string, value: ContextDescriptor): void {
+  const list = map.get(key);
+  if (list === undefined) {
+    map.set(key, [value]);
+  } else {
+    list.push(value);
+  }
+}
+
+function collectAcrossModules(
+  select: (index: ConformanceIndex) => ContextDescriptor[] | undefined
+): ContextDescriptor[] {
+  const result: ContextDescriptor[] = [];
+  const seen = new Set<string>();
+  for (const module of enumerateSwiftModules()) {
+    for (const descriptor of select(conformanceIndexOf(module)) ?? []) {
+      const handle = descriptor.handle.toString();
+      if (!seen.has(handle)) {
+        seen.add(handle);
+        result.push(descriptor);
+      }
+    }
+  }
+  return result;
+}
+
+export function conformingProtocols(typeDescriptor: NativePointer): ContextDescriptor[] {
+  const key = typeDescriptor.toString();
+  return collectAcrossModules((index) => index.protocolsByType.get(key));
+}
 
 export function conformingTypes(protocol: ContextDescriptor): ContextDescriptor[] {
   const key = protocol.handle.toString();
-  const cached = conformingTypesCache.get(key);
-  if (cached !== undefined) {
-    return cached;
-  }
-  const types: ContextDescriptor[] = [];
-  const seen = new Set<string>();
-  for (const module of enumerateSwiftModules()) {
-    for (const conformance of enumerateProtocolConformances(module)) {
-      const p = conformance.protocol;
-      if (p === null || !p.handle.equals(protocol.handle)) {
-        continue;
-      }
-      const handle = conformance.typeDescriptor;
-      if (handle === null || seen.has(handle.toString())) {
-        continue;
-      }
-      seen.add(handle.toString());
-      types.push(new ContextDescriptor(handle));
-    }
-  }
-  conformingTypesCache.set(key, types);
-  return types;
+  return collectAcrossModules((index) => index.typesByProtocol.get(key));
 }
