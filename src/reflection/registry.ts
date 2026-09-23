@@ -4,9 +4,11 @@ import {
   enumerateTypeContextDescriptors,
 } from "../image/sections.js";
 
+const SWIFT_SECTIONS = ["__swift5_types", "__swift5_proto", "__swift5_protos", "__swift5_types2"];
+
 export function* enumerateSwiftModules(): Generator<Module> {
   for (const module of Process.enumerateModules()) {
-    if (getSwiftSection(module, "__swift5_types") !== null) {
+    if (SWIFT_SECTIONS.some((name) => getSwiftSection(module, name) !== null)) {
       yield module;
     }
   }

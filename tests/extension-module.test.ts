@@ -1,9 +1,11 @@
 import { test, expect, describe, beforeEach } from "@frida/injest/agent";
-import { loadFixture, loadExtensions } from "./fixtures/load.js";
+import { loadFixture, loadExtensions, EXTENSIONS_MODULE } from "./fixtures/load.js";
 
 import { Swift, ClassType, StructType } from "../src/index.js";
 import { enumerateMethods, enumerateProperties, resolveMethod } from "../src/runtime/method.js";
 import { metadataFor, typeOf } from "../src/abi.js";
+import { enumerateSwiftModules } from "../src/reflection/registry.js";
+import { getSwiftSection } from "../src/image/sections.js";
 
 // Runs before anything in this process loads the extending module, so it must come first.
 describe("a module loaded after the search has already run", () => {
@@ -49,5 +51,29 @@ describe("a type extended from another module", () => {
     const robot = (Swift.type("fixture.Robot") as ClassType).init("R2");
     expect(robot.fly()).toBe("fly R2");
     expect(Number(robot.wingspan)).toBe(2);
+  });
+});
+
+describe("a module that declares conformances but no types", () => {
+  beforeEach(() => { loadExtensions(); });
+
+  test("it is scanned although it has no type descriptors", () => {
+    const extensions = Process.getModuleByName(EXTENSIONS_MODULE);
+    expect(getSwiftSection(extensions, "__swift5_types")).toBeNull();
+    expect([...enumerateSwiftModules()].some((m) => m.path === extensions.path)).toBeTruthy();
+  });
+
+  test("the protocol it declares resolves by name", () => {
+    expect(Swift.Protocol.find("extensions.Flyable")!.fullName).toBe("extensions.Flyable");
+  });
+
+  test("the type it extends reports the conformance", () => {
+    const protocols = (Swift.type("fixture.Robot") as ClassType).protocols();
+    expect(Object.keys(protocols)).toContain("extensions.Flyable");
+  });
+
+  test("the protocol reports the type it was conformed to", () => {
+    const flyable = Swift.Protocol.find("extensions.Flyable")!;
+    expect(flyable.conformingTypes().map((t) => t.name)).toContain("fixture.Robot");
   });
 });
