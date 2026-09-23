@@ -1953,7 +1953,13 @@ export interface NamedRequirement {
   signature: SwiftFunctionSignature | SwiftAccessorSignature;
 }
 
-const namedRequirementsByProtocol = new Map<string, NamedRequirement[]>();
+interface RequirementNaming {
+  pending: ProtocolRequirement[];
+  found: Map<number, NamedRequirement>;
+  visitedTypes: Set<string>;
+}
+
+const namingByProtocol = new Map<string, RequirementNaming>();
 
 // A requirement's witnessIndex is protocol-global: every conformance lays its witness table out in
 // the same requirement order, so a name recovered from one conformance's thunk is valid to attach
@@ -1962,22 +1968,27 @@ const namedRequirementsByProtocol = new Map<string, NamedRequirement[]>();
 // lets a stripped conformance's own unrecoverable thunk still resolve by name via a sibling.
 export function namedProtocolRequirements(protocol: ContextDescriptor): NamedRequirement[] {
   const key = protocol.handle.toString();
-  const cached = namedRequirementsByProtocol.get(key);
-  if (cached !== undefined) {
-    return cached;
+  let naming = namingByProtocol.get(key);
+  if (naming === undefined) {
+    // Async is unlocked only for methods (driven via BoundAsyncMethod); an async accessor would be
+    // mis-driven synchronously by witnessGetProperty/Set, so keep it out of naming.
+    const pending = readProtocolRequirements(protocol).filter(
+      (r) => CALLABLE_REQUIREMENT_KINDS.has(r.kind) && (!r.isAsync || r.kind === ProtocolRequirementKind.Method)
+    );
+    naming = { pending, found: new Map(), visitedTypes: new Set() };
+    namingByProtocol.set(key, naming);
   }
+  const { pending, found, visitedTypes } = naming;
 
-  // Async is unlocked only for methods (driven via BoundAsyncMethod); an async accessor would be
-  // mis-driven synchronously by witnessGetProperty/Set, so keep it out of naming.
-  const pending = readProtocolRequirements(protocol).filter(
-    (r) => CALLABLE_REQUIREMENT_KINDS.has(r.kind) && (!r.isAsync || r.kind === ProtocolRequirementKind.Method)
-  );
-  const found = new Map<number, NamedRequirement>();
-
-  for (const typeDescriptor of pending.length > 0 ? conformingTypes(protocol) : []) {
+  for (const typeDescriptor of found.size < pending.length ? conformingTypes(protocol) : []) {
     if (found.size === pending.length) {
       break;
     }
+    const typeKey = typeDescriptor.handle.toString();
+    if (visitedTypes.has(typeKey)) {
+      continue;
+    }
+    visitedTypes.add(typeKey);
     if (typeDescriptor.isGeneric) {
       continue; // no accessFunction to call without type arguments — never nameable this way
     }
@@ -2014,9 +2025,7 @@ export function namedProtocolRequirements(protocol: ContextDescriptor): NamedReq
     }
   }
 
-  const result = [...found.values()];
-  namedRequirementsByProtocol.set(key, result);
-  return result;
+  return [...found.values()];
 }
 
 function witnessCandidates(table: WitnessTable): NamedRequirement[] {

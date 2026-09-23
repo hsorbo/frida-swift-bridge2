@@ -50,7 +50,8 @@ platform="${PLATFORM:-$host}"
 
 # fixture/resilient are stripped on every platform, matching a real release binary; resilient
 # stays unstripped until fixture/fixturesyms have linked against it. fixturesyms is the same
-# source, deliberately left unstripped.
+# source, deliberately left unstripped. conformance stays unstripped so its witness thunks can
+# name requirements that fixture's own stripped conformances cannot.
 case "$platform" in
   ios)
     dep="${IOS_DEPLOYMENT_TARGET:-17.0}"
@@ -97,7 +98,7 @@ case "$platform" in
     lipo -create "$work/arm64/conformance.dylib" "$work/arm64e/conformance.dylib" -output "$conformance_out"
     rm -rf "$work"
 
-    xcrun strip -x "$fixture_out" "$resilient_out" "$nometadata_out" "$conformance_out"
+    xcrun strip -x "$fixture_out" "$resilient_out" "$nometadata_out"
     codesign -s - -f "$fixture_out"
     codesign -s - -f "$fixturesyms_out"
     codesign -s - -f "$resilient_out"
@@ -136,7 +137,9 @@ case "$platform" in
       swiftc $target_flag -emit-library -module-name "$mod" "$fixtures/$mod.swift" \
         -I "$fixtures" "$fixture_out" "$resilient_out" -o "$fixtures/$mod.dylib" \
         -Xlinker -install_name -Xlinker "$fixtures/$mod.dylib"
-      xcrun strip -x "$fixtures/$mod.dylib"
+      if [ "$mod" = nometadata ]; then
+        xcrun strip -x "$fixtures/$mod.dylib"
+      fi
       codesign -s - -f "$fixtures/$mod.dylib"
     done
 
@@ -172,7 +175,7 @@ case "$platform" in
     done
 
     # Also proves section discovery is symbol-independent.
-    strip "$fixture_out" "$resilient_out" "$nometadata_out" "$conformance_out"
+    strip "$fixture_out" "$resilient_out" "$nometadata_out"
 
     emit_paths "$fixture_out" "$resilient_out" "$fixturesyms_out" "$nometadata_out" "$conformance_out"
     emit_bytes "$fixture_out" "$resilient_out" "$fixturesyms_out" "$nometadata_out" "$conformance_out"

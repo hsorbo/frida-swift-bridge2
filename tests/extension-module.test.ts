@@ -3,7 +3,7 @@ import { loadFixture, loadNoMetadata, loadConformance, NOMETADATA_MODULE, CONFOR
 
 import { Swift, ClassType, StructType } from "../src/index.js";
 import { enumerateMethods, enumerateProperties, resolveMethod } from "../src/runtime/method.js";
-import { metadataFor, typeOf } from "../src/abi.js";
+import { Protocol, metadataFor, typeOf } from "../src/abi.js";
 import { enumerateSwiftModules, enumerateTypes } from "../src/reflection/registry.js";
 
 // Runs before anything in this process loads the extending module, so it must come first.
@@ -21,11 +21,15 @@ describe("a module loaded after the search has already run", () => {
 
   test("its conformances are missing until it loads, then reported without a flush", () => {
     const robot = Swift.type("fixture.Robot") as ClassType;
+    const container = Protocol.find("fixture.Container")!;
+    const containerNames = () => container.namedRequirements().map((r) => r.name);
     expect(Object.keys(robot.protocols())).not.toContain("conformance.Flyable");
+    expect(containerNames()).not.toContain("item");
 
     loadConformance();
 
     expect(Object.keys(robot.protocols())).toContain("conformance.Flyable");
+    expect(containerNames()).toContain("item");
   });
 });
 
